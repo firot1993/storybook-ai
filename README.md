@@ -1,93 +1,117 @@
-# Storybook AI - Google Hackathon Project
+# Storybook AI
 
-Transform any photo into a magical cartoon character and create personalized bedtime stories powered by Google's latest AI models.
+Storybook AI is a Next.js app that turns user photos into cartoon characters, generates illustrated bedtime stories, and narrates each scene with Gemini TTS.
 
-## 🚀 Tech Stack
+## Stack
 
-- **Framework**: Next.js 15 + React 19 + TypeScript
-- **Styling**: Tailwind CSS
-- **AI Models**:
-  - **Gemini 3.1 Flash Image** (Nano Banana 2) - Character & illustration generation
-  - **Gemini 3 Flash** - Story text generation
-  - **Gemini 2.5 Flash Preview TTS** - Voice narration
-- **Backend**: Next.js API routes (stateless/local-session flow)
-- **Deployment**: Vercel
+- Framework: Next.js 15, React 19, TypeScript
+- Styling: Tailwind CSS
+- AI:
+  - `gemini-2.5-flash-image` for character and scene images
+  - `gemini-3-flash-preview` for story text and story options
+  - `gemini-2.5-flash-preview-tts` for narration audio
+- Data: Prisma + SQLite (`prisma/dev.db`)
+- Deployment target: Vercel (with external persistent DB recommended)
 
-## 🎯 Demo Pitch
+## Current Features
 
-> "We built this using Google's latest AI models released just 2 days ago — Gemini 3.1 Flash Image (Nano Banana 2). This might be one of the first projects at this hackathon using this cutting-edge model!"
+- Generate cartoon character(s) from uploaded photos
+- Generate 3 story options from keywords + age group
+- Generate full story text and scene images
+- Scene-based audio generation
+- Narration vs character speech separation in TTS script
+- Auto page progression while scene audio plays
+- Regenerate audio for stories missing narration
 
-## 📁 Project Structure
+## Architecture Overview
 
-```
-storybook-ai/
-├── app/                    # Next.js App Router
-│   ├── page.tsx           # Landing page
-│   ├── character/         # Character creation flow
-│   ├── story/             # Story generation flow
-│   └── api/               # API Routes
-├── lib/                   # Utilities
-│   └── gemini.ts          # Gemini API wrapper
-├── components/            # Reusable components
-└── types/                 # TypeScript types
-```
+### Frontend
 
-## 🛠️ Setup
+- App Router pages under `app/`
+- Client state persisted with localStorage / IndexedDB helpers (`lib/client-story-store.ts`)
 
-### 1. Clone & Install
+### Backend
+
+- Next.js route handlers under `app/api/`
+- Prisma access layer in `lib/db.ts`
+- Gemini wrappers in `lib/gemini.ts` and `lib/gemini-tts.ts`
+- Story scene parsing shared in `lib/story-scenes.ts`
+
+### Audio Storage Compatibility
+
+`Story.audioUrl` in DB stores either:
+
+- Legacy plain single audio URL string, or
+- Encoded JSON payload containing `audioUrl` + `sceneAudioUrls`
+
+Encoding/decoding helpers live in `lib/story-audio.ts` to keep old stories compatible.
+
+## API Routes
+
+- `GET /api/health` readiness check
+- `GET /api/character` list characters
+- `POST /api/character` generate/save character
+- `GET|PATCH|DELETE /api/character/[id]` character CRUD
+- `GET /api/character/[id]/stories` list a character's stories
+- `GET /api/story` list all stories
+- `POST /api/story/options` generate story options
+- `POST /api/story/generate` generate story + images + scene audio
+- `POST /api/story/audio` regenerate scene audio
+- `GET|DELETE /api/story/[id]` story fetch/delete
+
+## Local Development
+
+### 1. Install
 
 ```bash
-cd storybook-ai
 npm install
 ```
 
-### 2. Environment Variables
-
-Copy `.env.local.example` to `.env.local` and fill in your API keys:
+### 2. Configure environment
 
 ```bash
 cp .env.local.example .env.local
 ```
 
-Required keys:
-- `GEMINI_API_KEY` - Get from [Google AI Studio](https://makersuite.google.com/app/apikey)
-- `GEMINI_TTS_VOICE` (optional) - Prebuilt Gemini TTS voice name (defaults to `Kore`)
+Required:
 
-### 3. Run Development Server
+- `GEMINI_API_KEY`
+
+Optional (TTS voices):
+
+- `GEMINI_TTS_VOICE` (single-speaker fallback, default `Kore`)
+- `GEMINI_TTS_NARRATOR_VOICE` (default `Kore`)
+- `GEMINI_TTS_CHARACTER_VOICE` (default `Puck`)
+
+### 3. Run
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Open `http://localhost:3000`.
 
-## 🎨 Features
+### 4. Build and lint
 
-1. **Photo to Cartoon** - Upload any photo, get a storybook character
-2. **AI Story Generation** - Input keywords, get 3 story options
-3. **Illustrated Stories** - Each story has custom AI-generated images
-4. **Voice Narration** - Professional text-to-speech narration
-5. **Interactive Player** - Browse scenes while listening
+```bash
+npm run lint
+npm run build
+```
 
-## 💰 Free Tier Limits
+## Database Notes
 
-| Service | Free Limit |
-|---------|------------|
-| Gemini 3.1 Flash Image | 1500 requests/day |
-| Gemini 3 Flash | 1500 requests/day |
-| Gemini 2.5 Flash Preview TTS | See current Gemini pricing/quota |
-| Vercel | Hobby Plan (unlimited) |
+- Local development uses SQLite file `prisma/dev.db`.
+- Prisma schema is in `prisma/schema.prisma`.
+- For Vercel production, SQLite file storage is not durable across deployments/invocations.
+- Use a persistent hosted DB adapter for production if you need durable story/character data.
 
-**Total Cost: $0** 🎉
+## Deployment Notes (Vercel)
 
-## 🏆 Hackathon Tips
+- Set environment variables in Vercel project settings.
+- Ensure `GEMINI_API_KEY` is configured.
+- If you keep SQLite, treat it as ephemeral (demo-only).
+- For production persistence, migrate Prisma datasource to a hosted database.
 
-1. **Start Simple** - Get the character generation working first
-2. **Cache Results** - Save generated images to avoid regenerating
-3. **Error Handling** - Add fallbacks for API failures
-4. **Demo Flow** - Practice the complete user journey
-5. **Pitch Practice** - Emphasize the "2-day-old model" angle!
+## License
 
-## 📝 License
-
-MIT - Made with ❤️ for Google Hackathon
+MIT
