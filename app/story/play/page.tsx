@@ -6,6 +6,7 @@ import {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
   type ChangeEvent,
   type TouchEvent,
 } from 'react'
@@ -27,6 +28,93 @@ function formatAudioTime(seconds: number): string {
 
 function sceneStorageKey(storyId: string): string {
   return `storybook:last-scene:${storyId}`
+}
+
+type StoryLine = { type: 'narration' | 'character'; speaker?: string; text: string }
+
+function splitNarrationIntoReadableLines(text: string): StoryLine[] {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (!normalized) return []
+
+  const sentences = normalized.split(/(?<=[.!?])\s+/).filter(Boolean)
+  if (sentences.length <= 2) {
+    return [{ type: 'narration', text: normalized }]
+  }
+
+  const lines: StoryLine[] = []
+  for (let i = 0; i < sentences.length; i += 2) {
+    lines.push({ type: 'narration', text: sentences.slice(i, i + 2).join(' ') })
+  }
+  return lines
+}
+
+function mergeNearbyNarrationLines(lines: StoryLine[]): StoryLine[] {
+  const merged: StoryLine[] = []
+
+  for (const line of lines) {
+    const prev = merged[merged.length - 1]
+    if (
+      prev &&
+      prev.type === 'narration' &&
+      line.type === 'narration'
+    ) {
+      const combined = `${prev.text} ${line.text}`.replace(/\s+/g, ' ').trim()
+      const sentenceCount = combined.split(/(?<=[.!?])\s+/).filter(Boolean).length
+      const canMerge = combined.length <= 320 && sentenceCount <= 5
+
+      if (canMerge) {
+        prev.text = combined
+        continue
+      }
+    }
+
+    merged.push(line)
+  }
+
+  return merged
+}
+
+function parseSceneLines(rawText: string): StoryLine[] {
+  const normalized = rawText
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  if (!normalized) return []
+
+  const withSpeakerBreaks = normalized.replace(
+    /([.!?])\s+([A-Za-z][A-Za-z0-9' -]{0,24}(?::|["“]))/g,
+    '$1\n$2'
+  )
+
+  const blocks = withSpeakerBreaks
+    .split(/\n+/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+
+  const lines: StoryLine[] = []
+  for (const block of blocks) {
+    const match = block.match(/^([A-Za-z][A-Za-z0-9' -]{0,24}):\s*([\s\S]+)$/)
+    const quoteMatch = block.match(/^([A-Za-z][A-Za-z0-9' -]{0,24})\s*["“]\s*([\s\S]+)$/)
+
+    if (!match && !quoteMatch) {
+      lines.push(...splitNarrationIntoReadableLines(block))
+      continue
+    }
+
+    const speaker = (match?.[1] ?? quoteMatch?.[1] ?? '').trim()
+    let text = (match?.[2] ?? quoteMatch?.[2] ?? '').replace(/\s+/g, ' ').trim()
+    text = text.replace(/[”"]$/, '').trim()
+    if (!text) continue
+
+    if (speaker.toLowerCase() === 'narrator') {
+      lines.push(...splitNarrationIntoReadableLines(text))
+    } else {
+      lines.push({ type: 'character', speaker, text })
+    }
+  }
+
+  return mergeNearbyNarrationLines(lines)
 }
 
 export default function PlayStoryPage() {
@@ -51,6 +139,8 @@ function PlayStoryContent() {
   const [audioCurrentTime, setAudioCurrentTime] = useState(0)
   const [audioDuration, setAudioDuration] = useState(0)
   const [playbackRate, setPlaybackRate] = useState(1)
+  const [readerTextSize, setReaderTextSize] = useState<'sm' | 'md' | 'lg'>('md')
+  const [focusTextMode, setFocusTextMode] = useState(false)
   const [isRegeneratingAudio, setIsRegeneratingAudio] = useState(false)
   const [sceneKey, setSceneKey] = useState(0)
   const router = useRouter()
@@ -311,6 +401,14 @@ function PlayStoryContent() {
     })
   }, [])
 
+  const cycleReaderTextSize = useCallback(() => {
+    setReaderTextSize((prev) => {
+      if (prev === 'sm') return 'md'
+      if (prev === 'md') return 'lg'
+      return 'sm'
+    })
+  }, [])
+
   // Keyboard navigation
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -416,12 +514,12 @@ function PlayStoryContent() {
     }
   }, [isRegeneratingAudio, persistStoryLocally, searchParams, story])
 
-  // Split story content into scenes using [Scene X] markers
-  const getSceneLines = () => {
+  const sceneLines = useMemo(() => {
     if (!story) return []
+
     const parts = splitStoryIntoScenes(story.content)
     let rawText = ''
-    
+
     if (parts.length > 0 && currentScene < parts.length) {
       rawText = parts[currentScene]
     } else {
@@ -432,36 +530,19 @@ function PlayStoryContent() {
       rawText = sentences.slice(start, start + perScene).join(' ')
     }
 
-    // Parse the raw text into structured lines
-    // Match patterns like "Narrator: ...", "Character: ...", or "Rex: ..."
-    // Improved regex to handle multiple segments on the same line if they follow the pattern
-    const lines: Array<{ type: 'narration' | 'character'; speaker?: string; text: string }> = []
-    
-    // This regex looks for "Speaker: " pattern at the start or after a sentence end
-    // But a simpler approach is to use a more sophisticated split/match
-    const segments = rawText.split(/(?=[A-Za-z]+:\s)/)
-    
-    for (const segment of segments) {
-      const trimmed = segment.trim()
-      if (!trimmed) continue
-
-      const match = trimmed.match(/^([^:]+):\s*([\s\S]*)$/)
-      if (match) {
-        const speaker = match[1].trim()
-        const text = match[2].trim()
-        
-        if (speaker.toLowerCase() === 'narrator') {
-          lines.push({ type: 'narration', text })
-        } else {
-          lines.push({ type: 'character', speaker, text })
-        }
-      } else {
-        lines.push({ type: 'narration', text: trimmed })
-      }
-    }
-
-    return lines
-  }
+    return parseSceneLines(rawText)
+  }, [currentScene, story])
+  const narrationTextClass = readerTextSize === 'sm'
+    ? 'text-sm sm:text-base leading-6 sm:leading-7'
+    : readerTextSize === 'lg'
+      ? 'text-lg sm:text-xl leading-7 sm:leading-8'
+      : 'text-base sm:text-lg leading-6 sm:leading-7'
+  const dialogueTextClass = readerTextSize === 'sm'
+    ? 'text-sm sm:text-base leading-6 sm:leading-7'
+    : readerTextSize === 'lg'
+      ? 'text-lg sm:text-xl leading-7 sm:leading-8'
+      : 'text-base sm:text-lg leading-6 sm:leading-7'
+  const readerSizeLabel = readerTextSize === 'sm' ? 'Small' : readerTextSize === 'md' ? 'Medium' : 'Large'
 
   if (!story || characters.length === 0) {
     return (
@@ -473,7 +554,6 @@ function PlayStoryContent() {
 
   const isTheEnd = currentScene === totalScenes
   const hasAnyAudio = hasSceneAudio || Boolean(story.audioUrl)
-  const sceneLines = getSceneLines()
 
   return (
     <div className="min-h-screen flex flex-col px-4 py-6">
@@ -552,7 +632,7 @@ function PlayStoryContent() {
           ) : (
             <>
               {/* Image */}
-              {story.images[currentScene] && (
+              {!focusTextMode && story.images[currentScene] && (
                 <div className="relative group w-full aspect-[4/3] bg-amber-50">
                   <Image
                     src={story.images[currentScene]}
@@ -588,61 +668,59 @@ function PlayStoryContent() {
               )}
 
               {/* Text area */}
-              <div className="p-6 sm:p-10 bg-gradient-to-b from-amber-50 to-white overflow-y-auto max-h-[400px]">
-                <div className="space-y-6">
+              <div className={`p-5 sm:p-7 md:p-8 ${focusTextMode ? 'bg-white' : 'bg-gradient-to-b from-amber-50 to-white'}`}>
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/80 border border-amber-200 px-3 py-1.5 text-xs font-bold text-amber-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-candy-400" />
+                    Scene {currentScene + 1}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={cycleReaderTextSize}
+                      className="px-3 py-1.5 rounded-full border border-grape-200 bg-white text-xs font-bold text-grape-600 hover:bg-grape-50"
+                    >
+                      Text: {readerSizeLabel}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFocusTextMode((prev) => !prev)}
+                      className="px-3 py-1.5 rounded-full border border-grape-200 bg-white text-xs font-bold text-grape-600 hover:bg-grape-50"
+                    >
+                      {focusTextMode ? 'Show Image' : 'Focus Text'}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-3 max-h-[30vh] sm:max-h-[32vh] md:max-h-[28vh] lg:max-h-[32vh] overflow-y-auto pr-1">
                   {sceneLines.map((line, idx) => {
                     if (line.type === 'narration') {
                       return (
                         <p 
                           key={idx} 
-                          className={`text-gray-700 italic leading-relaxed text-lg sm:text-xl font-medium ${
-                            idx === 0 ? 'first-letter:text-4xl first-letter:font-extrabold first-letter:text-amber-600 first-letter:mr-1 first-letter:float-left first-letter:leading-none first-letter:not-italic' : ''
+                          className={`text-gray-800 ${
+                            narrationTextClass
+                          } ${
+                            idx === 0 ? 'first-letter:text-4xl first-letter:font-extrabold first-letter:text-amber-600 first-letter:mr-1 first-letter:float-left first-letter:leading-none' : ''
                           }`}
                         >
                           {line.text}
                         </p>
                       )
                     } else {
-                      // Find matching character for avatar
-                      const matchingChar = characters.find(
-                        c => c.name.toLowerCase() === line.speaker?.toLowerCase()
-                      )
-                      
                       return (
-                        <div key={idx} className="flex gap-3 items-start animate-fade-in">
-                          {matchingChar ? (
-                            <div className="shrink-0 mt-1">
-                              <div className="rounded-full p-0.5 bg-gradient-to-br from-candy-300 to-grape-300 shadow-sm">
-                                <Image
-                                  src={matchingChar.cartoonImage}
-                                  alt={matchingChar.name}
-                                  width={40}
-                                  height={40}
-                                  className="w-10 h-10 rounded-full bg-white object-cover"
-                                />
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-grape-100 flex items-center justify-center text-xl shrink-0 mt-1 border-2 border-white shadow-sm">
-                              &#128100;
-                            </div>
-                          )}
-                          <div className="flex-1">
-                            <p className="text-[10px] font-bold text-grape-400 uppercase tracking-wider ml-1 mb-1">
-                              {line.speaker}
-                            </p>
-                            <div className="bg-white border-2 border-amber-100 rounded-2xl rounded-tl-none px-4 py-2.5 shadow-sm inline-block max-w-full">
-                              <p className="text-gray-900 text-lg sm:text-xl font-bold leading-tight">
-                                {line.text.startsWith('"') || line.text.startsWith('“') ? line.text : `“${line.text}”`}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
+                        <p key={idx} className={`${dialogueTextClass} text-gray-900 font-semibold`}>
+                          <span className="inline-flex items-center rounded-full bg-candy-100 text-candy-700 px-2 py-0.5 mr-2 text-[10px] sm:text-xs font-extrabold tracking-wide uppercase align-middle">
+                            {line.speaker}
+                          </span>
+                          <span className="text-grape-700 italic">
+                            {line.text.startsWith('"') || line.text.startsWith('“') ? line.text : `“${line.text}”`}
+                          </span>
+                        </p>
                       )
                     }
                   })}
                 </div>
-                <div className="mt-8 text-right text-[10px] text-amber-300 font-extrabold tracking-widest uppercase">
+                <div className="mt-8 pt-4 border-t border-amber-50 text-right text-[10px] text-amber-300 font-extrabold tracking-widest uppercase">
                   Page {currentScene + 1} of {totalScenes}
                 </div>
               </div>
