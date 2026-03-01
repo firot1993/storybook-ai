@@ -417,17 +417,50 @@ function PlayStoryContent() {
   }, [isRegeneratingAudio, persistStoryLocally, searchParams, story])
 
   // Split story content into scenes using [Scene X] markers
-  const getSceneText = () => {
-    if (!story) return ''
+  const getSceneLines = () => {
+    if (!story) return []
     const parts = splitStoryIntoScenes(story.content)
+    let rawText = ''
+    
     if (parts.length > 0 && currentScene < parts.length) {
-      return parts[currentScene]
+      rawText = parts[currentScene]
+    } else {
+      const sentences = story.content.split(/(?<=[.!?])\s+/)
+      const scenesCount = story.images.length || 1
+      const perScene = Math.ceil(sentences.length / scenesCount)
+      const start = currentScene * perScene
+      rawText = sentences.slice(start, start + perScene).join(' ')
     }
-    const sentences = story.content.split(/(?<=[.!?])\s+/)
-    const scenesCount = story.images.length || 1
-    const perScene = Math.ceil(sentences.length / scenesCount)
-    const start = currentScene * perScene
-    return sentences.slice(start, start + perScene).join(' ')
+
+    // Parse the raw text into structured lines
+    // Match patterns like "Narrator: ...", "Character: ...", or "Rex: ..."
+    // Improved regex to handle multiple segments on the same line if they follow the pattern
+    const lines: Array<{ type: 'narration' | 'character'; speaker?: string; text: string }> = []
+    
+    // This regex looks for "Speaker: " pattern at the start or after a sentence end
+    // But a simpler approach is to use a more sophisticated split/match
+    const segments = rawText.split(/(?=[A-Za-z]+:\s)/)
+    
+    for (const segment of segments) {
+      const trimmed = segment.trim()
+      if (!trimmed) continue
+
+      const match = trimmed.match(/^([^:]+):\s*([\s\S]*)$/)
+      if (match) {
+        const speaker = match[1].trim()
+        const text = match[2].trim()
+        
+        if (speaker.toLowerCase() === 'narrator') {
+          lines.push({ type: 'narration', text })
+        } else {
+          lines.push({ type: 'character', speaker, text })
+        }
+      } else {
+        lines.push({ type: 'narration', text: trimmed })
+      }
+    }
+
+    return lines
   }
 
   if (!story || characters.length === 0) {
@@ -440,6 +473,7 @@ function PlayStoryContent() {
 
   const isTheEnd = currentScene === totalScenes
   const hasAnyAudio = hasSceneAudio || Boolean(story.audioUrl)
+  const sceneLines = getSceneLines()
 
   return (
     <div className="min-h-screen flex flex-col px-4 py-6">
@@ -554,12 +588,62 @@ function PlayStoryContent() {
               )}
 
               {/* Text area */}
-              <div className="p-5 sm:p-8 bg-gradient-to-b from-amber-50 to-white">
-                <p className="text-gray-800 leading-relaxed text-lg sm:text-xl font-medium first-letter:text-4xl first-letter:font-extrabold first-letter:text-amber-600 first-letter:mr-1 first-letter:float-left first-letter:leading-none">
-                  {getSceneText()}
-                </p>
-                <div className="mt-4 text-right text-xs text-amber-400 font-bold">
-                  {currentScene + 1} / {totalScenes}
+              <div className="p-6 sm:p-10 bg-gradient-to-b from-amber-50 to-white overflow-y-auto max-h-[400px]">
+                <div className="space-y-6">
+                  {sceneLines.map((line, idx) => {
+                    if (line.type === 'narration') {
+                      return (
+                        <p 
+                          key={idx} 
+                          className={`text-gray-700 italic leading-relaxed text-lg sm:text-xl font-medium ${
+                            idx === 0 ? 'first-letter:text-4xl first-letter:font-extrabold first-letter:text-amber-600 first-letter:mr-1 first-letter:float-left first-letter:leading-none first-letter:not-italic' : ''
+                          }`}
+                        >
+                          {line.text}
+                        </p>
+                      )
+                    } else {
+                      // Find matching character for avatar
+                      const matchingChar = characters.find(
+                        c => c.name.toLowerCase() === line.speaker?.toLowerCase()
+                      )
+                      
+                      return (
+                        <div key={idx} className="flex gap-3 items-start animate-fade-in">
+                          {matchingChar ? (
+                            <div className="shrink-0 mt-1">
+                              <div className="rounded-full p-0.5 bg-gradient-to-br from-candy-300 to-grape-300 shadow-sm">
+                                <Image
+                                  src={matchingChar.cartoonImage}
+                                  alt={matchingChar.name}
+                                  width={40}
+                                  height={40}
+                                  className="w-10 h-10 rounded-full bg-white object-cover"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-grape-100 flex items-center justify-center text-xl shrink-0 mt-1 border-2 border-white shadow-sm">
+                              &#128100;
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <p className="text-[10px] font-bold text-grape-400 uppercase tracking-wider ml-1 mb-1">
+                              {line.speaker}
+                            </p>
+                            <div className="bg-white border-2 border-amber-100 rounded-2xl rounded-tl-none px-4 py-2.5 shadow-sm inline-block max-w-full">
+                              <p className="text-gray-900 text-lg sm:text-xl font-bold leading-tight">
+                                {line.text.startsWith('"') || line.text.startsWith('“') ? line.text : `“${line.text}”`}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    }
+                  })}
+                </div>
+                <div className="mt-8 text-right text-[10px] text-amber-300 font-extrabold tracking-widest uppercase">
+                  Page {currentScene + 1} of {totalScenes}
                 </div>
               </div>
             </>
