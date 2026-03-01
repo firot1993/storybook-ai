@@ -38,6 +38,10 @@ const FUN_KEYWORDS = [
   { text: 'Ocean', emoji: '\u{1F30A}' },
 ]
 
+const RELATIONSHIP_SUGGESTIONS = [
+  'Best friends', 'Siblings', 'Cousins', 'Next door neighbors', 'Teammates', 'School friends'
+]
+
 export default function CreateStoryPage() {
   return (
     <Suspense fallback={
@@ -379,30 +383,64 @@ function CreateStoryContent() {
           </div>
 
           {characters.length >= 2 && (
-            <div className="mb-10 animate-fade-in">
-              <div className="flex items-center gap-2 mb-4">
-                <h3 className="font-bold text-grape-600">
-                  {characters.length === 2 ? 'How are they related?' : 'How do they know each other?'}
-                </h3>
-                {isRelationshipLoading && (
-                  <div className="w-4 h-4 border-2 border-grape-200 border-t-grape-500 rounded-full animate-spin" />
+            <div className="mb-10 animate-fade-in bg-grape-50/50 rounded-3xl p-6 border-2 border-grape-100">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-grape-600">
+                    {characters.length === 2 ? 'How are they related?' : 'How do they know each other?'}
+                  </h3>
+                  {isRelationshipLoading && (
+                    <div className="w-4 h-4 border-2 border-grape-200 border-t-grape-500 rounded-full animate-spin" />
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center gap-4 mb-6">
+                <div className="flex -space-x-4">
+                  {characters.map((char) => (
+                    <div key={char.id} className="w-16 h-16 rounded-full border-4 border-white shadow-lg overflow-hidden relative">
+                      <Image src={char.cartoonImage} alt={char.name} fill className="object-cover" />
+                    </div>
+                  ))}
+                </div>
+                {characters.length === 2 && relationship.toLowerCase().includes('friend') && (
+                  <div className="text-2xl animate-pulse text-candy-400">&#10084;</div>
                 )}
               </div>
-              <div className="relative">
+
+              <div className="relative mb-4">
                 <input
                   type="text"
                   value={relationship}
                   onChange={(e) => setRelationship(e.target.value)}
                   placeholder={characters.length === 2 
-                    ? `e.g. ${characters[0].name} and ${characters[1].name} are best friends` 
+                    ? `e.g. Best friends, siblings...` 
                     : "e.g. They are all cousins visiting the beach"}
-                  className="input pr-10"
+                  className="input pr-10 bg-white"
                 />
                 <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xl">
                   {characters.length === 2 ? '\u{1F46D}' : '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}'}
                 </div>
               </div>
-              <p className="mt-2 text-xs text-candy-500 font-medium italic">
+
+              <div className="flex flex-wrap gap-2 mb-4">
+                {RELATIONSHIP_SUGGESTIONS.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => setRelationship(suggestion)}
+                    className={`text-xs font-bold px-3 py-1.5 rounded-full border-2 transition-all ${
+                      relationship === suggestion
+                        ? 'bg-grape-500 border-grape-500 text-white shadow-sm'
+                        : 'bg-white border-grape-200 text-grape-500 hover:border-grape-300'
+                    }`}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+
+              <p className="text-xs text-candy-500 font-medium italic text-center">
                 {characters.length === 2 
                   ? "This helps the AI write better interactions between them!"
                   : "Tell us how this group of friends interacts!"}
