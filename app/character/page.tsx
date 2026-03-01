@@ -7,6 +7,15 @@ import Image from 'next/image'
 import StepProgress from '@/components/step-progress'
 import { showToast } from '@/components/toast'
 
+const STYLES = [
+  { id: 'cute cartoon character', label: 'Classic Cartoon', emoji: '\u{1F3A8}' },
+  { id: 'magical fairy with wings', label: 'Fairy', emoji: '\u{1F9DA}' },
+  { id: 'brave superhero with a cape', label: 'Superhero', emoji: '\u{1F9B8}' },
+  { id: 'adventurous pirate', label: 'Pirate', emoji: '\u{1F3F4}\u{200D}\u{2620}\u{FE0F}' },
+  { id: 'royal prince or princess', label: 'Royalty', emoji: '\u{1F451}' },
+  { id: 'mystical wizard with a wand', label: 'Wizard', emoji: '\u{1F9D9}' },
+]
+
 const TIPS = [
   { icon: '\u{1F4A1}', text: 'Use a clear photo of a face' },
   { icon: '\u{2600}\u{FE0F}', text: 'Good lighting works best' },
@@ -24,6 +33,7 @@ export default function CharacterPage() {
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [selectedStyle, setSelectedStyle] = useState(STYLES[0].id)
   const [progressStep, setProgressStep] = useState(0)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const router = useRouter()
@@ -62,7 +72,7 @@ export default function CharacterPage() {
       const response = await fetch('/api/character', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64.split(',')[1] }),
+        body: JSON.stringify({ imageBase64: base64.split(',')[1], style: selectedStyle }),
       })
 
       if (response.ok) {
@@ -138,6 +148,27 @@ export default function CharacterPage() {
 
           {!preview ? (
             <>
+              <div className="mb-8">
+                <p className="text-sm font-bold text-grape-600 mb-3">Pick a style:</p>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  {STYLES.map((style) => (
+                    <button
+                      key={style.id}
+                      type="button"
+                      onClick={() => setSelectedStyle(style.id)}
+                      className={`p-2.5 rounded-2xl border-2 transition-all flex flex-col items-center text-center gap-1 ${
+                        selectedStyle === style.id
+                          ? 'border-candy-400 bg-candy-50 shadow-md ring-2 ring-candy-100'
+                          : 'border-grape-100 bg-white hover:border-candy-200'
+                      }`}
+                    >
+                      <span className="text-xl">{style.emoji}</span>
+                      <span className="text-[10px] font-bold text-grape-700 leading-tight">{style.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}

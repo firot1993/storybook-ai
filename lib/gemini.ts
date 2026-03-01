@@ -411,12 +411,15 @@ Please divide the story into ${sceneCount} scenes, with [Scene X] markers.`;
   return response.text ?? '';
 }
 
-export async function generateCharacterImageWithDiagnostics(imageBase64: string): Promise<{
+export async function generateCharacterImageWithDiagnostics(
+  imageBase64: string,
+  style: string = 'cute cartoon character'
+): Promise<{
   imageData?: string;
   mimeType: string;
   diagnostics: GeminiImageDiagnostics;
 }> {
-  const prompt = "Transform this photo into a cute cartoon character, children's book illustration style, vibrant colors, friendly expression, simple background";
+  const prompt = `Transform this photo into a ${style}, children's book illustration style, vibrant colors, friendly expression, simple background`;
 
   const response = (await genAI.models.generateContent({
     model: IMAGE_MODEL,
@@ -452,8 +455,8 @@ export async function generateCharacterImageWithDiagnostics(imageBase64: string)
   };
 }
 
-export async function generateCharacterImage(imageBase64: string) {
-  const result = await generateCharacterImageWithDiagnostics(imageBase64);
+export async function generateCharacterImage(imageBase64: string, style?: string) {
+  const result = await generateCharacterImageWithDiagnostics(imageBase64, style);
   return result.imageData;
 }
 

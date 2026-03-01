@@ -12,7 +12,7 @@ export async function GET() {
 // POST /api/character - Generate character from photo and save to DB
 export async function POST(request: NextRequest) {
   try {
-    const { imageBase64 } = await request.json()
+    const { imageBase64, style } = await request.json()
 
     if (!imageBase64) {
       return NextResponse.json(
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     let generatedMimeType: string = 'image/png'
     let generationDiagnostics: GeminiImageDiagnostics | undefined
     try {
-      const generationResult = await generateCharacterImageWithDiagnostics(imageBase64)
+      const generationResult = await generateCharacterImageWithDiagnostics(imageBase64, style)
       generatedImageData = generationResult.imageData
       generatedMimeType = generationResult.mimeType
       generationDiagnostics = generationResult.diagnostics
