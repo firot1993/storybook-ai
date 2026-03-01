@@ -104,12 +104,17 @@ export default function LibraryTab() {
         </div>
       ) : activeTab === 'characters' ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 page-enter">
-          {characters.length === 0 ? (
-            <div className="col-span-full text-center py-12">
-              <p className="text-grape-400 font-medium">No characters yet! Go make some friends!</p>
+          <Link
+            href="/character"
+            className="card-interactive p-0 overflow-hidden aspect-[3/4] flex flex-col items-center justify-center border-dashed border-candy-300 bg-candy-50/30 group"
+          >
+            <div className="w-14 h-14 rounded-full bg-candy-100 flex items-center justify-center text-2xl group-hover:scale-110 group-hover:rotate-12 transition-transform mb-2">
+              &#128247;
             </div>
-          ) : (
-            characters.map((char) => (
+            <p className="font-extrabold text-candy-600 text-sm">New Character</p>
+            <p className="text-[10px] text-candy-400 font-medium">Upload a photo</p>
+          </Link>
+          {characters.map((char) => (
               <div key={char.id} className="group relative">
                 <div className="card-interactive p-0 overflow-hidden aspect-[3/4] flex flex-col">
                   <div className="relative flex-1 bg-grape-50">
@@ -145,16 +150,21 @@ export default function LibraryTab() {
                 </div>
               </div>
             ))
-          )}
+          }
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 page-enter">
-          {stories.length === 0 ? (
-            <div className="col-span-full text-center py-12">
-              <p className="text-grape-400 font-medium">No stories yet. Time for an adventure!</p>
+          <Link
+            href="/story/create"
+            className="card-interactive p-0 overflow-hidden aspect-[3/4] flex flex-col items-center justify-center border-dashed border-sky-300 bg-sky-50/30 group"
+          >
+            <div className="w-14 h-14 rounded-full bg-sky-100 flex items-center justify-center text-2xl group-hover:scale-110 group-hover:-rotate-12 transition-transform mb-2">
+              &#128214;
             </div>
-          ) : (
-            stories.map((story) => (
+            <p className="font-extrabold text-sky-600 text-sm">New Story</p>
+            <p className="text-[10px] text-sky-400 font-medium">Start an adventure</p>
+          </Link>
+          {stories.map((story) => (
               <div key={story.id} className="group relative">
                 <Link
                   href={`/story/play?id=${story.id}`}
@@ -206,7 +216,7 @@ export default function LibraryTab() {
                 </button>
               </div>
             ))
-          )}
+          }
         </div>
       )}
 
