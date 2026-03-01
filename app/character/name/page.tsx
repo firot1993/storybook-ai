@@ -96,7 +96,7 @@ export default function NameCharacterPage() {
           Back
         </Link>
 
-        <StepProgress currentStep={1} />
+        <StepProgress currentStep={1} type="character" />
 
         <div className="card">
           <h1 className="text-3xl font-extrabold text-center mb-2 text-grape-700">
@@ -106,20 +106,44 @@ export default function NameCharacterPage() {
             Give them a name and a special story!
           </p>
 
-          <div className="text-center mb-8 relative">
-            <div className="relative inline-block group">
-              <div className="rounded-full p-1.5 bg-gradient-to-r from-candy-400 via-sun-400 to-grape-400 inline-block shadow-xl group-hover:scale-105 transition-transform duration-300">
+          <div className="flex items-center justify-center gap-4 mb-8">
+            {/* Original photo (small) */}
+            <div className="flex flex-col items-center">
+              <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-grape-200 shadow-md opacity-60">
+                <Image
+                  src={character.originalImage}
+                  alt="Original photo"
+                  width={80}
+                  height={80}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <span className="text-[10px] text-grape-400 mt-1.5 font-medium">Photo</span>
+            </div>
+
+            {/* Arrow */}
+            <div className="text-grape-300 flex flex-col items-center -mt-4">
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+              <span className="text-[10px] font-bold text-candy-400">Magic!</span>
+            </div>
+
+            {/* Cartoon (large, featured) */}
+            <div className="flex flex-col items-center relative">
+              <div className="rounded-full p-1.5 bg-gradient-to-r from-candy-400 via-sun-400 to-grape-400 inline-block shadow-xl">
                 <Image
                   src={character.cartoonImage}
                   alt="Your character"
-                  width={192}
-                  height={192}
-                  className="w-48 h-48 rounded-full object-cover bg-white"
+                  width={160}
+                  height={160}
+                  className="w-40 h-40 rounded-full object-cover bg-white"
                 />
               </div>
-              <div className="absolute -bottom-1 -right-1 w-12 h-12 bg-mint-500 rounded-full border-4 border-white flex items-center justify-center text-2xl shadow-lg animate-bounce-star">
+              <div className="absolute -bottom-1 -right-1 w-10 h-10 bg-mint-500 rounded-full border-4 border-white flex items-center justify-center text-lg shadow-lg animate-bounce-star">
                 &#10024;
               </div>
+              <span className="text-[10px] text-candy-500 mt-1.5 font-bold">Cartoon</span>
             </div>
           </div>
 
@@ -168,13 +192,28 @@ export default function NameCharacterPage() {
               disabled={loading || !name.trim()}
               className="btn-primary w-full text-xl disabled:opacity-50 inline-flex items-center justify-center gap-2 group"
             >
-              {loading ? 'Saving...' : (
+              {loading ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="animate-bounce-star inline-block">&#10024;</span>
+                  Saving {name || 'your friend'}...
+                </span>
+              ) : (
                 <>
-                  Ready to Play! 
+                  Save & Continue
                   <span className="group-hover:translate-x-1 transition-transform">&#10024;</span>
                 </>
               )}
             </button>
+
+            <p className="text-center mt-4">
+              <button
+                type="button"
+                onClick={() => router.push('/story/create')}
+                className="text-sm text-grape-400 hover:text-grape-600 font-medium underline underline-offset-2"
+              >
+                Skip to story creation
+              </button>
+            </p>
           </form>
         </div>
       </div>

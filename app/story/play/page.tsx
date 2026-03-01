@@ -123,6 +123,8 @@ function PlayStoryContent() {
     if (index >= 0 && index <= totalScenes) { // Allow going to totalScenes for "The End"
       setCurrentScene(index)
       setSceneKey((k) => k + 1)
+      // Scroll the storybook card into view on mobile
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }, [totalScenes])
 
@@ -237,7 +239,7 @@ function PlayStoryContent() {
       <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full">
         <div
           key={sceneKey}
-          className={`animate-fade-in w-full bg-white rounded-3xl shadow-xl border-3 overflow-hidden ${
+          className={`animate-page-turn w-full bg-white rounded-3xl shadow-xl border-3 overflow-hidden ${
             isTheEnd ? 'border-candy-400 bg-gradient-to-br from-candy-50 to-white flex-1 flex flex-col items-center justify-center min-h-[400px]' : 'border-amber-200'
           }`}
           onTouchStart={handleTouchStart}
@@ -287,10 +289,13 @@ function PlayStoryContent() {
               )}
 
               {/* Text area */}
-              <div className="p-5 sm:p-6 bg-gradient-to-b from-amber-50 to-white">
-                <p className="text-gray-800 leading-loose text-lg sm:text-xl font-medium">
+              <div className="p-5 sm:p-8 bg-gradient-to-b from-amber-50 to-white">
+                <p className="text-gray-800 leading-relaxed text-lg sm:text-xl font-medium first-letter:text-4xl first-letter:font-extrabold first-letter:text-amber-600 first-letter:mr-1 first-letter:float-left first-letter:leading-none">
                   {getSceneText()}
                 </p>
+                <div className="mt-4 text-right text-xs text-amber-400 font-bold">
+                  {currentScene + 1} / {totalScenes}
+                </div>
               </div>
             </>
           )}

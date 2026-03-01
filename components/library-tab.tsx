@@ -67,26 +67,30 @@ export default function LibraryTab() {
   return (
     <div className="w-full">
       {/* Sub-tabs */}
-      <div className="flex justify-center gap-4 mb-8">
+      <div className="flex justify-center gap-2 mb-8 bg-grape-50 rounded-2xl p-1">
         <button
           onClick={() => setActiveTab('characters')}
-          className={`px-5 py-2 rounded-2xl text-sm font-bold transition-all ${
+          className={`flex-1 px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
             activeTab === 'characters'
-              ? 'bg-candy-100 text-candy-600 ring-2 ring-candy-200'
-              : 'bg-white text-grape-400 hover:bg-grape-50 border border-grape-100'
+              ? 'bg-white text-candy-600 shadow-md'
+              : 'text-grape-400 hover:text-grape-600'
           }`}
         >
-          Characters
+          Characters {characters.length > 0 && activeTab !== 'characters' && (
+            <span className="ml-1 text-xs bg-grape-200 text-grape-500 px-1.5 py-0.5 rounded-full">{characters.length}</span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('stories')}
-          className={`px-5 py-2 rounded-2xl text-sm font-bold transition-all ${
+          className={`flex-1 px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
             activeTab === 'stories'
-              ? 'bg-sky-100 text-sky-600 ring-2 ring-sky-200'
-              : 'bg-white text-grape-400 hover:bg-grape-50 border border-grape-100'
+              ? 'bg-white text-sky-600 shadow-md'
+              : 'text-grape-400 hover:text-grape-600'
           }`}
         >
-          Stories
+          Stories {stories.length > 0 && activeTab !== 'stories' && (
+            <span className="ml-1 text-xs bg-grape-200 text-grape-500 px-1.5 py-0.5 rounded-full">{stories.length}</span>
+          )}
         </button>
       </div>
 

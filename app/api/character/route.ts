@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
     const character: Character = {
       id: dbCharacter.id,
       name: '',
+      description: '',
       originalImage,
       cartoonImage,
       createdAt: dbCharacter.createdAt,

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -13,11 +13,34 @@ const TIPS = [
   { icon: '\u{1F60A}', text: 'A big smile makes a great cartoon!' },
 ]
 
+const PROGRESS_STEPS = [
+  { emoji: '\u{1F50D}', text: 'Analyzing your photo...' },
+  { emoji: '\u{1F3A8}', text: 'Drawing the cartoon...' },
+  { emoji: '\u{1F308}', text: 'Adding colors & details...' },
+  { emoji: '\u{2728}', text: 'Almost there...' },
+]
+
 export default function CharacterPage() {
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [progressStep, setProgressStep] = useState(0)
+  const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const router = useRouter()
+
+  useEffect(() => {
+    if (uploading) {
+      setProgressStep(0)
+      progressInterval.current = setInterval(() => {
+        setProgressStep((prev) => Math.min(prev + 1, PROGRESS_STEPS.length - 1))
+      }, 3000)
+    } else {
+      if (progressInterval.current) clearInterval(progressInterval.current)
+    }
+    return () => {
+      if (progressInterval.current) clearInterval(progressInterval.current)
+    }
+  }, [uploading])
 
   const processFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -103,7 +126,7 @@ export default function CharacterPage() {
           Home
         </Link>
 
-        <StepProgress currentStep={0} />
+        <StepProgress currentStep={0} type="character" />
 
         <div className="card">
           <h1 className="text-3xl font-extrabold text-center mb-2 text-grape-700">
@@ -179,14 +202,19 @@ export default function CharacterPage() {
                   />
                 </div>
                 {uploading && (
-                  <div className="absolute inset-0 bg-grape-900/60 rounded-2xl flex items-center justify-center backdrop-blur-sm z-20">
+                  <div className="absolute inset-0 bg-grape-900/70 rounded-2xl flex items-center justify-center backdrop-blur-sm z-20">
                     <div className="text-white text-center p-6">
-                      <div className="text-5xl mb-4 animate-bounce-star">&#10024;</div>
-                      <p className="font-extrabold text-2xl mb-2">Creating Magic!</p>
-                      <div className="w-48 h-2 bg-white/20 rounded-full mx-auto overflow-hidden mb-3">
-                        <div className="h-full bg-candy-400 animate-shimmer" style={{ width: '60%' }} />
+                      <div className="text-5xl mb-4 animate-bounce-star">{PROGRESS_STEPS[progressStep].emoji}</div>
+                      <p className="font-extrabold text-xl mb-1">Creating Magic!</p>
+                      <p className="text-white/90 font-medium mb-4 text-sm animate-fade-in" key={progressStep}>
+                        {PROGRESS_STEPS[progressStep].text}
+                      </p>
+                      <div className="w-48 h-2 bg-white/20 rounded-full mx-auto overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-candy-400 to-grape-400 rounded-full transition-all duration-1000 ease-out"
+                          style={{ width: `${((progressStep + 1) / PROGRESS_STEPS.length) * 100}%` }}
+                        />
                       </div>
-                      <p className="text-white/80 font-medium italic">Turning your photo into a cartoon...</p>
                     </div>
                   </div>
                 )}

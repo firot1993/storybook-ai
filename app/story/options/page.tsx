@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -17,13 +17,36 @@ const CARD_STYLES = [
 
 const CARD_ICONS = ['\u{2B50}', '\u{1F496}', '\u{26A1}']
 
+const GENERATE_STEPS = [
+  { emoji: '\u{1F4D6}', text: 'Writing your story...' },
+  { emoji: '\u{1F3A8}', text: 'Painting the illustrations...' },
+  { emoji: '\u{2728}', text: 'Adding finishing touches...' },
+  { emoji: '\u{1F31F}', text: 'Almost ready...' },
+]
+
 export default function StoryOptionsPage() {
   const [options, setOptions] = useState<StoryOption[]>([])
   const [characters, setCharacters] = useState<Character[]>([])
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
+  const [progressStep, setProgressStep] = useState(0)
+  const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const router = useRouter()
+
+  useEffect(() => {
+    if (loading) {
+      setProgressStep(0)
+      progressInterval.current = setInterval(() => {
+        setProgressStep((prev) => Math.min(prev + 1, GENERATE_STEPS.length - 1))
+      }, 8000)
+    } else {
+      if (progressInterval.current) clearInterval(progressInterval.current)
+    }
+    return () => {
+      if (progressInterval.current) clearInterval(progressInterval.current)
+    }
+  }, [loading])
 
   useEffect(() => {
     const storedOptions = localStorage.getItem('storyOptions')
@@ -148,7 +171,7 @@ export default function StoryOptionsPage() {
           Back
         </Link>
 
-        <StepProgress currentStep={3} />
+        <StepProgress currentStep={1} type="story" />
 
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
@@ -205,9 +228,15 @@ export default function StoryOptionsPage() {
               </div>
               {loading && selectedIndex === index && (
                 <div className="mt-4 pt-4 border-t border-candy-200">
-                  <div className="flex items-center gap-2 text-sm text-candy-700 font-bold">
-                    <span className="animate-bounce-star inline-block">&#10024;</span>
-                    Making your story...
+                  <div className="flex items-center gap-2 text-sm text-candy-700 font-bold mb-2">
+                    <span className="animate-bounce-star inline-block">{GENERATE_STEPS[progressStep].emoji}</span>
+                    <span className="animate-fade-in" key={progressStep}>{GENERATE_STEPS[progressStep].text}</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-candy-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-candy-400 to-grape-400 rounded-full transition-all duration-1000 ease-out"
+                      style={{ width: `${((progressStep + 1) / GENERATE_STEPS.length) * 100}%` }}
+                    />
                   </div>
                 </div>
               )}

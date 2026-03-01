@@ -12,7 +12,7 @@ const IMAGE_MODEL = 'gemini-2.5-flash-image';
  * Estimated pricing per 1 million tokens.
  * Values are based on Gemini 1.5 Flash rates as a baseline.
  */
-const PRICING = {
+const PRICING: Record<string, { input: number; output: number }> = {
   [TEXT_MODEL]: { input: 0.075, output: 0.30 },
   [IMAGE_MODEL]: { input: 0.075, output: 0.30 },
   default: { input: 0.075, output: 0.30 },
@@ -22,6 +22,7 @@ const PRICING = {
  * Predicts the cost of a request based on input tokens.
  * Note: This only estimates the input cost. Total cost includes generated output.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function estimatePrice(model: string, prompt: string | any[]) {
   try {
     const contents = typeof prompt === 'string' ? [{ role: 'user', parts: [{ text: prompt }] }] : prompt;
@@ -31,7 +32,7 @@ export async function estimatePrice(model: string, prompt: string | any[]) {
     });
 
     const rates = PRICING[model] || PRICING.default;
-    const estimatedInputCost = (totalTokens / 1_000_000) * rates.input;
+    const estimatedInputCost = ((totalTokens ?? 0) / 1_000_000) * rates.input;
 
     return {
       totalTokens,

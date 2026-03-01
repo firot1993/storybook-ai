@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -19,6 +19,12 @@ const THEMES = [
   { label: 'Space Mission', emoji: '\u{1F680}', keywords: 'stars, rocket, moon, aliens' },
   { label: 'Under the Sea', emoji: '\u{1F419}', keywords: 'ocean, fish, mermaid, bubbles' },
   { label: 'Magic Castle', emoji: '\u{1F3F0}', keywords: 'magic, dragon, knight, wizard' },
+]
+
+const STORY_PROGRESS = [
+  { emoji: '\u{1F4AD}', text: 'Brainstorming ideas...' },
+  { emoji: '\u{1F4DD}', text: 'Writing story outlines...' },
+  { emoji: '\u{2728}', text: 'Adding a sprinkle of magic...' },
 ]
 
 const FUN_KEYWORDS = [
@@ -54,13 +60,30 @@ export default function CreateStoryPage() {
 
 function CreateStoryContent() {
   const [keywords, setKeywords] = useState('')
+  const [selectedTheme, setSelectedTheme] = useState<string | null>(null)
   const [ageGroup, setAgeGroup] = useState<'2-4' | '4-6' | '6-8'>('4-6')
   const [characters, setCharacters] = useState<Character[]>([])
   const [allCharacters, setAllCharacters] = useState<Character[]>([])
   const [loading, setLoading] = useState(false)
+  const [progressStep, setProgressStep] = useState(0)
+  const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  useEffect(() => {
+    if (loading) {
+      setProgressStep(0)
+      progressInterval.current = setInterval(() => {
+        setProgressStep((prev) => Math.min(prev + 1, STORY_PROGRESS.length - 1))
+      }, 2500)
+    } else {
+      if (progressInterval.current) clearInterval(progressInterval.current)
+    }
+    return () => {
+      if (progressInterval.current) clearInterval(progressInterval.current)
+    }
+  }, [loading])
 
   const fetchAllCharacters = useCallback(async () => {
     try {
@@ -121,6 +144,7 @@ function CreateStoryContent() {
   }
 
   const toggleKeyword = (word: string) => {
+    setSelectedTheme(null)
     setKeywords(prev => {
       const words = prev.split(',').map(w => w.trim()).filter(Boolean)
       if (words.includes(word)) {
@@ -135,8 +159,14 @@ function CreateStoryContent() {
     })
   }
 
-  const selectTheme = (themeKeywords: string) => {
-    setKeywords(themeKeywords)
+  const selectTheme = (themeLabel: string, themeKeywords: string) => {
+    if (selectedTheme === themeLabel) {
+      setSelectedTheme(null)
+      setKeywords('')
+    } else {
+      setSelectedTheme(themeLabel)
+      setKeywords(themeKeywords)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -206,16 +236,21 @@ function CreateStoryContent() {
           Home
         </Link>
 
-        <StepProgress currentStep={2} />
+        <StepProgress currentStep={0} type="story" />
 
-        <div className="card border-t-8 border-t-candy-400 relative overflow-hidden">
+        <form onSubmit={handleSubmit} className="card border-t-8 border-t-sky-400 relative overflow-hidden">
           {loading && (
             <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-8 animate-fade-in">
-              <div className="text-6xl mb-6 animate-bounce-star">&#128214;</div>
-              <h2 className="text-3xl font-extrabold text-grape-700 mb-2">Whispering to the magic book...</h2>
-              <p className="text-candy-600 font-bold mb-8">Creating wonderful story ideas just for you!</p>
-              <div className="w-64 h-3 bg-grape-100 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-candy-400 to-grape-400 animate-shimmer" style={{ width: '100%' }} />
+              <div className="text-6xl mb-6 animate-bounce-star" key={progressStep}>{STORY_PROGRESS[progressStep].emoji}</div>
+              <h2 className="text-2xl font-extrabold text-grape-700 mb-1">Whispering to the magic book...</h2>
+              <p className="text-candy-600 font-bold mb-6 animate-fade-in text-sm" key={`text-${progressStep}`}>
+                {STORY_PROGRESS[progressStep].text}
+              </p>
+              <div className="w-64 h-2.5 bg-grape-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-candy-400 to-grape-400 rounded-full transition-all duration-1000 ease-out"
+                  style={{ width: `${((progressStep + 1) / STORY_PROGRESS.length) * 100}%` }}
+                />
               </div>
             </div>
           )}
@@ -232,10 +267,12 @@ function CreateStoryContent() {
             </div>
             
             {allCharacters.length === 0 ? (
-              <div className="text-center py-8 bg-grape-50 rounded-3xl border-2 border-dashed border-grape-200">
-                <p className="text-grape-500 mb-4 font-bold">No characters yet!</p>
-                <Link href="/character" className="btn-secondary py-2 px-6 text-sm">
-                  Create a Character
+              <div className="text-center py-12 bg-sky-50 rounded-3xl border-3 border-dashed border-sky-200">
+                <div className="text-5xl mb-4">&#128101;</div>
+                <p className="text-sky-800 font-extrabold text-xl mb-2">No characters yet!</p>
+                <p className="text-sky-600 mb-8 max-w-xs mx-auto">You need to make a character first before you can start a story.</p>
+                <Link href="/character" className="btn-primary py-4 px-8 shadow-sky-200">
+                  Make a Character &#127775;
                 </Link>
               </div>
             ) : (
@@ -281,10 +318,10 @@ function CreateStoryContent() {
                     href="/character"
                     className="flex flex-col items-center group"
                   >
-                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl border-4 border-dashed border-grape-200 flex items-center justify-center bg-white group-hover:bg-grape-50 transition-all group-hover:scale-105">
-                      <span className="text-4xl text-grape-300 group-hover:rotate-90 transition-transform">+</span>
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl border-4 border-dashed border-sky-200 flex items-center justify-center bg-white group-hover:bg-sky-50 transition-all group-hover:scale-105">
+                      <span className="text-4xl text-sky-300 group-hover:rotate-90 transition-transform">+</span>
                     </div>
-                    <span className="mt-2 text-xs font-bold text-grape-300">New Friend</span>
+                    <span className="mt-2 text-xs font-bold text-sky-300">New Friend</span>
                   </Link>
                 )}
               </div>
@@ -298,11 +335,11 @@ function CreateStoryContent() {
                 <button
                   key={theme.label}
                   type="button"
-                  onClick={() => selectTheme(theme.keywords)}
+                  onClick={() => selectTheme(theme.label, theme.keywords)}
                   className={`p-4 rounded-2xl border-2 text-left transition-all ${
-                    keywords === theme.keywords 
-                      ? 'border-sky-400 bg-sky-50 shadow-md ring-2 ring-sky-100' 
-                      : 'border-grape-100 bg-white hover:border-sky-200'
+                    selectedTheme === theme.label
+                      ? 'border-sky-400 bg-sky-50 shadow-md ring-2 ring-sky-100'
+                      : 'border-grape-100 bg-white hover:border-sky-200 hover:bg-sky-50/30'
                   }`}
                 >
                   <span className="text-2xl block mb-1">{theme.emoji}</span>
@@ -311,8 +348,13 @@ function CreateStoryContent() {
               ))}
             </div>
 
+            <div className="flex items-center gap-3 my-6">
+              <div className="flex-1 h-px bg-grape-100" />
+              <span className="text-xs font-bold text-grape-400 uppercase tracking-wider">or mix your own</span>
+              <div className="flex-1 h-px bg-grape-100" />
+            </div>
             <label className="block text-sm font-bold text-grape-600 mb-3">
-              Or pick fun things to see:
+              Pick fun things to include:
             </label>
             <div className="flex flex-wrap gap-2 mb-4">
               {FUN_KEYWORDS.map(({ text, emoji }) => {
@@ -336,10 +378,9 @@ function CreateStoryContent() {
             <input
               type="text"
               value={keywords}
-              onChange={(e) => setKeywords(e.target.value)}
+              onChange={(e) => { setSelectedTheme(null); setKeywords(e.target.value) }}
               placeholder="Type your own ideas here..."
               className="input text-base"
-              required
             />
           </div>
 
@@ -370,13 +411,12 @@ function CreateStoryContent() {
 
           <button
             type="submit"
-            onClick={handleSubmit}
             disabled={loading || !keywords.trim() || characters.length === 0}
             className="btn-primary w-full text-xl disabled:opacity-50 py-5"
           >
             Create Magic Stories &#10024;
           </button>
-        </div>
+        </form>
       </div>
     </div>
   )

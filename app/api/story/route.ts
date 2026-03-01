@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { listAllStories } from '@/lib/db'
 
 // GET /api/story - List all stories
