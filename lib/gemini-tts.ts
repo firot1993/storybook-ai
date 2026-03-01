@@ -6,6 +6,7 @@ const genAI = new GoogleGenAI({
 
 const TTS_MODEL = 'gemini-2.5-flash-preview-tts'
 const DEFAULT_VOICE_NAME = 'Kore'
+const DEFAULT_CHARACTER_VOICE_NAME = 'Puck'
 const WAV_SAMPLE_RATE = 24000
 const WAV_CHANNELS = 1
 const WAV_BITS_PER_SAMPLE = 16
@@ -83,7 +84,7 @@ function normalizeToPlayableWav(audioBuffer: Buffer, mimeType?: string): Buffer 
   return wrapPcm16ToWav(audioBuffer)
 }
 
-export async function generateNarrationAudioUrl(text: string): Promise<string> {
+function normalizeText(text: string): string {
   const normalizedText = typeof text === 'string' ? text.trim() : ''
   if (!normalizedText) {
     throw new GeminiTtsError({
@@ -99,30 +100,10 @@ export async function generateNarrationAudioUrl(text: string): Promise<string> {
     })
   }
 
-  const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
+  return normalizedText
+}
 
-  let response: GeminiTtsResponse
-  try {
-    response = (await genAI.models.generateContent({
-      model: TTS_MODEL,
-      contents: [{ parts: [{ text: normalizedText }] }],
-      config: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName },
-          },
-        },
-      },
-    })) as GeminiTtsResponse
-  } catch (error) {
-    const apiError = error as { status?: number; message?: string }
-    throw new GeminiTtsError({
-      status: typeof apiError?.status === 'number' ? apiError.status : 502,
-      message: apiError?.message || 'Gemini TTS request failed.',
-    })
-  }
-
+function extractAudioDataPart(response: GeminiTtsResponse): { data: string; mimeType?: string } {
   const audioPart = response.candidates
     ?.flatMap((candidate) => candidate.content?.parts ?? [])
     .find((part) => Boolean(part.inlineData?.data))
@@ -135,7 +116,39 @@ export async function generateNarrationAudioUrl(text: string): Promise<string> {
     })
   }
 
-  const decodedAudio = Buffer.from(audioBase64, 'base64')
+  return {
+    data: audioBase64,
+    mimeType: audioPart?.inlineData?.mimeType,
+  }
+}
+
+async function requestGeminiAudio(
+  text: string,
+  speechConfig: Record<string, unknown>
+): Promise<string> {
+  const normalizedText = normalizeText(text)
+
+  let response: GeminiTtsResponse
+  try {
+    response = (await genAI.models.generateContent({
+      model: TTS_MODEL,
+      contents: [{ parts: [{ text: normalizedText }] }],
+      config: {
+        responseModalities: ['AUDIO'],
+        speechConfig,
+      },
+    })) as GeminiTtsResponse
+  } catch (error) {
+    const apiError = error as { status?: number; message?: string }
+    throw new GeminiTtsError({
+      status: typeof apiError?.status === 'number' ? apiError.status : 502,
+      message: apiError?.message || 'Gemini TTS request failed.',
+    })
+  }
+
+  const { data, mimeType } = extractAudioDataPart(response)
+
+  const decodedAudio = Buffer.from(data, 'base64')
   if (decodedAudio.byteLength === 0) {
     throw new GeminiTtsError({
       status: 502,
@@ -143,6 +156,97 @@ export async function generateNarrationAudioUrl(text: string): Promise<string> {
     })
   }
 
-  const wavBuffer = normalizeToPlayableWav(decodedAudio, audioPart?.inlineData?.mimeType)
+  const wavBuffer = normalizeToPlayableWav(decodedAudio, mimeType)
   return toDataUrl(wavBuffer.toString('base64'), 'audio/wav')
+}
+
+function toTwoSpeakerScript(sceneText: string): string {
+  const lines = sceneText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  const scriptedLines = lines.map((line) => {
+    const cleaned = line.replace(/\*+/g, '').trim()
+
+    // Keep explicit narrator tags if the model provided them.
+    if (/^narrator\s*:/i.test(cleaned)) {
+      return `Narrator: ${cleaned.replace(/^narrator\s*:/i, '').trim()}`
+    }
+
+    // Any named speaker becomes the character channel (Gemini supports exactly 2 speakers here).
+    const namedSpeaker = cleaned.match(/^[A-Za-z][A-Za-z' -]{0,30}\s*:\s*(.+)$/)
+    if (namedSpeaker) {
+      return `Character: ${namedSpeaker[1].trim()}`
+    }
+
+    // Pure quoted lines are treated as spoken character lines.
+    const pureQuote = cleaned.match(/^["“](.+?)["”]$/)
+    if (pureQuote) {
+      return `Character: ${pureQuote[1].trim()}`
+    }
+
+    return `Narrator: ${cleaned}`
+  })
+
+  if (scriptedLines.length === 0) {
+    return 'Narrator: A gentle bedtime moment.'
+  }
+
+  return scriptedLines.join('\n')
+}
+
+export async function generateNarrationAudioUrl(text: string): Promise<string> {
+  const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
+  return requestGeminiAudio(text, {
+    voiceConfig: {
+      prebuiltVoiceConfig: { voiceName },
+    },
+  })
+}
+
+export async function generateSceneNarrationAudioUrl(sceneText: string): Promise<string> {
+  const narratorVoice = process.env.GEMINI_TTS_NARRATOR_VOICE || process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
+  const characterVoice = process.env.GEMINI_TTS_CHARACTER_VOICE || DEFAULT_CHARACTER_VOICE_NAME
+  const scriptedScene = toTwoSpeakerScript(sceneText)
+
+  try {
+    return await requestGeminiAudio(scriptedScene, {
+      multiSpeakerVoiceConfig: {
+        speakerVoiceConfigs: [
+          {
+            speaker: 'Narrator',
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: narratorVoice },
+            },
+          },
+          {
+            speaker: 'Character',
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: characterVoice },
+            },
+          },
+        ],
+      },
+    })
+  } catch (error) {
+    // Graceful fallback to single speaker keeps narration available even if multi-speaker is unavailable.
+    console.warn('[Gemini TTS] Multi-speaker generation failed, falling back to single voice:', error)
+    return generateNarrationAudioUrl(sceneText)
+  }
+}
+
+export async function generateSceneNarrationAudioUrls(scenes: string[]): Promise<string[]> {
+  const results: string[] = []
+
+  for (const scene of scenes) {
+    try {
+      results.push(await generateSceneNarrationAudioUrl(scene))
+    } catch (error) {
+      console.warn('[Gemini TTS] Scene audio generation failed:', error)
+      results.push('')
+    }
+  }
+
+  return results
 }

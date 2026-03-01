@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { updateStoryAudio } from '@/lib/db'
-import { GeminiTtsError, generateNarrationAudioUrl } from '@/lib/gemini-tts'
+import { GeminiTtsError, generateSceneNarrationAudioUrls } from '@/lib/gemini-tts'
+import { splitStoryIntoScenes } from '@/lib/story-scenes'
 
 // POST /api/story/audio - Generate (or regenerate) narration audio from existing story content
 export async function POST(request: NextRequest) {
   try {
-    const { storyId, content } = await request.json()
+    const { storyId, content, sceneCount } = await request.json()
 
     if (typeof content !== 'string' || content.trim().length === 0) {
       return NextResponse.json(
@@ -14,7 +15,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const audioUrl = await generateNarrationAudioUrl(content)
+    const maxSceneCount = typeof sceneCount === 'number' && Number.isFinite(sceneCount)
+      ? Math.max(1, Math.trunc(sceneCount))
+      : undefined
+    const parsedScenes = splitStoryIntoScenes(content)
+    const targetScenes = (maxSceneCount ? parsedScenes.slice(0, maxSceneCount) : parsedScenes)
+    const sceneAudioUrls = await generateSceneNarrationAudioUrls(
+      targetScenes.length > 0 ? targetScenes : [content]
+    )
+    const audioUrl = sceneAudioUrls.find(Boolean) || ''
+
+    if (!audioUrl) {
+      return NextResponse.json(
+        { error: 'Audio generation returned no playable scenes.' },
+        { status: 502 }
+      )
+    }
 
     let persisted = false
     if (
@@ -23,7 +39,7 @@ export async function POST(request: NextRequest) {
       !storyId.startsWith('local-')
     ) {
       try {
-        await updateStoryAudio(storyId, audioUrl)
+        await updateStoryAudio(storyId, { audioUrl, sceneAudioUrls })
         persisted = true
       } catch (error) {
         console.warn(`Failed to persist regenerated audio for story ${storyId}:`, error)
@@ -32,6 +48,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       audioUrl,
+      sceneAudioUrls,
       persisted,
     })
   } catch (error) {

@@ -401,6 +401,10 @@ VERY IMPORTANT — this story is for a ${ageGroup}-year-old child:
 - Structure: Beginning → one small adventure → happy ending
 - Divide into exactly ${sceneCount} scenes using [Scene 1], [Scene 2], etc. markers
 - Each scene should be 2-4 short paragraphs
+- Inside each scene, separate lines by speaker:
+  - Narration lines must start with "Narrator:"
+  - Spoken lines must start with "Character:"
+  - Keep "Character:" lines short and playful
 ${multiCharNote}
 Please divide the story into ${sceneCount} scenes, with [Scene X] markers.`;
 

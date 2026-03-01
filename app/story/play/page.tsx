@@ -1,12 +1,33 @@
 'use client'
 
-import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
+import {
+  Suspense,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type ChangeEvent,
+  type TouchEvent,
+} from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Story, Character } from '@/types'
 import { getCurrentStoryFromIndexedDB, setCurrentStoryInIndexedDB } from '@/lib/client-story-store'
 import { showToast } from '@/components/toast'
+import { splitStoryIntoScenes } from '@/lib/story-scenes'
+
+function formatAudioTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
+  const rounded = Math.floor(seconds)
+  const mins = Math.floor(rounded / 60)
+  const secs = rounded % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+function sceneStorageKey(storyId: string): string {
+  return `storybook:last-scene:${storyId}`
+}
 
 export default function PlayStoryPage() {
   return (
@@ -25,12 +46,26 @@ function PlayStoryContent() {
   const [characters, setCharacters] = useState<Character[]>([])
   const [currentScene, setCurrentScene] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [isAudioReady, setIsAudioReady] = useState(false)
+  const [audioError, setAudioError] = useState<string | null>(null)
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0)
+  const [audioDuration, setAudioDuration] = useState(0)
+  const [playbackRate, setPlaybackRate] = useState(1)
   const [isRegeneratingAudio, setIsRegeneratingAudio] = useState(false)
   const [sceneKey, setSceneKey] = useState(0)
   const router = useRouter()
   const searchParams = useSearchParams()
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const shouldContinueNarrationRef = useRef(false)
   const touchStartX = useRef<number | null>(null)
+  const storyId = story?.id ?? ''
+  const storyImageCount = story?.images.length ?? 0
+  const sceneAudioUrls = (story?.sceneAudioUrls ?? []).filter(Boolean)
+  const hasSceneAudio = sceneAudioUrls.length > 0
+  const sceneAudioSource =
+    hasSceneAudio && currentScene < sceneAudioUrls.length ? sceneAudioUrls[currentScene] : ''
+  const singleAudioSource = hasSceneAudio ? '' : (story?.audioUrl ?? '')
+  const currentAudioSource = sceneAudioSource || singleAudioSource
 
   useEffect(() => {
     let active = true
@@ -104,20 +139,19 @@ function PlayStoryContent() {
   }, [router, searchParams])
 
   useEffect(() => {
-    if (story?.audioUrl) {
-      const audioElement = new Audio(story.audioUrl)
-      audioRef.current = audioElement
+    if (!storyId) return
+    const key = sceneStorageKey(storyId)
+    const storedScene = Number(localStorage.getItem(key))
+    if (!Number.isFinite(storedScene)) return
 
-      audioElement.addEventListener('ended', () => {
-        setIsPlaying(false)
-      })
+    const clamped = Math.min(Math.max(Math.trunc(storedScene), 0), storyImageCount)
+    setCurrentScene(clamped)
+  }, [storyId, storyImageCount])
 
-      return () => {
-        audioElement.pause()
-        audioElement.removeEventListener('ended', () => {})
-      }
-    }
-  }, [story])
+  useEffect(() => {
+    if (!storyId) return
+    localStorage.setItem(sceneStorageKey(storyId), String(currentScene))
+  }, [currentScene, storyId])
 
   const totalScenes = story?.images.length ?? 0
 
@@ -130,8 +164,152 @@ function PlayStoryContent() {
     }
   }, [totalScenes])
 
+  useEffect(() => {
+    if (!currentAudioSource) {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
+      shouldContinueNarrationRef.current = false
+      setIsPlaying(false)
+      setIsAudioReady(false)
+      setAudioError(null)
+      setAudioCurrentTime(0)
+      setAudioDuration(0)
+      return
+    }
+
+    const audioElement = new Audio(currentAudioSource)
+    audioRef.current = audioElement
+    audioElement.preload = 'metadata'
+    setIsPlaying(false)
+    setIsAudioReady(false)
+    setAudioError(null)
+    setAudioCurrentTime(0)
+    setAudioDuration(0)
+
+    const onLoadedMetadata = () => {
+      setAudioDuration(Number.isFinite(audioElement.duration) ? audioElement.duration : 0)
+    }
+    const onCanPlay = () => {
+      setIsAudioReady(true)
+      if (!shouldContinueNarrationRef.current) return
+
+      void audioElement.play().catch((error) => {
+        shouldContinueNarrationRef.current = false
+        setAudioError('Could not continue narration automatically.')
+        console.error('Auto-play next scene failed:', error)
+      })
+    }
+    const onTimeUpdate = () => {
+      setAudioCurrentTime(audioElement.currentTime || 0)
+    }
+    const onEnded = () => {
+      if (hasSceneAudio && shouldContinueNarrationRef.current) {
+        const lastNarratedScene = Math.min(totalScenes, sceneAudioUrls.length) - 1
+
+        if (currentScene < lastNarratedScene) {
+          goToScene(currentScene + 1)
+          return
+        }
+
+        if (currentScene === lastNarratedScene && totalScenes > 0) {
+          goToScene(totalScenes)
+        }
+      }
+
+      shouldContinueNarrationRef.current = false
+      setIsPlaying(false)
+      setAudioCurrentTime(audioElement.duration || 0)
+    }
+    const onPlay = () => {
+      setIsPlaying(true)
+      setAudioError(null)
+    }
+    const onPause = () => {
+      setIsPlaying(false)
+    }
+    const onError = () => {
+      setIsPlaying(false)
+      setIsAudioReady(false)
+      setAudioError('Playback failed. Try regenerating audio.')
+    }
+
+    audioElement.addEventListener('loadedmetadata', onLoadedMetadata)
+    audioElement.addEventListener('canplay', onCanPlay)
+    audioElement.addEventListener('timeupdate', onTimeUpdate)
+    audioElement.addEventListener('ended', onEnded)
+    audioElement.addEventListener('play', onPlay)
+    audioElement.addEventListener('pause', onPause)
+    audioElement.addEventListener('error', onError)
+
+    return () => {
+      audioElement.pause()
+      audioElement.removeEventListener('loadedmetadata', onLoadedMetadata)
+      audioElement.removeEventListener('canplay', onCanPlay)
+      audioElement.removeEventListener('timeupdate', onTimeUpdate)
+      audioElement.removeEventListener('ended', onEnded)
+      audioElement.removeEventListener('play', onPlay)
+      audioElement.removeEventListener('pause', onPause)
+      audioElement.removeEventListener('error', onError)
+    }
+  }, [currentAudioSource, currentScene, goToScene, hasSceneAudio, sceneAudioUrls.length, totalScenes])
+
+  useEffect(() => {
+    if (!audioRef.current) return
+    audioRef.current.playbackRate = playbackRate
+  }, [playbackRate])
+
   const nextScene = useCallback(() => goToScene(currentScene + 1), [currentScene, goToScene])
   const prevScene = useCallback(() => goToScene(currentScene - 1), [currentScene, goToScene])
+
+  const togglePlay = useCallback(async () => {
+    if (!audioRef.current) return
+
+    if (isPlaying) {
+      shouldContinueNarrationRef.current = false
+      audioRef.current.pause()
+      return
+    }
+
+    shouldContinueNarrationRef.current = true
+    try {
+      await audioRef.current.play()
+      setAudioError(null)
+    } catch (error) {
+      shouldContinueNarrationRef.current = false
+      console.error('Audio play failed:', error)
+      setAudioError('Tap play again to allow audio on this device.')
+      showToast('Tap play again to allow audio on this device.', 'error')
+    }
+  }, [isPlaying])
+
+  const seekAudio = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    if (!audioRef.current) return
+    const value = Number(event.target.value)
+    if (!Number.isFinite(value)) return
+
+    audioRef.current.currentTime = value
+    setAudioCurrentTime(value)
+  }, [])
+
+  const skipAudioBy = useCallback((deltaSeconds: number) => {
+    if (!audioRef.current) return
+    const nextValue = Math.min(
+      Math.max(audioRef.current.currentTime + deltaSeconds, 0),
+      audioDuration || Number.POSITIVE_INFINITY
+    )
+    audioRef.current.currentTime = nextValue
+    setAudioCurrentTime(nextValue)
+  }, [audioDuration])
+
+  const cyclePlaybackRate = useCallback(() => {
+    setPlaybackRate((prev) => {
+      if (prev === 1) return 1.15
+      if (prev === 1.15) return 0.9
+      return 1
+    })
+  }, [])
 
   // Keyboard navigation
   useEffect(() => {
@@ -149,15 +327,14 @@ function PlayStoryContent() {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nextScene, prevScene])
+  }, [nextScene, prevScene, togglePlay])
 
   // Swipe gestures
-  const handleTouchStart = (e: React.TouchEvent) => {
+  const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
     touchStartX.current = e.touches[0].clientX
   }
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
+  const handleTouchEnd = (e: TouchEvent<HTMLDivElement>) => {
     if (touchStartX.current === null) return
     const diff = touchStartX.current - e.changedTouches[0].clientX
     if (Math.abs(diff) > 60) {
@@ -165,16 +342,6 @@ function PlayStoryContent() {
       else prevScene()
     }
     touchStartX.current = null
-  }
-
-  const togglePlay = () => {
-    if (!audioRef.current) return
-    if (isPlaying) {
-      audioRef.current.pause()
-    } else {
-      audioRef.current.play()
-    }
-    setIsPlaying(!isPlaying)
   }
 
   const persistStoryLocally = useCallback(async (updatedStory: Story) => {
@@ -208,10 +375,15 @@ function PlayStoryContent() {
         body: JSON.stringify({
           storyId: story.id,
           content: story.content,
+          sceneCount: story.images.length,
         }),
       })
 
-      const data = (await response.json().catch(() => null)) as { audioUrl?: string; error?: string } | null
+      const data = (await response.json().catch(() => null)) as {
+        audioUrl?: string
+        sceneAudioUrls?: string[]
+        error?: string
+      } | null
       if (!response.ok || !data?.audioUrl) {
         showToast(data?.error || 'Could not generate audio right now. Please try again.', 'error')
         return
@@ -220,10 +392,16 @@ function PlayStoryContent() {
       const updatedStory: Story = {
         ...story,
         audioUrl: data.audioUrl,
+        sceneAudioUrls: data.sceneAudioUrls ?? [],
       }
 
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+      shouldContinueNarrationRef.current = false
       setStory(updatedStory)
       setIsPlaying(false)
+      setAudioError(null)
 
       if (!searchParams.get('id')) {
         await persistStoryLocally(updatedStory)
@@ -241,9 +419,9 @@ function PlayStoryContent() {
   // Split story content into scenes using [Scene X] markers
   const getSceneText = () => {
     if (!story) return ''
-    const parts = story.content.split(/\*{0,2}\[Scene\s*\d+[^\]]*\]\*{0,2}\s*/i).filter(Boolean)
-    if (parts.length > 1 && currentScene < parts.length) {
-      return parts[currentScene].trim()
+    const parts = splitStoryIntoScenes(story.content)
+    if (parts.length > 0 && currentScene < parts.length) {
+      return parts[currentScene]
     }
     const sentences = story.content.split(/(?<=[.!?])\s+/)
     const scenesCount = story.images.length || 1
@@ -261,6 +439,7 @@ function PlayStoryContent() {
   }
 
   const isTheEnd = currentScene === totalScenes
+  const hasAnyAudio = hasSceneAudio || Boolean(story.audioUrl)
 
   return (
     <div className="min-h-screen flex flex-col px-4 py-6">
@@ -340,7 +519,7 @@ function PlayStoryContent() {
             <>
               {/* Image */}
               {story.images[currentScene] && (
-                <div className="relative w-full aspect-[4/3] bg-amber-50">
+                <div className="relative group w-full aspect-[4/3] bg-amber-50">
                   <Image
                     src={story.images[currentScene]}
                     alt={`Page ${currentScene + 1}`}
@@ -348,6 +527,29 @@ function PlayStoryContent() {
                     sizes="(max-width: 672px) 100vw, 672px"
                     className="object-cover"
                   />
+                  <button
+                    onClick={prevScene}
+                    disabled={currentScene === 0}
+                    aria-label="Previous page"
+                    className={`absolute left-0 top-0 h-full w-1/4 transition-opacity ${
+                      currentScene === 0
+                        ? 'cursor-not-allowed'
+                        : 'cursor-pointer opacity-0 sm:group-hover:opacity-100 bg-gradient-to-r from-black/15 to-transparent'
+                    }`}
+                  />
+                  <button
+                    onClick={nextScene}
+                    disabled={currentScene >= totalScenes}
+                    aria-label="Next page"
+                    className={`absolute right-0 top-0 h-full w-1/4 transition-opacity ${
+                      currentScene >= totalScenes
+                        ? 'cursor-not-allowed'
+                        : 'cursor-pointer opacity-0 sm:group-hover:opacity-100 bg-gradient-to-l from-black/15 to-transparent'
+                    }`}
+                  />
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] px-2 py-1 rounded-full bg-white/70 text-grape-700 font-semibold hidden sm:block">
+                    Tap sides to turn pages
+                  </div>
                 </div>
               )}
 
@@ -383,11 +585,11 @@ function PlayStoryContent() {
           </button>
 
           {/* Center: page indicator + audio */}
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-2 w-full max-w-md px-2">
             {!isTheEnd && (
-              <div className="flex items-center gap-3">
+              <>
                 {/* Page dots */}
-                <div className="flex gap-2 items-center">
+                <div className="flex gap-2 items-center flex-wrap justify-center">
                   {story.images.map((_, index) => (
                     <button
                       key={index}
@@ -412,56 +614,135 @@ function PlayStoryContent() {
                 </div>
 
                 {/* Audio controls */}
-                {story.audioUrl ? (
-                  <button
-                    onClick={togglePlay}
-                    aria-label={isPlaying ? 'Pause' : 'Listen'}
-                    className="w-11 h-11 bg-gradient-to-r from-candy-500 to-grape-500 hover:from-candy-600 hover:to-grape-600 active:scale-95 rounded-full flex items-center justify-center transition-all duration-200 shadow-md text-white"
-                  >
-                    {isPlaying ? (
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
+                {hasAnyAudio ? (
+                  <div className="w-full max-w-sm bg-white/90 border-2 border-candy-200 rounded-2xl px-3 py-2 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={togglePlay}
+                        aria-label={isPlaying ? 'Pause' : 'Listen'}
+                        disabled={(!isAudioReady && !audioError) || !currentAudioSource}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md text-white ${
+                          (!isAudioReady && !audioError) || !currentAudioSource
+                            ? 'bg-gray-300 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-candy-500 to-grape-500 hover:from-candy-600 hover:to-grape-600 active:scale-95'
+                        }`}
+                      >
+                        {isPlaying ? (
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => skipAudioBy(-10)}
+                        disabled={!isAudioReady || audioDuration <= 0 || !currentAudioSource}
+                        aria-label="Rewind 10 seconds"
+                        className="w-9 h-9 rounded-full border-2 border-candy-200 text-grape-600 disabled:text-gray-300 disabled:border-gray-200 disabled:cursor-not-allowed hover:bg-candy-50 transition-colors text-xs font-bold"
+                      >
+                        -10
+                      </button>
+
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(audioDuration, 0)}
+                        step={0.1}
+                        value={Math.min(audioCurrentTime, audioDuration || 0)}
+                        onChange={seekAudio}
+                        disabled={!isAudioReady || audioDuration <= 0 || !currentAudioSource}
+                        aria-label="Audio progress"
+                        className="flex-1 accent-grape-500 h-2"
+                      />
+
+                      <button
+                        onClick={() => skipAudioBy(10)}
+                        disabled={!isAudioReady || audioDuration <= 0 || !currentAudioSource}
+                        aria-label="Forward 10 seconds"
+                        className="w-9 h-9 rounded-full border-2 border-candy-200 text-grape-600 disabled:text-gray-300 disabled:border-gray-200 disabled:cursor-not-allowed hover:bg-candy-50 transition-colors text-xs font-bold"
+                      >
+                        +10
+                      </button>
+
+                      <button
+                        onClick={cyclePlaybackRate}
+                        aria-label="Change playback speed"
+                        className="h-9 px-2 rounded-full border-2 border-candy-200 text-xs font-bold text-grape-600 hover:bg-candy-50 transition-colors"
+                      >
+                        {playbackRate.toFixed(2).replace('.00', '')}x
+                      </button>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-[11px] font-semibold text-grape-500">
+                      <span>{formatAudioTime(audioCurrentTime)}</span>
+                      <span className={`px-2 truncate ${audioError ? 'text-rose-500' : 'text-grape-500'}`}>
+                        {audioError
+                          ? audioError
+                          : isAudioReady
+                            ? 'Narration ready'
+                            : currentAudioSource
+                              ? 'Loading narration...'
+                              : 'No audio for this scene'}
+                      </span>
+                      <span>{formatAudioTime(audioDuration)}</span>
+                    </div>
+                    {!currentAudioSource && (
+                      <div className="mt-2 flex justify-center">
+                        <button
+                          onClick={handleRegenerateAudio}
+                          disabled={isRegeneratingAudio}
+                          className="text-xs font-bold text-grape-600 hover:text-grape-700 underline underline-offset-2 disabled:text-gray-400 disabled:no-underline"
+                        >
+                          {isRegeneratingAudio ? 'Regenerating scene audio...' : 'Regenerate scene audio'}
+                        </button>
+                      </div>
                     )}
-                  </button>
+                  </div>
                 ) : (
-                  <button
-                    onClick={handleRegenerateAudio}
-                    disabled={isRegeneratingAudio}
-                    aria-label="Regenerate audio narration"
-                    className={`h-11 px-4 rounded-full inline-flex items-center gap-2 text-sm font-bold transition-all duration-200 border-2 shadow-md ${
-                      isRegeneratingAudio
-                        ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'
-                        : 'bg-white border-candy-300 text-grape-600 hover:bg-candy-50 hover:scale-105 active:scale-95'
-                    }`}
-                  >
-                    {isRegeneratingAudio ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-candy-300 border-t-candy-600 rounded-full animate-spin" />
-                        Adding audio...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5L6 9H3v6h3l5 4V5z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.54 8.46a5 5 0 010 7.07" />
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.07 4.93a10 10 0 010 14.14" />
-                        </svg>
-                        Add Audio
-                      </>
-                    )}
-                  </button>
+                  <div className="flex flex-col items-center gap-1">
+                    <button
+                      onClick={handleRegenerateAudio}
+                      disabled={isRegeneratingAudio}
+                      aria-label="Regenerate audio narration"
+                      className={`h-11 px-4 rounded-full inline-flex items-center gap-2 text-sm font-bold transition-all duration-200 border-2 shadow-md ${
+                        isRegeneratingAudio
+                          ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'
+                          : 'bg-white border-candy-300 text-grape-600 hover:bg-candy-50 hover:scale-105 active:scale-95'
+                      }`}
+                    >
+                      {isRegeneratingAudio ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-candy-300 border-t-candy-600 rounded-full animate-spin" />
+                          Adding audio...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5L6 9H3v6h3l5 4V5z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.54 8.46a5 5 0 010 7.07" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.07 4.93a10 10 0 010 14.14" />
+                          </svg>
+                          Add Audio
+                        </>
+                      )}
+                    </button>
+                    <p className="text-xs text-grape-400 font-semibold">Enable hands-free narration</p>
+                  </div>
                 )}
-              </div>
+              </>
             )}
 
             <p className="text-sm font-bold text-grape-400">
               {isTheEnd ? 'The End' : `Page ${currentScene + 1} of ${story.images.length}`}
             </p>
+            {!isTheEnd && (
+              <p className="text-xs font-semibold text-grape-300 text-center">
+                Swipe, tap image sides, or use arrow keys
+              </p>
+            )}
           </div>
 
           {/* Next button */}

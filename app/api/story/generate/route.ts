@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateStory, generateStoryImage, getGeminiErrorResponse } from '@/lib/gemini'
 import { Story } from '@/types'
 import { createStory } from '@/lib/db'
-import { GeminiTtsError, generateNarrationAudioUrl } from '@/lib/gemini-tts'
+import { GeminiTtsError, generateSceneNarrationAudioUrls } from '@/lib/gemini-tts'
+import { splitStoryIntoScenes } from '@/lib/story-scenes'
 
 function toDataUrl(base64: string, mimeType: string): string {
   return `data:${mimeType};base64,${base64}`
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: message }, { status })
     }
 
-    const scenes = storyText.split('\n\n').filter((scene) => scene.trim().length > 0)
+    const scenes = splitStoryIntoScenes(storyText)
     const imageUrls: string[] = []
     const sceneErrors: Array<{ sceneIndex: number; status?: number; message: string }> = []
 
@@ -81,7 +82,9 @@ export async function POST(request: NextRequest) {
       })
       .filter((x): x is string => !!x)
 
-    for (const [index, scene] of scenes.slice(0, 5).entries()) {
+    const limitedScenes = scenes.slice(0, 5)
+
+    for (const [index, scene] of limitedScenes.entries()) {
       const characterVisualHint = names.length === 1
         ? `Main character is ${names[0]}. Keep the same look in every scene.`
         : `Main characters are ${names.join(', ')}. Keep each character's look consistent in every scene.`
@@ -119,14 +122,20 @@ export async function POST(request: NextRequest) {
       imageUrls.push(images[0])
     }
 
+    const pageSceneTexts = limitedScenes.slice(0, imageUrls.length)
+    const sceneAudioUrls: string[] = []
+
     let audioUrl = ''
     try {
-      audioUrl = await generateNarrationAudioUrl(storyText)
+      if (pageSceneTexts.length > 0) {
+        sceneAudioUrls.push(...await generateSceneNarrationAudioUrls(pageSceneTexts))
+      }
+      audioUrl = sceneAudioUrls.find(Boolean) || ''
     } catch (error) {
       if (error instanceof GeminiTtsError && error.status === 503) {
         console.log('[Gemini TTS] Skipped: GEMINI_API_KEY is not configured')
       } else {
-        console.warn('[Gemini TTS] Failed to generate narration audio:', error)
+        console.warn('[Gemini TTS] Failed to generate per-scene narration audio:', error)
       }
     }
 
@@ -147,6 +156,7 @@ export async function POST(request: NextRequest) {
           content: storyText,
           images: imageUrls,
           audioUrl,
+          sceneAudioUrls,
         })
       } catch (dbError) {
         console.warn('Failed to save story to DB:', dbError)
@@ -160,6 +170,7 @@ export async function POST(request: NextRequest) {
       content: storyText,
       images: imageUrls,
       audioUrl,
+      sceneAudioUrls,
       createdAt: dbStory?.createdAt ?? new Date(),
     }
 

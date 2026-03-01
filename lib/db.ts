@@ -1,4 +1,5 @@
 import { prisma } from './prisma'
+import { decodeStoryAudioPayload, encodeStoryAudioPayload } from './story-audio'
 
 // ── Characters ──────────────────────────────────────────────
 
@@ -55,13 +56,17 @@ export async function createStory(data: {
   content: string
   images: string[]
   audioUrl?: string
+  sceneAudioUrls?: string[]
 }) {
   return prisma.story.create({
     data: {
       title: data.title,
       content: data.content,
       images: JSON.stringify(data.images),
-      audioUrl: data.audioUrl ?? '',
+      audioUrl: encodeStoryAudioPayload({
+        audioUrl: data.audioUrl ?? '',
+        sceneAudioUrls: data.sceneAudioUrls ?? [],
+      }),
       characters: {
         connect: data.characterIds.map((id) => ({ id })),
       },
@@ -75,16 +80,27 @@ export async function getStory(id: string) {
     include: { characters: true },
   })
   if (!story) return null
+  const decodedAudio = decodeStoryAudioPayload(story.audioUrl)
   return {
     ...story,
     images: JSON.parse(story.images) as string[],
+    audioUrl: decodedAudio.audioUrl,
+    sceneAudioUrls: decodedAudio.sceneAudioUrls,
   }
 }
 
-export async function updateStoryAudio(id: string, audioUrl: string) {
+export async function updateStoryAudio(
+  id: string,
+  audio: { audioUrl?: string; sceneAudioUrls?: string[] }
+) {
   return prisma.story.update({
     where: { id },
-    data: { audioUrl },
+    data: {
+      audioUrl: encodeStoryAudioPayload({
+        audioUrl: audio.audioUrl ?? '',
+        sceneAudioUrls: audio.sceneAudioUrls ?? [],
+      }),
+    },
   })
 }
 
@@ -121,6 +137,7 @@ export async function listAllStories() {
   return stories.map(s => ({
     ...s,
     images: JSON.parse(s.images) as string[],
+    ...decodeStoryAudioPayload(s.audioUrl),
   }))
 }
 

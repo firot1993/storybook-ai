@@ -19,6 +19,7 @@ export interface Story {
   content: string;
   images: string[];
   audioUrl: string;
+  sceneAudioUrls?: string[];
   createdAt: Date;
 }
 
