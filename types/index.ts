@@ -30,7 +30,7 @@ export interface GenerateCharacterResponse {
 }
 
 export interface GenerateStoryOptionsRequest {
-  characterId: string;
+  characterName: string;
   keywords: string;
   ageGroup: '2-4' | '4-6' | '6-8';
 }
@@ -40,8 +40,14 @@ export interface GenerateStoryOptionsResponse {
 }
 
 export interface GenerateStoryRequest {
-  characterId: string;
+  characterId?: string;
+  characterName: string;
+  characterImage?: string;
   optionIndex: number;
+  optionTitle?: string;
+  optionDescription?: string;
+  keywords?: string;
+  ageGroup?: '2-4' | '4-6' | '6-8';
 }
 
 export interface GenerateStoryResponse {

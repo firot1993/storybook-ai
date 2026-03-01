@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 
 export default function CharacterPage() {
   const [uploading, setUploading] = useState(false)
@@ -33,6 +34,12 @@ export default function CharacterPage() {
         // Store character ID in localStorage or URL
         localStorage.setItem('currentCharacter', JSON.stringify(data.character))
         router.push('/character/name')
+      } else {
+        const data = (await response.json().catch(() => null)) as { error?: string; details?: unknown } | null
+        if (data?.details) {
+          console.error('Character generation details:', data.details)
+        }
+        alert(data?.error || 'Failed to generate character. Please try again.')
       }
     } catch (error) {
       console.error('Error:', error)
@@ -66,6 +73,10 @@ export default function CharacterPage() {
             Upload a photo to transform into a magical storybook character
           </p>
 
+          <div className="mb-6 rounded-lg p-3 text-sm bg-blue-50 text-blue-700">
+            Local mode: character and story data are stored in your browser only.
+          </div>
+
           {!preview ? (
             <div className="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-primary-500 transition-colors">
               <input
@@ -78,7 +89,7 @@ export default function CharacterPage() {
               />
               <label
                 htmlFor="photo-upload"
-                className="cursor-pointer flex flex-col items-center"
+                className={`flex flex-col items-center ${uploading ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
               >
                 <div className="text-5xl mb-4">📸</div>
                 <p className="text-lg font-medium text-gray-700 mb-2">
@@ -92,9 +103,11 @@ export default function CharacterPage() {
           ) : (
             <div className="text-center">
               <div className="relative mb-6">
-                <img
+                <Image
                   src={preview}
                   alt="Preview"
+                  width={384}
+                  height={384}
                   className="w-full max-w-sm mx-auto rounded-lg shadow-md"
                 />
                 {uploading && (

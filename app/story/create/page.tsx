@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Character } from '@/types'
 
 export default function CreateStoryPage() {
@@ -31,7 +32,7 @@ export default function CreateStoryPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          characterId: character.id,
+          characterName: character.name || 'the character',
           keywords,
           ageGroup,
         }),
@@ -43,6 +44,12 @@ export default function CreateStoryPage() {
         localStorage.setItem('storyKeywords', keywords)
         localStorage.setItem('ageGroup', ageGroup)
         router.push('/story/options')
+      } else {
+        const data = (await response.json().catch(() => null)) as { error?: string; details?: unknown } | null
+        if (data?.details) {
+          console.error('Story options generation details:', data.details)
+        }
+        alert(data?.error || 'Failed to generate story options. Please try again.')
       }
     } catch (error) {
       console.error('Error:', error)
@@ -63,9 +70,11 @@ export default function CreateStoryPage() {
 
         <div className="card">
           <div className="flex items-center gap-4 mb-6">
-            <img
+            <Image
               src={character.cartoonImage}
               alt={character.name}
+              width={64}
+              height={64}
               className="w-16 h-16 rounded-full object-cover border-2 border-primary-500"
             />
             <div>

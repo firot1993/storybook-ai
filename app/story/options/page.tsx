@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { StoryOption, Character } from '@/types'
+import { setCurrentStoryInIndexedDB } from '@/lib/client-story-store'
 
 export default function StoryOptionsPage() {
   const [options, setOptions] = useState<StoryOption[]>([])
@@ -26,7 +28,11 @@ export default function StoryOptionsPage() {
 
   const handleSelect = async (index: number) => {
     if (!character) return
-    
+
+    const storedKeywords = localStorage.getItem('storyKeywords') || ''
+    const storedAgeGroup = localStorage.getItem('ageGroup') || '4-6'
+    const selectedOption = options[index]
+
     setSelectedIndex(index)
     setLoading(true)
 
@@ -36,18 +42,45 @@ export default function StoryOptionsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           characterId: character.id,
+          characterName: character.name || 'the character',
+          characterImage: character.cartoonImage,
           optionIndex: index,
+          optionTitle: selectedOption?.title,
+          optionDescription: selectedOption?.description,
+          keywords: storedKeywords,
+          ageGroup: storedAgeGroup,
         }),
       })
 
       if (response.ok) {
         const data = await response.json()
-        localStorage.setItem('currentStory', JSON.stringify(data.story))
+        if (data?.warnings) {
+          console.warn('Story generation warnings:', data.warnings)
+        }
+
+        try {
+          localStorage.setItem('currentStory', JSON.stringify(data.story))
+          localStorage.setItem('currentStoryStorage', 'localStorage')
+        } catch (storageError) {
+          console.warn('localStorage write failed for currentStory, falling back to IndexedDB.', storageError)
+          await setCurrentStoryInIndexedDB(data.story)
+          localStorage.removeItem('currentStory')
+          localStorage.setItem('currentStoryStorage', 'indexedDB')
+        }
+
         router.push('/story/play')
+      } else {
+        const data = (await response.json().catch(() => null)) as { error?: string; details?: unknown } | null
+        if (data?.details) {
+          console.error('Story generation details:', data.details)
+        }
+        const message = data?.error || `Failed to generate story (HTTP ${response.status}).`
+        alert(message)
       }
     } catch (error) {
-      console.error('Error:', error)
-      alert('Failed to generate story. Please try again.')
+      console.error('Story generation request failed:', error)
+      const message = error instanceof Error ? error.message : 'Failed to generate story. Please try again.'
+      alert(message)
     } finally {
       setLoading(false)
     }
@@ -64,12 +97,14 @@ export default function StoryOptionsPage() {
 
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <img
+            <Image
               src={character.cartoonImage}
               alt={character.name}
+              width={48}
+              height={48}
               className="w-12 h-12 rounded-full object-cover border-2 border-primary-500"
             />
-            <span className="text-xl font-bold">{character.name}'s Adventure</span>
+            <span className="text-xl font-bold">{character.name}&apos;s Adventure</span>
           </div>
           
           <h1 className="text-3xl font-bold mb-2">Choose Your Story</h1>

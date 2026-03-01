@@ -1,116 +1,165 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateStory, generateStoryImage } from '@/lib/gemini'
-import { db, storage } from '@/lib/firebase'
-import { doc, getDoc, addDoc, collection } from 'firebase/firestore'
-import { ref, uploadString, getDownloadURL } from 'firebase/storage'
+import { generateStory, generateStoryImage, getGeminiErrorResponse } from '@/lib/gemini'
 import { Story } from '@/types'
 
-// POST /api/story/generate - Generate full story with images
+function toDataUrl(base64: string, mimeType: string): string {
+  return `data:${mimeType};base64,${base64}`
+}
+
+// POST /api/story/generate - Generate full story for local mode (session-only persistence)
 export async function POST(request: NextRequest) {
   try {
-    const { characterId, optionIndex } = await request.json()
+    const {
+      characterId,
+      characterName,
+      characterImage,
+      optionIndex,
+      optionTitle,
+      optionDescription,
+      keywords,
+      ageGroup,
+    } = await request.json()
 
-    if (!characterId || optionIndex === undefined) {
+    if (!characterName || optionIndex === undefined) {
       return NextResponse.json(
-        { error: 'Character ID and option index are required' },
+        { error: 'Character name and option index are required' },
         { status: 400 }
       )
     }
 
-    // Get character data
-    const characterDoc = await getDoc(doc(db, 'characters', characterId))
-    if (!characterDoc.exists()) {
-      return NextResponse.json(
-        { error: 'Character not found' },
-        { status: 404 }
+    const setting = [
+      typeof optionTitle === 'string' ? optionTitle : '',
+      typeof optionDescription === 'string' ? optionDescription : '',
+      typeof keywords === 'string' ? keywords : '',
+    ]
+      .filter(Boolean)
+      .join(' - ')
+
+    let storyText = ''
+    try {
+      storyText = await generateStory(
+        characterName,
+        setting || 'A magical bedtime adventure',
+        typeof ageGroup === 'string' ? ageGroup : '4-6'
       )
+    } catch (error) {
+      console.error('Story text generation error:', error)
+      const { status, message } = getGeminiErrorResponse(error)
+      return NextResponse.json({ error: message }, { status })
     }
 
-    const character = characterDoc.data()
-    
-    // Get selected option from localStorage (sent in request body ideally)
-    // For simplicity, we'll regenerate or you can pass the option in body
-    const { keywords, ageGroup } = await request.json()
-    
-    // Generate story text using Gemini 3 Flash
-    const storyText = await generateStory(
-      character.name || 'the character',
-      keywords,
-      ageGroup
-    )
-
-    // Split into scenes (simple split by paragraphs)
-    const scenes = storyText.split('\n\n').filter(s => s.trim().length > 0)
-
-    // Generate images for each scene using Gemini 3.1 Flash Image
+    const scenes = storyText.split('\n\n').filter((scene) => scene.trim().length > 0)
     const imageUrls: string[] = []
-    
-    for (const scene of scenes.slice(0, 5)) { // Max 5 scenes
-      const imageData = await generateStoryImage(
-        scene.substring(0, 200), // First 200 chars as prompt
-        character.cartoonImage
-      )
+    const sceneErrors: Array<{ sceneIndex: number; status?: number; message: string }> = []
 
-      if (imageData) {
-        // Upload to Firebase Storage
-        const imageRef = ref(storage, `stories/${Date.now()}_${imageUrls.length}.jpg`)
-        await uploadString(imageRef, imageData, 'base64')
-        const imageUrl = await getDownloadURL(imageRef)
-        imageUrls.push(imageUrl)
+    for (const [index, scene] of scenes.slice(0, 5).entries()) {
+      const characterVisualHint =
+        typeof characterName === 'string' && characterName.trim().length > 0
+          ? `Main character is ${characterName}. Keep the same look in every scene.`
+          : 'Keep the same main character look in every scene.'
+
+      try {
+        const imageData = await generateStoryImage(
+          scene.substring(0, 220),
+          characterVisualHint
+        )
+
+        if (imageData) {
+          imageUrls.push(toDataUrl(imageData, 'image/png'))
+        }
+      } catch (error) {
+        const apiError = error as { status?: number; message?: string }
+        const mapped = getGeminiErrorResponse(error)
+        sceneErrors.push({
+          sceneIndex: index,
+          status: apiError?.status ?? mapped.status,
+          message: apiError?.message ?? mapped.message,
+        })
+        console.error(`Story image generation failed for scene ${index + 1}:`, error)
+
+        // Stop trying additional scene images when hard request-shape/token issues happen.
+        if (
+          (apiError?.status ?? mapped.status) === 400 &&
+          (apiError?.message ?? '').toLowerCase().includes('token')
+        ) {
+          break
+        }
       }
     }
 
-    // Generate audio using ElevenLabs
-    const audioResponse = await fetch('https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'Content-Type': 'application/json',
-        'xi-api-key': process.env.ELEVENLABS_API_KEY || '',
-      },
-      body: JSON.stringify({
-        text: storyText,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.5,
-        },
-      }),
-    })
-
-    let audioUrl = ''
-    if (audioResponse.ok) {
-      const audioBuffer = await audioResponse.arrayBuffer()
-      const audioBase64 = Buffer.from(audioBuffer).toString('base64')
-      const audioRef = ref(storage, `stories/${Date.now()}_audio.mp3`)
-      await uploadString(audioRef, audioBase64, 'base64')
-      audioUrl = await getDownloadURL(audioRef)
+    if (imageUrls.length === 0 && typeof characterImage === 'string' && characterImage.length > 0) {
+      imageUrls.push(characterImage)
     }
 
-    // Save story to Firestore
+    let audioUrl = ''
+    const elevenLabsKey = process.env.ELEVENLABS_API_KEY || ''
+
+    if (elevenLabsKey) {
+      const audioResponse = await fetch('https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', {
+        method: 'POST',
+        headers: {
+          Accept: 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': elevenLabsKey,
+        },
+        body: JSON.stringify({
+          text: storyText,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.5,
+          },
+        }),
+      })
+
+      if (audioResponse.ok) {
+        const audioBuffer = await audioResponse.arrayBuffer()
+        const audioBase64 = Buffer.from(audioBuffer).toString('base64')
+        audioUrl = toDataUrl(audioBase64, 'audio/mpeg')
+      } else {
+        console.warn('ElevenLabs generation failed:', audioResponse.status)
+      }
+    }
+
     const storyData = {
-      characterId,
-      title: `${character.name}'s Adventure`,
+      characterId: typeof characterId === 'string' ? characterId : `local-${characterName}`,
+      title: `${characterName}'s Adventure`,
       content: storyText,
       images: imageUrls,
       audioUrl,
       createdAt: new Date(),
     }
 
-    const docRef = await addDoc(collection(db, 'stories'), storyData)
-
     const story: Story = {
-      id: docRef.id,
+      id: `local-story-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       ...storyData,
       createdAt: new Date(),
     }
 
-    return NextResponse.json({ story })
+    return NextResponse.json({
+      story,
+      ...(process.env.NODE_ENV !== 'production' && sceneErrors.length > 0
+        ? { warnings: { sceneImageErrors: sceneErrors } }
+        : {}),
+    })
   } catch (error) {
     console.error('Error generating story:', error)
+    const apiError = error as { status?: number; message?: string }
+    const status = typeof apiError?.status === 'number' ? apiError.status : 500
+    const message = apiError?.message || 'Internal server error'
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      {
+        error: message,
+        ...(process.env.NODE_ENV !== 'production'
+          ? {
+              details: {
+                status,
+                message,
+              },
+            }
+          : {}),
+      },
+      { status }
     )
   }
 }

@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Story, Character } from '@/types'
+import { getCurrentStoryFromIndexedDB } from '@/lib/client-story-store'
 
 export default function PlayStoryPage() {
   const [story, setStory] = useState<Story | null>(null)
@@ -15,17 +17,43 @@ export default function PlayStoryPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
-    const storedStory = localStorage.getItem('currentStory')
-    const storedCharacter = localStorage.getItem('currentCharacter')
-    
-    if (storedStory && storedCharacter) {
-      setStory(JSON.parse(storedStory))
-      setCharacter(JSON.parse(storedCharacter))
-    } else {
-      router.push('/')
+    let active = true
+    const loadStory = async () => {
+      const storedCharacter = localStorage.getItem('currentCharacter')
+      if (storedCharacter) {
+        setCharacter(JSON.parse(storedCharacter))
+      } else {
+        router.push('/')
+        return
+      }
+
+      const storageType = localStorage.getItem('currentStoryStorage')
+      if (storageType === 'indexedDB') {
+        try {
+          const idbStory = await getCurrentStoryFromIndexedDB<Story>()
+          if (active && idbStory) {
+            setStory(idbStory)
+            return
+          }
+        } catch (error) {
+          console.error('Failed to load story from IndexedDB:', error)
+        }
+      }
+
+      const storedStory = localStorage.getItem('currentStory')
+      if (storedStory) {
+        if (active) {
+          setStory(JSON.parse(storedStory))
+        }
+      } else if (active) {
+        router.push('/')
+      }
     }
 
+    void loadStory()
+
     return () => {
+      active = false
       if (audioRef.current) {
         audioRef.current.pause()
       }
@@ -73,6 +101,7 @@ export default function PlayStoryPage() {
   }
 
   if (!story || !character) return null
+  const currentImage = story.images[currentScene]
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -83,9 +112,11 @@ export default function PlayStoryPage() {
         </Link>
         
         <div className="flex items-center gap-2">
-          <img
+          <Image
             src={character.cartoonImage}
             alt={character.name}
+            width={32}
+            height={32}
             className="w-8 h-8 rounded-full border border-white/30"
           />
           <span className="text-sm font-medium">{story.title}</span>
@@ -96,11 +127,15 @@ export default function PlayStoryPage() {
       <div className="h-screen flex flex-col">
         {/* Image */}
         <div className="flex-1 relative">
-          <img
-            src={story.images[currentScene]}
-            alt={`Scene ${currentScene + 1}`}
-            className="w-full h-full object-contain"
-          />
+          {currentImage ? (
+            <Image
+              src={currentImage}
+              alt={`Scene ${currentScene + 1}`}
+              fill
+              sizes="100vw"
+              className="object-contain"
+            />
+          ) : null}
           
           {/* Scene Indicator */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">

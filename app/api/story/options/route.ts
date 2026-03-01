@@ -1,38 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateStoryOptions } from '@/lib/gemini'
-import { doc, getDoc } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { generateStoryOptionsWithDiagnostics, getGeminiErrorResponse } from '@/lib/gemini'
 
-// POST /api/story/options - Generate story options
+// POST /api/story/options - Generate story options based on local character data
 export async function POST(request: NextRequest) {
   try {
-    const { characterId, keywords, ageGroup } = await request.json()
+    const { characterName, keywords, ageGroup } = await request.json()
 
-    if (!characterId || !keywords) {
+    if (!keywords) {
       return NextResponse.json(
-        { error: 'Character ID and keywords are required' },
+        { error: 'Keywords are required' },
         { status: 400 }
       )
     }
 
-    // Get character name from Firestore
-    const characterDoc = await getDoc(doc(db, 'characters', characterId))
-    if (!characterDoc.exists()) {
-      return NextResponse.json(
-        { error: 'Character not found' },
-        { status: 404 }
+    const normalizedCharacterName =
+      typeof characterName === 'string' && characterName.trim().length > 0
+        ? characterName.trim()
+        : 'the character'
+    const normalizedAgeGroup =
+      typeof ageGroup === 'string' && ageGroup.trim().length > 0
+        ? ageGroup
+        : '4-6'
+
+    let optionsResult: Awaited<ReturnType<typeof generateStoryOptionsWithDiagnostics>>
+    try {
+      optionsResult = await generateStoryOptionsWithDiagnostics(
+        normalizedCharacterName,
+        keywords,
+        normalizedAgeGroup
       )
+    } catch (error) {
+      console.error('Gemini story options error:', error)
+      const { status, message } = getGeminiErrorResponse(error)
+      return NextResponse.json({ error: message }, { status })
     }
 
-    const character = characterDoc.data()
-    const characterName = character.name || 'the character'
-
-    // Generate story options using Gemini 3 Flash
-    const options = await generateStoryOptions(characterName, keywords, ageGroup)
+    const { options, diagnostics } = optionsResult
 
     if (options.length === 0) {
+      console.error('No story options parsed from model output:', diagnostics)
       return NextResponse.json(
-        { error: 'Failed to generate story options' },
+        {
+          error: 'Failed to generate story options from model output.',
+          ...(process.env.NODE_ENV !== 'production'
+            ? { details: diagnostics }
+            : {}),
+        },
         { status: 500 }
       )
     }

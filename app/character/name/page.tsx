@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Character } from '@/types'
 
 export default function NameCharacterPage() {
@@ -26,18 +27,9 @@ export default function NameCharacterPage() {
 
     setLoading(true)
     try {
-      // Update character name in Firebase
-      const response = await fetch(`/api/character/${character.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      })
-
-      if (response.ok) {
-        const updated = { ...character, name }
-        localStorage.setItem('currentCharacter', JSON.stringify(updated))
-        router.push('/story/create')
-      }
+      const updated = { ...character, name: name.trim() }
+      localStorage.setItem('currentCharacter', JSON.stringify(updated))
+      router.push('/story/create')
     } catch (error) {
       console.error('Error:', error)
     } finally {
@@ -63,9 +55,11 @@ export default function NameCharacterPage() {
           </p>
 
           <div className="text-center mb-8">
-            <img
+            <Image
               src={character.cartoonImage}
               alt="Your character"
+              width={192}
+              height={192}
               className="w-48 h-48 mx-auto rounded-full object-cover shadow-lg border-4 border-white"
             />
           </div>

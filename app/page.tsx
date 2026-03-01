@@ -10,7 +10,7 @@ export default function Home() {
         
         <p className="text-xl text-gray-600 mb-8 leading-relaxed">
           Transform any photo into a magical cartoon character and create 
-          personalized bedtime stories powered by Google's latest AI.
+          personalized bedtime stories powered by Google&apos;s latest AI.
         </p>
         
         <div className="flex flex-col sm:flex-row gap-4 justify-center">

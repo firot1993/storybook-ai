@@ -10,7 +10,7 @@ Transform any photo into a magical cartoon character and create personalized bed
   - **Gemini 3.1 Flash Image** (Nano Banana 2) - Character & illustration generation
   - **Gemini 3 Flash** - Story text generation
   - **ElevenLabs** - Voice narration
-- **Backend**: Firebase (Firestore + Storage)
+- **Backend**: Next.js API routes (stateless/local-session flow)
 - **Deployment**: Vercel
 
 ## 🎯 Demo Pitch
@@ -27,7 +27,6 @@ storybook-ai/
 │   ├── story/             # Story generation flow
 │   └── api/               # API Routes
 ├── lib/                   # Utilities
-│   ├── firebase.ts        # Firebase config
 │   └── gemini.ts          # Gemini API wrapper
 ├── components/            # Reusable components
 └── types/                 # TypeScript types
@@ -52,7 +51,6 @@ cp .env.local.example .env.local
 
 Required keys:
 - `GEMINI_API_KEY` - Get from [Google AI Studio](https://makersuite.google.com/app/apikey)
-- `NEXT_PUBLIC_FIREBASE_*` - Get from Firebase Console
 - `ELEVENLABS_API_KEY` - Get from [ElevenLabs](https://elevenlabs.io/)
 
 ### 3. Run Development Server
@@ -78,7 +76,6 @@ Open [http://localhost:3000](http://localhost:3000)
 | Gemini 3.1 Flash Image | 1500 requests/day |
 | Gemini 3 Flash | 1500 requests/day |
 | ElevenLabs | 10k characters/month |
-| Firebase | Spark Plan (generous) |
 | Vercel | Hobby Plan (unlimited) |
 
 **Total Cost: $0** 🎉
