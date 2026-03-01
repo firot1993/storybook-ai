@@ -1,6 +1,7 @@
 export interface Character {
   id: string;
   name: string;
+  description: string;
   originalImage: string;
   cartoonImage: string;
   createdAt: Date;
@@ -13,7 +14,7 @@ export interface StoryOption {
 
 export interface Story {
   id: string;
-  characterId: string;
+  characterIds: string[];
   title: string;
   content: string;
   images: string[];
@@ -30,7 +31,7 @@ export interface GenerateCharacterResponse {
 }
 
 export interface GenerateStoryOptionsRequest {
-  characterName: string;
+  characterNames: string[];
   keywords: string;
   ageGroup: '2-4' | '4-6' | '6-8';
 }
@@ -40,9 +41,9 @@ export interface GenerateStoryOptionsResponse {
 }
 
 export interface GenerateStoryRequest {
-  characterId?: string;
-  characterName: string;
-  characterImage?: string;
+  characterIds?: string[];
+  characterNames: string[];
+  characterImages?: string[];
   optionIndex: number;
   optionTitle?: string;
   optionDescription?: string;
@@ -52,4 +53,12 @@ export interface GenerateStoryRequest {
 
 export interface GenerateStoryResponse {
   story: Story;
+}
+
+export interface CharacterWithStoryCount {
+  id: string;
+  name: string;
+  cartoonImage: string;
+  createdAt: Date;
+  _count: { stories: number };
 }

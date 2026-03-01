@@ -2,32 +2,134 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
 @layer base {
   body {
-    @apply antialiased;
+    @apply antialiased font-baloo;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-md;
+    @apply bg-gradient-to-r from-candy-500 to-grape-500 hover:from-candy-600 hover:to-grape-600 active:scale-95 text-white font-bold py-4 px-8 rounded-full transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 text-lg;
   }
-  
+
   .btn-secondary {
-    @apply bg-white hover:bg-gray-100 text-gray-800 font-semibold py-3 px-6 rounded-lg border-2 border-gray-300 transition-colors duration-200;
+    @apply bg-white hover:bg-sun-50 active:scale-95 text-grape-700 font-bold py-4 px-8 rounded-full border-3 border-grape-300 hover:border-grape-400 transition-all duration-200 text-lg;
   }
-  
+
   .card {
-    @apply bg-white rounded-xl shadow-lg p-6;
+    @apply bg-gradient-to-br from-white to-candy-50 rounded-3xl shadow-lg p-6 border-2 border-candy-200 transition-shadow duration-200;
   }
-  
+
+  .card-interactive {
+    @apply bg-gradient-to-br from-white to-sky-50 rounded-3xl shadow-lg p-6 border-2 border-sky-200 transition-all duration-200 hover:shadow-xl hover:-translate-y-1 hover:scale-[1.02];
+  }
+
   .input {
-    @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply w-full px-5 py-4 border-3 border-grape-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-candy-300 focus:border-candy-400 transition-all duration-200 text-lg bg-white;
   }
+
+  .page-enter {
+    animation: pageEnter 0.5s ease-out;
+  }
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes sceneTransition {
+  from {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.4s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.animate-scene {
+  animation: sceneTransition 0.4s ease-out;
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s linear infinite;
+}
+
+/* Drag-and-drop active state */
+.drop-active {
+  @apply border-candy-500 bg-candy-50;
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  @apply bg-candy-100 rounded-2xl;
+  background: linear-gradient(90deg, #fce7f3 25%, #fdf2f8 50%, #fce7f3 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Rainbow gradient text */
+.rainbow-text {
+  background: linear-gradient(to right, #ec4899, #f59e0b, #10b981, #0ea5e9, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Bouncy star animation */
+@keyframes bounceStar {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-8px) rotate(10deg); }
+  75% { transform: translateY(-4px) rotate(-5deg); }
+}
+
+.animate-bounce-star {
+  animation: bounceStar 2s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
 }

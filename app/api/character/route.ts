@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateCharacterImageWithDiagnostics, getGeminiErrorResponse, type GeminiImageDiagnostics } from '@/lib/gemini'
 import { Character } from '@/types'
+import { createCharacter, listCharacters } from '@/lib/db'
 
-function guessImageMimeType(diagnostics?: GeminiImageDiagnostics): string {
-  const inlinePart = diagnostics?.partKinds.find((kind) => kind.startsWith('inlineData:'))
-  if (!inlinePart) return 'image/png'
-  const mimeType = inlinePart.split(':')[1]
-  return mimeType || 'image/png'
+// GET /api/character - List all saved characters
+export async function GET() {
+  const characters = await listCharacters()
+  return NextResponse.json({ characters })
 }
 
-// POST /api/character - Generate character from photo (local mode: session-only persistence)
+// POST /api/character - Generate character from photo and save to DB
 export async function POST(request: NextRequest) {
   try {
     const { imageBase64 } = await request.json()
@@ -22,10 +22,12 @@ export async function POST(request: NextRequest) {
     }
 
     let generatedImageData: string | undefined
+    let generatedMimeType: string = 'image/png'
     let generationDiagnostics: GeminiImageDiagnostics | undefined
     try {
       const generationResult = await generateCharacterImageWithDiagnostics(imageBase64)
       generatedImageData = generationResult.imageData
+      generatedMimeType = generationResult.mimeType
       generationDiagnostics = generationResult.diagnostics
     } catch (error) {
       console.error('Gemini character generation error:', error)
@@ -46,12 +48,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const originalImage = `data:image/jpeg;base64,${imageBase64}`
+    const cartoonImage = `data:${generatedMimeType};base64,${generatedImageData}`
+
+    // Auto-save to DB
+    const dbCharacter = await createCharacter({
+      originalImage,
+      cartoonImage,
+    })
+
     const character: Character = {
-      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: dbCharacter.id,
       name: '',
-      originalImage: `data:image/jpeg;base64,${imageBase64}`,
-      cartoonImage: `data:${guessImageMimeType(generationDiagnostics)};base64,${generatedImageData}`,
-      createdAt: new Date(),
+      originalImage,
+      cartoonImage,
+      createdAt: dbCharacter.createdAt,
     }
 
     return NextResponse.json({ character })

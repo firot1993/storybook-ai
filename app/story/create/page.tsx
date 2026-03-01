@@ -1,30 +1,150 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState, useEffect, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Character } from '@/types'
+import StepProgress from '@/components/step-progress'
+import { showToast } from '@/components/toast'
+
+const AGE_LABELS: Record<string, { label: string; emoji: string; color: string; activeColor: string }> = {
+  '2-4': { label: 'Tiny Tots', emoji: '\u{1F476}', color: 'border-candy-200 text-candy-600', activeColor: 'border-candy-500 bg-candy-100 text-candy-700 shadow-md' },
+  '4-6': { label: 'Little Stars', emoji: '\u{2B50}', color: 'border-sun-200 text-sun-600', activeColor: 'border-sun-500 bg-sun-100 text-sun-700 shadow-md' },
+  '6-8': { label: 'Big Kids', emoji: '\u{1F680}', color: 'border-grape-200 text-grape-600', activeColor: 'border-grape-500 bg-grape-100 text-grape-700 shadow-md' },
+}
+
+const THEMES = [
+  { label: 'Jungle Adventure', emoji: '\u{1F334}', keywords: 'jungle, animals, exploring, treasure' },
+  { label: 'Space Mission', emoji: '\u{1F680}', keywords: 'stars, rocket, moon, aliens' },
+  { label: 'Under the Sea', emoji: '\u{1F419}', keywords: 'ocean, fish, mermaid, bubbles' },
+  { label: 'Magic Castle', emoji: '\u{1F3F0}', keywords: 'magic, dragon, knight, wizard' },
+]
+
+const FUN_KEYWORDS = [
+  { text: 'Dinosaurs', emoji: '\u{1F996}' },
+  { text: 'Space', emoji: '\u{1F680}' },
+  { text: 'Magic', emoji: '\u{1F320}' },
+  { text: 'Pirates', emoji: '\u{1F3F4}\u{200D}\u{2620}\u{FE0F}' },
+  { text: 'Animals', emoji: '\u{1F43E}' },
+  { text: 'Princess', emoji: '\u{1F478}' },
+  { text: 'Superheroes', emoji: '\u{1F9B8}' },
+  { text: 'Ocean', emoji: '\u{1F30A}' },
+]
 
 export default function CreateStoryPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
+        <div className="max-w-xl w-full">
+          <div className="skeleton h-4 w-20 mb-8" />
+          <div className="card">
+            <div className="skeleton h-8 w-64 mb-2" />
+            <div className="skeleton h-5 w-48 mb-6" />
+            <div className="skeleton h-32 w-full mb-6" />
+            <div className="skeleton h-12 w-full" />
+          </div>
+        </div>
+      </div>
+    }>
+      <CreateStoryContent />
+    </Suspense>
+  )
+}
+
+function CreateStoryContent() {
   const [keywords, setKeywords] = useState('')
   const [ageGroup, setAgeGroup] = useState<'2-4' | '4-6' | '6-8'>('4-6')
-  const [character, setCharacter] = useState<Character | null>(null)
+  const [characters, setCharacters] = useState<Character[]>([])
+  const [allCharacters, setAllCharacters] = useState<Character[]>([])
   const [loading, setLoading] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const fetchAllCharacters = useCallback(async () => {
+    try {
+      const res = await fetch('/api/character')
+      if (res.ok) {
+        const data = await res.json()
+        setAllCharacters(data.characters || [])
+      }
+    } catch {
+      // Non-critical
+    }
+  }, [])
 
   useEffect(() => {
-    const stored = localStorage.getItem('currentCharacter')
-    if (stored) {
-      setCharacter(JSON.parse(stored))
-    } else {
-      router.push('/character')
+    const characterId = searchParams.get('characterId')
+
+    const initialize = async () => {
+      await fetchAllCharacters()
+      
+      if (characterId) {
+        try {
+          const res = await fetch(`/api/character/${characterId}`)
+          if (res.ok) {
+            const data = await res.json()
+            if (data?.character) {
+              setCharacters([data.character])
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching character:', error)
+        }
+      } else {
+        const stored = localStorage.getItem('currentCharacter')
+        if (stored) {
+          const char = JSON.parse(stored)
+          setCharacters([char])
+          localStorage.removeItem('currentCharacter')
+        }
+      }
+      setHydrated(true)
     }
-  }, [router])
+
+    initialize()
+  }, [searchParams, fetchAllCharacters])
+
+  const toggleCharacter = (char: Character) => {
+    setCharacters((prev) => {
+      const exists = prev.some((c) => c.id === char.id)
+      if (exists) {
+        return prev.filter((c) => c.id !== char.id)
+      }
+      if (prev.length >= 3) {
+        showToast('You can pick up to 3 characters!', 'error')
+        return prev
+      }
+      return [...prev, char]
+    })
+  }
+
+  const toggleKeyword = (word: string) => {
+    setKeywords(prev => {
+      const words = prev.split(',').map(w => w.trim()).filter(Boolean)
+      if (words.includes(word)) {
+        return words.filter(w => w !== word).join(', ')
+      } else {
+        if (words.length >= 3) {
+          showToast('Pick up to 3 ideas for the best story!', 'error')
+          return prev
+        }
+        return [...words, word].join(', ')
+      }
+    })
+  }
+
+  const selectTheme = (themeKeywords: string) => {
+    setKeywords(themeKeywords)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!character) return
+    if (characters.length === 0) {
+      showToast('Please pick at least one character!', 'error')
+      return
+    }
 
     setLoading(true)
     try {
@@ -32,7 +152,8 @@ export default function CreateStoryPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          characterName: character.name || 'the character',
+          characterNames: characters.map((c) => c.name || 'the character'),
+          characterDescriptions: characters.map((c) => c.description || ''),
           keywords,
           ageGroup,
         }),
@@ -43,102 +164,218 @@ export default function CreateStoryPage() {
         localStorage.setItem('storyOptions', JSON.stringify(data.options))
         localStorage.setItem('storyKeywords', keywords)
         localStorage.setItem('ageGroup', ageGroup)
+        localStorage.setItem('currentCharacters', JSON.stringify(characters))
         router.push('/story/options')
       } else {
         const data = (await response.json().catch(() => null)) as { error?: string; details?: unknown } | null
-        if (data?.details) {
-          console.error('Story options generation details:', data.details)
-        }
-        alert(data?.error || 'Failed to generate story options. Please try again.')
+        showToast(data?.error || 'Oops! Something went wrong. Let\'s try again!', 'error')
       }
     } catch (error) {
       console.error('Error:', error)
-      alert('Failed to generate story options. Please try again.')
+      showToast('Oops! Something went wrong. Let\'s try again!', 'error')
     } finally {
       setLoading(false)
     }
   }
 
-  if (!character) return null
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
+        <div className="max-w-xl w-full">
+          <div className="skeleton h-4 w-20 mb-8" />
+          <div className="card">
+            <div className="skeleton h-8 w-64 mb-2" />
+            <div className="skeleton h-5 w-48 mb-6" />
+            <div className="skeleton h-32 w-full mb-6" />
+            <div className="skeleton h-12 w-full" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const selectedKeywordsList = keywords.split(',').map(k => k.trim()).filter(Boolean)
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
-      <div className="max-w-xl w-full">
-        <Link href="/character/name" className="text-gray-500 hover:text-gray-700 mb-8 inline-block">
-          ← Back
+    <div className="min-h-screen flex flex-col items-center px-4 py-12">
+      <div className="max-w-2xl w-full page-enter">
+        <Link href="/" className="text-grape-400 hover:text-grape-600 mb-6 inline-flex items-center gap-1 text-sm font-bold">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Home
         </Link>
 
-        <div className="card">
-          <div className="flex items-center gap-4 mb-6">
-            <Image
-              src={character.cartoonImage}
-              alt={character.name}
-              width={64}
-              height={64}
-              className="w-16 h-16 rounded-full object-cover border-2 border-primary-500"
-            />
-            <div>
-              <p className="text-sm text-gray-500">Creating a story for</p>
-              <p className="text-xl font-bold text-gray-900">{character.name}</p>
+        <StepProgress currentStep={2} />
+
+        <div className="card border-t-8 border-t-candy-400 relative overflow-hidden">
+          {loading && (
+            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-8 animate-fade-in">
+              <div className="text-6xl mb-6 animate-bounce-star">&#128214;</div>
+              <h2 className="text-3xl font-extrabold text-grape-700 mb-2">Whispering to the magic book...</h2>
+              <p className="text-candy-600 font-bold mb-8">Creating wonderful story ideas just for you!</p>
+              <div className="w-64 h-3 bg-grape-100 rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-candy-400 to-grape-400 animate-shimmer" style={{ width: '100%' }} />
+              </div>
             </div>
+          )}
+
+          <h1 className="text-3xl font-extrabold mb-2 text-grape-700">New Adventure &#10024;</h1>
+          <p className="text-candy-600 mb-8 text-lg font-medium">Who is going on this journey?</p>
+          
+          <div className="mb-10">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-grape-600">Pick your characters</h3>
+              <span className={`text-xs font-bold px-2 py-1 rounded-lg ${characters.length >= 3 ? 'bg-sun-100 text-sun-700' : 'bg-grape-50 text-grape-400'}`}>
+                {characters.length}/3 Selected
+              </span>
+            </div>
+            
+            {allCharacters.length === 0 ? (
+              <div className="text-center py-8 bg-grape-50 rounded-3xl border-2 border-dashed border-grape-200">
+                <p className="text-grape-500 mb-4 font-bold">No characters yet!</p>
+                <Link href="/character" className="btn-secondary py-2 px-6 text-sm">
+                  Create a Character
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {allCharacters.map((char) => {
+                  const isSelected = characters.some((c) => c.id === char.id)
+                  return (
+                    <button
+                      key={char.id}
+                      type="button"
+                      onClick={() => toggleCharacter(char)}
+                      className={`group relative flex flex-col items-center transition-all duration-300 ${
+                        isSelected ? 'scale-105' : 'grayscale-[0.5] opacity-70 hover:grayscale-0 hover:opacity-100'
+                      }`}
+                    >
+                      <div className={`relative w-20 h-20 sm:w-24 sm:h-24 rounded-3xl overflow-hidden border-4 transition-all ${
+                        isSelected ? 'border-candy-400 shadow-xl' : 'border-white shadow-md'
+                      }`}>
+                        <Image
+                          src={char.cartoonImage}
+                          alt={char.name || 'Character'}
+                          fill
+                          className="object-cover"
+                        />
+                        {isSelected && (
+                          <div className="absolute inset-0 bg-candy-500/20 flex items-center justify-center">
+                            <div className="bg-white rounded-full p-1 shadow-lg animate-fade-in">
+                              <svg className="w-6 h-6 text-candy-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <span className={`mt-2 text-sm font-extrabold truncate w-full text-center ${isSelected ? 'text-candy-600' : 'text-grape-400'}`}>
+                        {char.name || 'Unnamed'}
+                      </span>
+                    </button>
+                  )
+                })}
+                {allCharacters.length < 12 && (
+                  <Link
+                    href="/character"
+                    className="flex flex-col items-center group"
+                  >
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl border-4 border-dashed border-grape-200 flex items-center justify-center bg-white group-hover:bg-grape-50 transition-all group-hover:scale-105">
+                      <span className="text-4xl text-grape-300 group-hover:rotate-90 transition-transform">+</span>
+                    </div>
+                    <span className="mt-2 text-xs font-bold text-grape-300">New Friend</span>
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
 
-          <h1 className="text-2xl font-bold mb-2">What kind of adventure?</h1>
-          <p className="text-gray-600 mb-6">
-            Describe the story you want, or enter some keywords
-          </p>
-
-          <form onSubmit={handleSubmit}>
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Story Keywords
-              </label>
-              <textarea
-                value={keywords}
-                onChange={(e) => setKeywords(e.target.value)}
-                placeholder="e.g., forest adventure, space travel, magical castle..."
-                className="input h-32 resize-none"
-                required
-              />
+          <div className="mb-10">
+            <h3 className="font-bold text-grape-600 mb-4">Choose an adventure theme</h3>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {THEMES.map((theme) => (
+                <button
+                  key={theme.label}
+                  type="button"
+                  onClick={() => selectTheme(theme.keywords)}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all ${
+                    keywords === theme.keywords 
+                      ? 'border-sky-400 bg-sky-50 shadow-md ring-2 ring-sky-100' 
+                      : 'border-grape-100 bg-white hover:border-sky-200'
+                  }`}
+                >
+                  <span className="text-2xl block mb-1">{theme.emoji}</span>
+                  <span className="text-sm font-bold text-grape-700 block">{theme.label}</span>
+                </button>
+              ))}
             </div>
 
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Age Group
-              </label>
-              <div className="flex gap-3">
-                {(['2-4', '4-6', '6-8'] as const).map((age) => (
+            <label className="block text-sm font-bold text-grape-600 mb-3">
+              Or pick fun things to see:
+            </label>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {FUN_KEYWORDS.map(({ text, emoji }) => {
+                const isActive = selectedKeywordsList.includes(text)
+                return (
+                  <button
+                    key={text}
+                    type="button"
+                    onClick={() => toggleKeyword(text)}
+                    className={`px-4 py-2 rounded-full border-2 text-sm font-bold transition-all ${
+                      isActive 
+                        ? 'bg-candy-500 border-candy-500 text-white shadow-md' 
+                        : 'bg-white border-grape-200 text-grape-600 hover:border-candy-300 hover:bg-candy-50'
+                    }`}
+                  >
+                    {emoji} {text}
+                  </button>
+                )
+              })}
+            </div>
+            <input
+              type="text"
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+              placeholder="Type your own ideas here..."
+              className="input text-base"
+              required
+            />
+          </div>
+
+          <div className="mb-10">
+            <label className="block text-sm font-bold text-grape-600 mb-4">
+              Who is this story for?
+            </label>
+            <div className="flex gap-3">
+              {(['2-4', '4-6', '6-8'] as const).map((age) => {
+                const info = AGE_LABELS[age]
+                return (
                   <button
                     key={age}
                     type="button"
                     onClick={() => setAgeGroup(age)}
-                    className={`flex-1 py-2 px-4 rounded-lg border-2 transition-colors ${
-                      ageGroup === age
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-300 hover:border-gray-400'
+                    className={`flex-1 py-4 px-2 rounded-2xl border-3 font-bold transition-all duration-200 text-center ${
+                      ageGroup === age ? info.activeColor : info.color
                     }`}
                   >
-                    {age} years
+                    <span className="text-2xl block mb-1">{info.emoji}</span>
+                    <span className="text-sm block">{info.label}</span>
+                    <span className="text-xs block opacity-70">{age} yrs</span>
                   </button>
-                ))}
-              </div>
+                )
+              })}
             </div>
+          </div>
 
-            <button
-              type="submit"
-              disabled={loading || !keywords.trim()}
-              className="btn-primary w-full text-lg disabled:opacity-50"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="animate-spin">✨</span>
-                  Generating ideas...
-                </span>
-              ) : (
-                'Generate Story Options →'
-              )}
-            </button>
-          </form>
+          <button
+            type="submit"
+            onClick={handleSubmit}
+            disabled={loading || !keywords.trim() || characters.length === 0}
+            className="btn-primary w-full text-xl disabled:opacity-50 py-5"
+          >
+            Create Magic Stories &#10024;
+          </button>
         </div>
       </div>
     </div>

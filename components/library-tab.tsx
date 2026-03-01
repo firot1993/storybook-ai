@@ -1,0 +1,223 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import Image from 'next/image'
+import Link from 'next/link'
+import { CharacterWithStoryCount, Story, Character } from '@/types'
+import ConfirmDialog from './confirm-dialog'
+
+interface StorySummary extends Omit<Story, 'content' | 'images'> {
+  images: string[]
+  characters?: Pick<Character, 'id' | 'name' | 'cartoonImage'>[]
+}
+
+export default function LibraryTab() {
+  const [activeTab, setActiveTab] = useState<'characters' | 'stories'>('characters')
+  const [characters, setCharacters] = useState<CharacterWithStoryCount[]>([])
+  const [stories, setStories] = useState<StorySummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: 'character' | 'story'
+    id: string
+    name: string
+  } | null>(null)
+
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    try {
+      if (activeTab === 'characters') {
+        const res = await fetch('/api/character')
+        if (res.ok) {
+          const data = await res.json()
+          setCharacters(data.characters)
+        }
+      } else {
+        const res = await fetch('/api/story')
+        if (res.ok) {
+          const data = await res.json()
+          setStories(data.stories)
+        }
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [activeTab])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    const { type, id } = deleteTarget
+
+    const endpoint = type === 'character' ? `/api/character/${id}` : `/api/story/${id}`
+    const res = await fetch(endpoint, { method: 'DELETE' })
+    
+    if (res.ok) {
+      if (type === 'character') {
+        setCharacters((prev) => prev.filter((c) => c.id !== id))
+      } else {
+        setStories((prev) => prev.filter((s) => s.id !== id))
+      }
+    }
+    setDeleteTarget(null)
+  }
+
+  return (
+    <div className="w-full">
+      {/* Sub-tabs */}
+      <div className="flex justify-center gap-4 mb-8">
+        <button
+          onClick={() => setActiveTab('characters')}
+          className={`px-5 py-2 rounded-2xl text-sm font-bold transition-all ${
+            activeTab === 'characters'
+              ? 'bg-candy-100 text-candy-600 ring-2 ring-candy-200'
+              : 'bg-white text-grape-400 hover:bg-grape-50 border border-grape-100'
+          }`}
+        >
+          Characters
+        </button>
+        <button
+          onClick={() => setActiveTab('stories')}
+          className={`px-5 py-2 rounded-2xl text-sm font-bold transition-all ${
+            activeTab === 'stories'
+              ? 'bg-sky-100 text-sky-600 ring-2 ring-sky-200'
+              : 'bg-white text-grape-400 hover:bg-grape-50 border border-grape-100'
+          }`}
+        >
+          Stories
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 page-enter">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="aspect-[3/4] card p-0 overflow-hidden">
+              <div className="skeleton h-full w-full rounded-none" />
+            </div>
+          ))}
+        </div>
+      ) : activeTab === 'characters' ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 page-enter">
+          {characters.length === 0 ? (
+            <div className="col-span-full text-center py-12">
+              <p className="text-grape-400 font-medium">No characters yet! Go make some friends!</p>
+            </div>
+          ) : (
+            characters.map((char) => (
+              <div key={char.id} className="group relative">
+                <div className="card-interactive p-0 overflow-hidden aspect-[3/4] flex flex-col">
+                  <div className="relative flex-1 bg-grape-50">
+                    <Image
+                      src={char.cartoonImage}
+                      alt={char.name || 'Character'}
+                      fill
+                      className="object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                      <div className="flex gap-2">
+                        <Link
+                          href={`/story/create?characterId=${char.id}`}
+                          className="flex-1 bg-white/90 hover:bg-white text-grape-700 text-[10px] font-bold py-1.5 rounded-full text-center"
+                        >
+                          New Story
+                        </Link>
+                        <button
+                          onClick={() => setDeleteTarget({ type: 'character', id: char.id, name: char.name })}
+                          className="bg-red-500/90 hover:bg-red-500 text-white p-1.5 rounded-full"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-white text-center">
+                    <p className="font-bold text-grape-700 text-sm truncate">{char.name || 'Unnamed'}</p>
+                    <p className="text-[10px] text-candy-500 font-medium">{char._count.stories} stories</p>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 page-enter">
+          {stories.length === 0 ? (
+            <div className="col-span-full text-center py-12">
+              <p className="text-grape-400 font-medium">No stories yet. Time for an adventure!</p>
+            </div>
+          ) : (
+            stories.map((story) => (
+              <div key={story.id} className="group relative">
+                <Link
+                  href={`/story/play?id=${story.id}`}
+                  className="group card-interactive p-0 overflow-hidden aspect-[3/4] flex flex-col border-sky-200"
+                >
+                  <div className="relative flex-1 bg-sky-50">
+                    {story.images?.[0] ? (
+                      <Image
+                        src={story.images[0]}
+                        alt={story.title}
+                        fill
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl opacity-20 text-sky-300">
+                        &#128214;
+                      </div>
+                    )}
+                    {/* Character mini avatars */}
+                    <div className="absolute top-2 left-2 flex -space-x-2">
+                      {story.characters?.slice(0, 3).map((c) => (
+                        <div key={c.id} className="w-6 h-6 rounded-full border-2 border-white overflow-hidden bg-white shadow-sm">
+                          <Image src={c.cartoonImage} alt={c.name} width={24} height={24} className="object-cover" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-white border-t border-sky-100">
+                    <p className="font-bold text-sky-900 text-xs sm:text-sm line-clamp-2 leading-tight mb-1 h-8 sm:h-10">
+                      {story.title}
+                    </p>
+                    <p className="text-[9px] text-sky-400 font-medium">
+                      {new Date(story.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </Link>
+                {/* Delete button (positioned over the card) */}
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setDeleteTarget({ type: 'story', id: story.id, name: story.title })
+                  }}
+                  className="absolute top-2 right-2 bg-red-500/80 hover:bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-sm"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title={deleteTarget?.type === 'character' ? 'Delete Character?' : 'Delete Story?'}
+        message={
+          deleteTarget?.type === 'character'
+            ? `Are you sure you want to say goodbye to ${deleteTarget.name}? All their stories will be gone too.`
+            : `Are you sure you want to delete "${deleteTarget?.name}"?`
+        }
+        confirmLabel="Say Goodbye"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </div>
+  )
+}

@@ -1,28 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateStory, generateStoryImage, getGeminiErrorResponse } from '@/lib/gemini'
 import { Story } from '@/types'
+import { createStory } from '@/lib/db'
 
 function toDataUrl(base64: string, mimeType: string): string {
   return `data:${mimeType};base64,${base64}`
 }
 
-// POST /api/story/generate - Generate full story for local mode (session-only persistence)
+// POST /api/story/generate - Generate full story (supports 1-3 characters)
 export async function POST(request: NextRequest) {
   try {
     const {
-      characterId,
-      characterName,
-      characterImage,
+      characterIds,
+      characterNames,
+      characterImages,
+      characterDescriptions,
       optionIndex,
       optionTitle,
       optionDescription,
       keywords,
       ageGroup,
+      // Legacy single-character fields
+      characterId,
+      characterName,
+      characterImage,
     } = await request.json()
 
-    if (!characterName || optionIndex === undefined) {
+    // Normalize to arrays, supporting both new multi-char and legacy single-char
+    const names: string[] = Array.isArray(characterNames) && characterNames.length > 0
+      ? characterNames
+      : (typeof characterName === 'string' && characterName.trim() ? [characterName] : [])
+    const ids: string[] = Array.isArray(characterIds) && characterIds.length > 0
+      ? characterIds
+      : (typeof characterId === 'string' ? [characterId] : [])
+    const images: string[] = Array.isArray(characterImages) && characterImages.length > 0
+      ? characterImages
+      : (typeof characterImage === 'string' && characterImage.length > 0 ? [characterImage] : [])
+
+    if (names.length === 0 || optionIndex === undefined) {
       return NextResponse.json(
-        { error: 'Character name and option index are required' },
+        { error: 'Character name(s) and option index are required' },
         { status: 400 }
       )
     }
@@ -38,9 +55,10 @@ export async function POST(request: NextRequest) {
     let storyText = ''
     try {
       storyText = await generateStory(
-        characterName,
+        names,
         setting || 'A magical bedtime adventure',
-        typeof ageGroup === 'string' ? ageGroup : '4-6'
+        typeof ageGroup === 'string' ? ageGroup : '4-6',
+        characterDescriptions
       )
     } catch (error) {
       console.error('Story text generation error:', error)
@@ -52,20 +70,30 @@ export async function POST(request: NextRequest) {
     const imageUrls: string[] = []
     const sceneErrors: Array<{ sceneIndex: number; status?: number; message: string }> = []
 
+    // Extract raw base64 from character image data URLs
+    const characterImagesBase64: string[] = images
+      .map((img) => {
+        if (typeof img === 'string' && img.includes('base64,')) {
+          return img.split('base64,')[1]
+        }
+        return undefined
+      })
+      .filter((x): x is string => !!x)
+
     for (const [index, scene] of scenes.slice(0, 5).entries()) {
-      const characterVisualHint =
-        typeof characterName === 'string' && characterName.trim().length > 0
-          ? `Main character is ${characterName}. Keep the same look in every scene.`
-          : 'Keep the same main character look in every scene.'
+      const characterVisualHint = names.length === 1
+        ? `Main character is ${names[0]}. Keep the same look in every scene.`
+        : `Main characters are ${names.join(', ')}. Keep each character's look consistent in every scene.`
 
       try {
         const imageData = await generateStoryImage(
           scene.substring(0, 220),
-          characterVisualHint
+          characterVisualHint,
+          characterImagesBase64.length > 0 ? characterImagesBase64 : undefined
         )
 
         if (imageData) {
-          imageUrls.push(toDataUrl(imageData, 'image/png'))
+          imageUrls.push(toDataUrl(imageData.data, imageData.mimeType))
         }
       } catch (error) {
         const apiError = error as { status?: number; message?: string }
@@ -77,7 +105,6 @@ export async function POST(request: NextRequest) {
         })
         console.error(`Story image generation failed for scene ${index + 1}:`, error)
 
-        // Stop trying additional scene images when hard request-shape/token issues happen.
         if (
           (apiError?.status ?? mapped.status) === 400 &&
           (apiError?.message ?? '').toLowerCase().includes('token')
@@ -87,8 +114,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (imageUrls.length === 0 && typeof characterImage === 'string' && characterImage.length > 0) {
-      imageUrls.push(characterImage)
+    if (imageUrls.length === 0 && images.length > 0) {
+      imageUrls.push(images[0])
     }
 
     let audioUrl = ''
@@ -121,19 +148,37 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const storyData = {
-      characterId: typeof characterId === 'string' ? characterId : `local-${characterName}`,
-      title: `${characterName}'s Adventure`,
-      content: storyText,
-      images: imageUrls,
-      audioUrl,
-      createdAt: new Date(),
+    // Build title from character names
+    const title = names.length === 1
+      ? `${names[0]}'s Adventure`
+      : names.length === 2
+        ? `${names[0]} & ${names[1]}'s Adventure`
+        : `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}'s Adventure`
+
+    // Auto-save to DB
+    let dbStory
+    if (ids.length > 0) {
+      try {
+        dbStory = await createStory({
+          characterIds: ids,
+          title,
+          content: storyText,
+          images: imageUrls,
+          audioUrl,
+        })
+      } catch (dbError) {
+        console.warn('Failed to save story to DB:', dbError)
+      }
     }
 
     const story: Story = {
-      id: `local-story-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      ...storyData,
-      createdAt: new Date(),
+      id: dbStory?.id ?? `local-story-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      characterIds: ids,
+      title,
+      content: storyText,
+      images: imageUrls,
+      audioUrl,
+      createdAt: dbStory?.createdAt ?? new Date(),
     }
 
     return NextResponse.json({

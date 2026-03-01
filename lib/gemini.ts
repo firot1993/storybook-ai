@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import sharp from 'sharp';
 
 const genAI = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
@@ -6,6 +7,67 @@ const genAI = new GoogleGenAI({
 
 const TEXT_MODEL = 'gemini-3-flash-preview';
 const IMAGE_MODEL = 'gemini-2.5-flash-image';
+
+/**
+ * Estimated pricing per 1 million tokens.
+ * Values are based on Gemini 1.5 Flash rates as a baseline.
+ */
+const PRICING = {
+  [TEXT_MODEL]: { input: 0.075, output: 0.30 },
+  [IMAGE_MODEL]: { input: 0.075, output: 0.30 },
+  default: { input: 0.075, output: 0.30 },
+};
+
+/**
+ * Predicts the cost of a request based on input tokens.
+ * Note: This only estimates the input cost. Total cost includes generated output.
+ */
+export async function estimatePrice(model: string, prompt: string | any[]) {
+  try {
+    const contents = typeof prompt === 'string' ? [{ role: 'user', parts: [{ text: prompt }] }] : prompt;
+    const { totalTokens } = await genAI.models.countTokens({
+      model,
+      contents,
+    });
+
+    const rates = PRICING[model] || PRICING.default;
+    const estimatedInputCost = (totalTokens / 1_000_000) * rates.input;
+
+    return {
+      totalTokens,
+      estimatedInputCost,
+      formattedCost: `$${estimatedInputCost.toFixed(6)}`,
+    };
+  } catch (error) {
+    console.warn('Cost estimation failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Compress a base64 PNG image: resize to fit within maxDim and convert to JPEG.
+ * Returns a smaller base64 string and 'image/jpeg' mime type.
+ */
+async function compressImage(
+  base64Data: string,
+  maxDim: number = 512,
+  quality: number = 70
+): Promise<{ data: string; mimeType: string }> {
+  try {
+    const inputBuffer = Buffer.from(base64Data, 'base64');
+    const outputBuffer = await sharp(inputBuffer)
+      .resize(maxDim, maxDim, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality })
+      .toBuffer();
+    return {
+      data: outputBuffer.toString('base64'),
+      mimeType: 'image/jpeg',
+    };
+  } catch (error) {
+    console.warn('Image compression failed, using original:', error);
+    return { data: base64Data, mimeType: 'image/png' };
+  }
+}
 
 type GeminiErrorShape = {
   status?: number;
@@ -149,11 +211,11 @@ function buildImageDiagnostics(response: GeminiImageResponse): GeminiImageDiagno
 }
 
 export async function generateStoryOptions(
-  characterName: string,
+  characterNames: string[],
   keywords: string,
   ageGroup: string
 ) {
-  const result = await generateStoryOptionsWithDiagnostics(characterName, keywords, ageGroup);
+  const result = await generateStoryOptionsWithDiagnostics(characterNames, keywords, ageGroup);
   return result.options;
 }
 
@@ -242,14 +304,34 @@ function parseStoryOptionsFromText(text: string): { options: StoryOption[]; stra
 }
 
 export async function generateStoryOptionsWithDiagnostics(
-  characterName: string,
+  characterNames: string[],
   keywords: string,
-  ageGroup: string
+  ageGroup: string,
+  characterDescriptions?: string[]
 ): Promise<{ options: StoryOption[]; diagnostics: StoryOptionsDiagnostics }> {
-  const prompt = `Create 3 children's story options for a character named ${characterName}.
-Keywords: ${keywords}
-Age: ${ageGroup} years old
+  const namesLabel = characterNames.length === 1
+    ? `a character named ${characterNames[0]}`
+    : `characters named ${characterNames.join(', ')}`;
 
+  let characterContext = '';
+  if (characterDescriptions && characterDescriptions.length > 0) {
+    characterContext = '\nCharacter details:\n' + characterNames.map((name, i) => 
+      `- ${name}: ${characterDescriptions[i] || 'A friendly character'}`
+    ).join('\n');
+  }
+
+  const prompt = `Create 3 simple children's story ideas for ${namesLabel}.
+Keywords: ${keywords}
+Target age: ${ageGroup} years old
+${characterContext}
+
+IMPORTANT rules for age ${ageGroup}:
+- Use only simple, everyday words a ${ageGroup}-year-old would understand
+- Story titles should be short (2-5 words) and exciting for little kids
+- Descriptions should be one simple sentence using easy words
+- Think like a bedtime story for a very young child
+- No scary or complex themes — keep it happy, silly, or magical
+${characterNames.length > 1 ? '- The story should involve ALL the characters together\n' : ''}
 Format:
 1. [Title] - [One sentence description]
 2. [Title] - [One sentence description]
@@ -275,18 +357,51 @@ Format:
 }
 
 export async function generateStory(
-  characterName: string,
+  characterNames: string[],
   setting: string,
-  ageGroup: string
+  ageGroup: string,
+  characterDescriptions?: string[]
 ) {
-  const prompt = `Write a 3-minute children's story:
-Main character: ${characterName}
-Setting: ${setting}
-Style: Warm, fun, suitable for ${ageGroup} years old
-Structure: Beginning → Adventure → Ending
-Length: 500-800 words
+  const ageNum = parseInt(ageGroup.split('-')[0], 10) || 4;
+  const wordRange = ageNum <= 3 ? '150-250' : ageNum <= 5 ? '200-350' : '300-450';
+  const sceneCount = ageNum <= 4 ? '3' : '4';
+  const vocabNote = ageNum <= 4
+    ? 'Use only very simple words (1-2 syllables). Very short sentences (5-8 words each). Lots of repetition and sound words (whoosh, splish, boom).'
+    : ageNum <= 6
+    ? 'Use simple words (mostly 1-2 syllables). Short sentences (6-10 words). Include fun sound effects and repetition.'
+    : 'Use easy-to-read words. Keep sentences short and clear (8-12 words). Include some fun descriptions.';
 
-Please divide the story into 3-5 scenes, with [Scene X] markers.`;
+  const charactersLine = characterNames.length === 1
+    ? `Main character: ${characterNames[0]}`
+    : `Main characters: ${characterNames.join(', ')}`;
+
+  let characterContext = '';
+  if (characterDescriptions && characterDescriptions.length > 0) {
+    characterContext = '\nCharacter details:\n' + characterNames.map((name, i) => 
+      `- ${name}: ${characterDescriptions[i] || 'A friendly character'}`
+    ).join('\n');
+  }
+
+  const multiCharNote = characterNames.length > 1
+    ? '- All characters should appear together and interact throughout the story\n'
+    : '';
+
+  const prompt = `Write a bedtime story for a ${ageGroup}-year-old child:
+${charactersLine}
+Setting: ${setting}
+${characterContext}
+
+VERY IMPORTANT — this story is for a ${ageGroup}-year-old child:
+- ${vocabNote}
+- Keep it happy, warm, and gentle — no scary parts
+- Use a simple plot: one small problem, one fun solution
+- End with the characters feeling happy and safe
+- Length: ${wordRange} words (keep it SHORT)
+- Structure: Beginning → one small adventure → happy ending
+- Divide into exactly ${sceneCount} scenes using [Scene 1], [Scene 2], etc. markers
+- Each scene should be 2-4 short paragraphs
+${multiCharNote}
+Please divide the story into ${sceneCount} scenes, with [Scene X] markers.`;
 
   const response = await genAI.models.generateContent({
     model: TEXT_MODEL,
@@ -297,6 +412,7 @@ Please divide the story into 3-5 scenes, with [Scene X] markers.`;
 
 export async function generateCharacterImageWithDiagnostics(imageBase64: string): Promise<{
   imageData?: string;
+  mimeType: string;
   diagnostics: GeminiImageDiagnostics;
 }> {
   const prompt = "Transform this photo into a cute cartoon character, children's book illustration style, vibrant colors, friendly expression, simple background";
@@ -319,8 +435,18 @@ export async function generateCharacterImageWithDiagnostics(imageBase64: string)
     ],
   })) as GeminiImageResponse;
 
+  const rawImage = extractImageData(response);
+  let imageData = rawImage;
+  let mimeType = 'image/png';
+  if (rawImage) {
+    const compressed = await compressImage(rawImage, 512, 75);
+    imageData = compressed.data;
+    mimeType = compressed.mimeType;
+  }
+
   return {
-    imageData: extractImageData(response),
+    imageData,
+    mimeType,
     diagnostics: buildImageDiagnostics(response),
   };
 }
@@ -332,35 +458,48 @@ export async function generateCharacterImage(imageBase64: string) {
 
 export async function generateStoryImage(
   sceneDescription: string,
-  characterReference: string
+  characterReference: string,
+  characterImagesBase64?: string[]
 ) {
   const normalizedScene = sceneDescription.replace(/\s+/g, ' ').slice(0, 260);
-  const normalizedReference = (() => {
-    if (!characterReference) {
-      return 'Keep the main character appearance consistent across all scenes.';
+
+  const textHint = characterReference
+    ? characterReference.replace(/\s+/g, ' ').slice(0, 240)
+    : 'Keep the character appearances consistent across all scenes.';
+
+  const hasMultiple = characterImagesBase64 && characterImagesBase64.length > 1;
+  const prompt = `Simple children's picture book illustration for ages 4-8: ${normalizedScene}.
+Style: Bright happy colors, round friendly shapes, very simple background, cozy and warm like a bedtime story book. No text in the image.
+IMPORTANT: ${hasMultiple ? 'The characters in this scene MUST look exactly like the characters shown in the reference images. Keep the same face, hair, colors, outfit, and style for each character.' : 'The main character in this scene MUST look exactly like the character shown in the reference image. Keep the same face, hair, colors, outfit, and style.'} ${textHint}`;
+
+  const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
+    { text: prompt },
+  ];
+
+  if (characterImagesBase64) {
+    for (const imgBase64 of characterImagesBase64) {
+      const isJpeg = imgBase64.startsWith('/9j/');
+      parts.push({
+        inlineData: {
+          data: imgBase64,
+          mimeType: isJpeg ? 'image/jpeg' : 'image/png',
+        },
+      });
     }
-
-    const lower = characterReference.toLowerCase();
-    const looksLikeDataUrl =
-      lower.startsWith('data:') ||
-      lower.includes('base64,') ||
-      characterReference.length > 1000;
-
-    if (looksLikeDataUrl) {
-      return 'Main character should stay visually consistent across all scenes in this story.';
-    }
-
-    return characterReference.replace(/\s+/g, ' ').slice(0, 240);
-  })();
-
-  const prompt = `Children's book illustration: ${normalizedScene}. 
-Style: Warm, soft colors, storybook illustration style, friendly and magical.
-Character reference: ${normalizedReference}`;
+  }
 
   const response = (await genAI.models.generateContent({
     model: IMAGE_MODEL,
-    contents: prompt,
+    contents: [
+      {
+        role: 'user',
+        parts,
+      },
+    ],
   })) as GeminiImageResponse;
-  const imageData = extractImageData(response);
-  return imageData;
+  const rawImage = extractImageData(response);
+  if (!rawImage) return undefined;
+
+  const compressed = await compressImage(rawImage, 640, 70);
+  return { data: compressed.data, mimeType: compressed.mimeType };
 }

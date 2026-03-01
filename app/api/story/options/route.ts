@@ -4,7 +4,7 @@ import { generateStoryOptionsWithDiagnostics, getGeminiErrorResponse } from '@/l
 // POST /api/story/options - Generate story options based on local character data
 export async function POST(request: NextRequest) {
   try {
-    const { characterName, keywords, ageGroup } = await request.json()
+    const { characterName, characterNames, keywords, ageGroup, characterDescriptions } = await request.json()
 
     if (!keywords) {
       return NextResponse.json(
@@ -13,10 +13,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const normalizedCharacterName =
-      typeof characterName === 'string' && characterName.trim().length > 0
+    // Support both legacy single characterName and new characterNames array
+    let names: string[]
+    if (Array.isArray(characterNames) && characterNames.length > 0) {
+      names = characterNames.map((n: string) => (typeof n === 'string' && n.trim() ? n.trim() : 'the character'))
+    } else {
+      const single = typeof characterName === 'string' && characterName.trim().length > 0
         ? characterName.trim()
         : 'the character'
+      names = [single]
+    }
+
     const normalizedAgeGroup =
       typeof ageGroup === 'string' && ageGroup.trim().length > 0
         ? ageGroup
@@ -25,9 +32,10 @@ export async function POST(request: NextRequest) {
     let optionsResult: Awaited<ReturnType<typeof generateStoryOptionsWithDiagnostics>>
     try {
       optionsResult = await generateStoryOptionsWithDiagnostics(
-        normalizedCharacterName,
+        names,
         keywords,
-        normalizedAgeGroup
+        normalizedAgeGroup,
+        characterDescriptions
       )
     } catch (error) {
       console.error('Gemini story options error:', error)
