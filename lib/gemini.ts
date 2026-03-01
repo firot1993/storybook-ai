@@ -482,7 +482,8 @@ export async function generateCharacterImage(imageBase64: string, style?: string
 export async function generateStoryImage(
   sceneDescription: string,
   characterReference: string,
-  characterImagesBase64?: string[]
+  characterImagesBase64?: string[],
+  characterNames?: string[]
 ) {
   const normalizedScene = sceneDescription.replace(/\s+/g, ' ').slice(0, 260);
 
@@ -491,16 +492,29 @@ export async function generateStoryImage(
     : 'Keep the character appearances consistent across all scenes.';
 
   const hasMultiple = characterImagesBase64 && characterImagesBase64.length > 1;
+  
+  let multiRefLabel = '';
+  if (hasMultiple && characterNames && characterNames.length === characterImagesBase64.length) {
+    multiRefLabel = ' Each reference image below is labeled with the character name.';
+  }
+
   const prompt = `Simple children's picture book illustration for ages 4-8: ${normalizedScene}.
 Style: Bright happy colors, round friendly shapes, very simple background, cozy and warm like a bedtime story book. No text in the image.
-IMPORTANT: ${hasMultiple ? 'The characters in this scene MUST look exactly like the characters shown in the reference images. Keep the same face, hair, colors, outfit, and style for each character.' : 'The main character in this scene MUST look exactly like the character shown in the reference image. Keep the same face, hair, colors, outfit, and style.'} ${textHint}`;
+IMPORTANT: ${hasMultiple ? `The characters in this scene MUST look exactly like the characters shown in the reference images.${multiRefLabel} Keep the same face, hair, colors, outfit, and style for each character.` : 'The main character in this scene MUST look exactly like the character shown in the reference image. Keep the same face, hair, colors, outfit, and style.'} ${textHint}`;
 
   const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
     { text: prompt },
   ];
 
   if (characterImagesBase64) {
-    for (const imgBase64 of characterImagesBase64) {
+    for (let i = 0; i < characterImagesBase64.length; i++) {
+      const imgBase64 = characterImagesBase64[i];
+      const name = characterNames && characterNames[i] ? characterNames[i] : `Character ${i + 1}`;
+      
+      if (hasMultiple) {
+        parts.push({ text: `Reference image for ${name}:` });
+      }
+      
       const isJpeg = imgBase64.startsWith('/9j/');
       parts.push({
         inlineData: {

@@ -94,13 +94,14 @@ export async function POST(request: NextRequest) {
     for (const [index, scene] of limitedScenes.entries()) {
       const characterVisualHint = names.length === 1
         ? `Main character is ${names[0]}. Keep the same look in every scene.`
-        : `Main characters are ${names.join(', ')}. Keep each character's look consistent in every scene.`
+        : `All characters (${names.join(', ')}) must be present in this scene. Each character must look exactly like their reference image below.`;
 
       try {
         const imageData = await generateStoryImage(
           scene.substring(0, 220),
           characterVisualHint,
-          characterImagesBase64.length > 0 ? characterImagesBase64 : undefined
+          characterImagesBase64.length > 0 ? characterImagesBase64 : undefined,
+          names
         )
 
         if (imageData) {
