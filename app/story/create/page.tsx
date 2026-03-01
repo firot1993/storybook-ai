@@ -182,6 +182,7 @@ function CreateStoryContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          characterIds: characters.map((c) => c.id),
           characterNames: characters.map((c) => c.name || 'the character'),
           characterDescriptions: characters.map((c) => c.description || ''),
           keywords,

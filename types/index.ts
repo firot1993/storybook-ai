@@ -32,9 +32,11 @@ export interface GenerateCharacterResponse {
 }
 
 export interface GenerateStoryOptionsRequest {
+  characterIds?: string[];
   characterNames: string[];
   keywords: string;
   ageGroup: '2-4' | '4-6' | '6-8';
+  relationship?: string;
 }
 
 export interface GenerateStoryOptionsResponse {
@@ -50,6 +52,7 @@ export interface GenerateStoryRequest {
   optionDescription?: string;
   keywords?: string;
   ageGroup?: '2-4' | '4-6' | '6-8';
+  relationship?: string;
 }
 
 export interface GenerateStoryResponse {
@@ -59,6 +62,7 @@ export interface GenerateStoryResponse {
 export interface CharacterWithStoryCount {
   id: string;
   name: string;
+  description: string;
   cartoonImage: string;
   createdAt: Date;
   _count: { stories: number };

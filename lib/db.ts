@@ -1,6 +1,15 @@
 import { prisma } from './prisma'
 import { decodeStoryAudioPayload, encodeStoryAudioPayload } from './story-audio'
 
+function buildPair(a: string, b: string) {
+  const [characterAId, characterBId] = [a, b].sort()
+  return {
+    characterAId,
+    characterBId,
+    pairKey: `${characterAId}:${characterBId}`,
+  }
+}
+
 // ── Characters ──────────────────────────────────────────────
 
 export async function createCharacter(data: {
@@ -46,6 +55,88 @@ export async function deleteCharacter(id: string) {
   await prisma.story.deleteMany({
     where: { characters: { none: {} } },
   })
+}
+
+// ── Character Relationships ─────────────────────────────────
+
+export async function listCharacterRelationships() {
+  return prisma.characterRelationship.findMany({
+    orderBy: { updatedAt: 'desc' },
+    include: {
+      characterA: {
+        select: { id: true, name: true, cartoonImage: true },
+      },
+      characterB: {
+        select: { id: true, name: true, cartoonImage: true },
+      },
+    },
+  })
+}
+
+export async function getCharacterRelationship(characterAId: string, characterBId: string) {
+  const pair = buildPair(characterAId, characterBId)
+  return prisma.characterRelationship.findUnique({
+    where: { pairKey: pair.pairKey },
+    include: {
+      characterA: {
+        select: { id: true, name: true, cartoonImage: true },
+      },
+      characterB: {
+        select: { id: true, name: true, cartoonImage: true },
+      },
+    },
+  })
+}
+
+export async function setCharacterRelationship(
+  characterAId: string,
+  characterBId: string,
+  relationship: string
+) {
+  if (!characterAId || !characterBId || characterAId === characterBId) {
+    throw new Error('A relationship requires two different characters')
+  }
+
+  const pair = buildPair(characterAId, characterBId)
+  const value = relationship.trim()
+
+  if (!value) {
+    await prisma.characterRelationship.deleteMany({
+      where: { pairKey: pair.pairKey },
+    })
+    return null
+  }
+
+  return prisma.characterRelationship.upsert({
+    where: { pairKey: pair.pairKey },
+    create: {
+      pairKey: pair.pairKey,
+      characterAId: pair.characterAId,
+      characterBId: pair.characterBId,
+      relationship: value,
+    },
+    update: {
+      relationship: value,
+    },
+    include: {
+      characterA: {
+        select: { id: true, name: true, cartoonImage: true },
+      },
+      characterB: {
+        select: { id: true, name: true, cartoonImage: true },
+      },
+    },
+  })
+}
+
+export async function getRelationshipForCharacters(characterIds: string[]): Promise<string> {
+  const uniqueIds = [...new Set(characterIds.filter(Boolean))]
+  if (uniqueIds.length !== 2) {
+    return ''
+  }
+
+  const relationship = await getCharacterRelationship(uniqueIds[0], uniqueIds[1])
+  return relationship?.relationship ?? ''
 }
 
 // ── Stories ─────────────────────────────────────────────────

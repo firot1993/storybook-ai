@@ -214,9 +214,10 @@ function buildImageDiagnostics(response: GeminiImageResponse): GeminiImageDiagno
 export async function generateStoryOptions(
   characterNames: string[],
   keywords: string,
-  ageGroup: string
+  ageGroup: string,
+  relationship?: string
 ) {
-  const result = await generateStoryOptionsWithDiagnostics(characterNames, keywords, ageGroup);
+  const result = await generateStoryOptionsWithDiagnostics(characterNames, keywords, ageGroup, undefined, relationship);
   return result.options;
 }
 
@@ -308,7 +309,8 @@ export async function generateStoryOptionsWithDiagnostics(
   characterNames: string[],
   keywords: string,
   ageGroup: string,
-  characterDescriptions?: string[]
+  characterDescriptions?: string[],
+  relationship?: string
 ): Promise<{ options: StoryOption[]; diagnostics: StoryOptionsDiagnostics }> {
   const namesLabel = characterNames.length === 1
     ? `a character named ${characterNames[0]}`
@@ -320,11 +322,16 @@ export async function generateStoryOptionsWithDiagnostics(
       `- ${name}: ${characterDescriptions[i] || 'A friendly character'}`
     ).join('\n');
   }
+  const relationshipContext =
+    typeof relationship === 'string' && relationship.trim().length > 0
+      ? `\nRelationship between characters: ${relationship.trim()}`
+      : '';
 
   const prompt = `Create 3 simple children's story ideas for ${namesLabel}.
 Keywords: ${keywords}
 Target age: ${ageGroup} years old
 ${characterContext}
+${relationshipContext}
 
 IMPORTANT rules for age ${ageGroup}:
 - Use only simple, everyday words a ${ageGroup}-year-old would understand
@@ -333,6 +340,7 @@ IMPORTANT rules for age ${ageGroup}:
 - Think like a bedtime story for a very young child
 - No scary or complex themes — keep it happy, silly, or magical
 ${characterNames.length > 1 ? '- The story should involve ALL the characters together\n' : ''}
+${relationshipContext ? '- The relationship must be reflected in how characters interact\n' : ''}
 Format:
 1. [Title] - [One sentence description]
 2. [Title] - [One sentence description]
@@ -361,7 +369,8 @@ export async function generateStory(
   characterNames: string[],
   setting: string,
   ageGroup: string,
-  characterDescriptions?: string[]
+  characterDescriptions?: string[],
+  relationship?: string
 ) {
   const ageNum = parseInt(ageGroup.split('-')[0], 10) || 4;
   const wordRange = ageNum <= 3 ? '150-250' : ageNum <= 5 ? '200-350' : '300-450';
@@ -382,6 +391,10 @@ export async function generateStory(
       `- ${name}: ${characterDescriptions[i] || 'A friendly character'}`
     ).join('\n');
   }
+  const relationshipContext =
+    typeof relationship === 'string' && relationship.trim().length > 0
+      ? `\nRelationship between characters: ${relationship.trim()}`
+      : '';
 
   const multiCharNote = characterNames.length > 1
     ? '- All characters should appear together and interact throughout the story\n'
@@ -391,6 +404,7 @@ export async function generateStory(
 ${charactersLine}
 Setting: ${setting}
 ${characterContext}
+${relationshipContext}
 
 VERY IMPORTANT — this story is for a ${ageGroup}-year-old child:
 - ${vocabNote}
@@ -406,6 +420,7 @@ VERY IMPORTANT — this story is for a ${ageGroup}-year-old child:
   - Spoken lines must start with "Character:"
   - Keep "Character:" lines short and playful
 ${multiCharNote}
+${relationshipContext ? '- Keep all interactions consistent with the stated relationship\n' : ''}
 Please divide the story into ${sceneCount} scenes, with [Scene X] markers.`;
 
   const response = await genAI.models.generateContent({

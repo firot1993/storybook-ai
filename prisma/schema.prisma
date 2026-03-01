@@ -15,6 +15,8 @@ model Character {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   stories       Story[]
+  relationshipsA CharacterRelationship[] @relation("RelationshipA")
+  relationshipsB CharacterRelationship[] @relation("RelationshipB")
 }
 
 model Story {
@@ -25,4 +27,17 @@ model Story {
   audioUrl   String      @default("")
   createdAt  DateTime    @default(now())
   characters Character[]
+}
+
+model CharacterRelationship {
+  id           String    @id @default(cuid())
+  pairKey      String    @unique
+  characterAId String
+  characterBId String
+  relationship String    @default("")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  characterA Character @relation("RelationshipA", fields: [characterAId], references: [id], onDelete: Cascade)
+  characterB Character @relation("RelationshipB", fields: [characterBId], references: [id], onDelete: Cascade)
 }

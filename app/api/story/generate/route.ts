@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateStory, generateStoryImage, getGeminiErrorResponse } from '@/lib/gemini'
 import { Story } from '@/types'
-import { createStory } from '@/lib/db'
+import { createStory, getRelationshipForCharacters } from '@/lib/db'
 import { GeminiTtsError, generateSceneNarrationAudioUrls } from '@/lib/gemini-tts'
 import { splitStoryIntoScenes } from '@/lib/story-scenes'
 
@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
       optionDescription,
       keywords,
       ageGroup,
+      relationship,
       // Legacy single-character fields
       characterId,
       characterName,
@@ -53,6 +54,11 @@ export async function POST(request: NextRequest) {
     ]
       .filter(Boolean)
       .join(' - ')
+    const providedRelationship =
+      typeof relationship === 'string' && relationship.trim().length > 0
+        ? relationship.trim()
+        : ''
+    const normalizedRelationship = providedRelationship || await getRelationshipForCharacters(ids)
 
     let storyText = ''
     try {
@@ -60,7 +66,8 @@ export async function POST(request: NextRequest) {
         names,
         setting || 'A magical bedtime adventure',
         typeof ageGroup === 'string' ? ageGroup : '4-6',
-        characterDescriptions
+        characterDescriptions,
+        normalizedRelationship || undefined
       )
     } catch (error) {
       console.error('Story text generation error:', error)
