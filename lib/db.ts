@@ -81,6 +81,13 @@ export async function getStory(id: string) {
   }
 }
 
+export async function updateStoryAudio(id: string, audioUrl: string) {
+  return prisma.story.update({
+    where: { id },
+    data: { audioUrl },
+  })
+}
+
 export async function listStoriesByCharacter(characterId: string) {
   const stories = await prisma.story.findMany({
     where: { characters: { some: { id: characterId } } },

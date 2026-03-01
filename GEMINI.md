@@ -7,7 +7,7 @@ This project is a **Storybook AI** application built with **Next.js 15**, **Reac
 - **Core Functionality:** Photo-to-cartoon transformation, AI-powered multi-character story generation, and scene-by-scene illustrations.
 - **Primary Tech Stack:**
   - **Framework:** Next.js (App Router)
-  - **AI:** `@google/genai` (Gemini 3.1 Flash Image, Gemini 3 Flash), ElevenLabs (TTS).
+  - **AI:** `@google/genai` (Gemini 3.1 Flash Image, Gemini 3 Flash, Gemini 2.5 Flash Preview TTS).
   - **Database:** Prisma with SQLite.
   - **Image Processing:** `sharp` for compression and resizing.
 - **Architecture:** 
@@ -54,5 +54,5 @@ This project is a **Storybook AI** application built with **Next.js 15**, **Reac
 
 ## ⚠️ Security & Environment
 
-- Ensure `GEMINI_API_KEY` and `ELEVENLABS_API_KEY` are set in `.env.local`.
+- Ensure `GEMINI_API_KEY` is set in `.env.local` (`GEMINI_TTS_VOICE` is optional).
 - Never commit the `prisma/dev.db` or sensitive environment variables.

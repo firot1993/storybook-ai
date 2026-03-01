@@ -8,7 +8,7 @@ Storybook AI is a Next.js web application that transforms user photos into magic
 - Photo upload and transformation into cartoon characters
 - AI-powered story generation with multiple options
 - Scene-by-scene illustrated stories with custom images
-- Voice narration using ElevenLabs text-to-speech
+- Voice narration using Gemini 2.5 Flash Preview TTS
 - Interactive story player with audio controls
 
 ## Technology Stack
@@ -18,7 +18,7 @@ Storybook AI is a Next.js web application that transforms user photos into magic
 - **AI Models**:
   - Google Gemini 3.1 Flash Image (`gemini-3.1-flash-image`) - Character & illustration generation
   - Google Gemini 3 Flash (`gemini-3-flash`) - Story text generation
-  - ElevenLabs API - Voice narration
+  - Gemini 2.5 Flash Preview TTS (`gemini-2.5-flash-preview-tts`) - Voice narration
 - **Backend**: Next.js API routes with local/session storage
 - **Deployment**: Optimized for Vercel
 
@@ -89,9 +89,8 @@ Copy `.env.local.example` to `.env.local` and configure the following:
 # Get from: https://makersuite.google.com/app/apikey
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# ElevenLabs API Key
-# Get from: https://elevenlabs.io/app/settings/api-keys
-ELEVENLABS_API_KEY=your_elevenlabs_api_key
+# Optional: Gemini TTS voice
+GEMINI_TTS_VOICE=Kore
 ```
 
 ## Code Style Guidelines
@@ -135,7 +134,7 @@ ELEVENLABS_API_KEY=your_elevenlabs_api_key
 4. `POST /api/story/generate` generates:
    - Full story text using Gemini 3 Flash
    - Scene images using Gemini 3.1 Flash Image
-   - Audio narration using ElevenLabs API
+   - Audio narration using Gemini 2.5 Flash Preview TTS
 5. Story assets are returned to the client as data URLs
 6. Story data is stored client-side for playback
 7. Interactive player at `/story/play` with audio controls
@@ -162,7 +161,7 @@ Note: There is a reference to `PATCH /api/character/${id}` in `app/character/nam
 ## Security Considerations
 
 - API keys are stored in environment variables
-- Server-side API calls (Gemini, ElevenLabs) happen in API routes only
+- Server-side AI API calls happen in API routes only
 - No authentication implemented - generated content is session-local in the current flow
 
 ## Known Issues / TODOs
@@ -178,7 +177,7 @@ Note: There is a reference to `PATCH /api/character/${id}` in `app/character/nam
 |---------|------------|
 | Gemini 3.1 Flash Image | 1500 requests/day |
 | Gemini 3 Flash | 1500 requests/day |
-| ElevenLabs | 10k characters/month |
+| Gemini 2.5 Flash Preview TTS | See current Gemini pricing/quota |
 | Vercel | Hobby Plan |
 
 ## Development Tips

@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server'
 // GET /api/health - Basic API readiness check
 export async function GET() {
   const hasGemini = Boolean(process.env.GEMINI_API_KEY)
-  const hasElevenLabs = Boolean(process.env.ELEVENLABS_API_KEY)
 
   const ready = hasGemini
   const status = ready ? 200 : 503
@@ -19,11 +18,11 @@ export async function GET() {
           ready: hasGemini,
           message: hasGemini ? 'Configured' : 'Missing GEMINI_API_KEY',
         },
-        elevenLabsApiKey: {
-          ready: hasElevenLabs,
-          message: hasElevenLabs
-            ? 'Configured'
-            : 'Missing ELEVENLABS_API_KEY (optional, audio narration will be disabled)',
+        geminiTtsVoice: {
+          ready: true,
+          message: process.env.GEMINI_TTS_VOICE
+            ? `Configured (${process.env.GEMINI_TTS_VOICE})`
+            : 'Using default voice (Kore)',
         },
       },
     },

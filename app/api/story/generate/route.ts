@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateStory, generateStoryImage, getGeminiErrorResponse } from '@/lib/gemini'
 import { Story } from '@/types'
 import { createStory } from '@/lib/db'
+import { GeminiTtsError, generateNarrationAudioUrl } from '@/lib/gemini-tts'
 
 function toDataUrl(base64: string, mimeType: string): string {
   return `data:${mimeType};base64,${base64}`
@@ -119,32 +120,13 @@ export async function POST(request: NextRequest) {
     }
 
     let audioUrl = ''
-    const elevenLabsKey = process.env.ELEVENLABS_API_KEY || ''
-
-    if (elevenLabsKey) {
-      const audioResponse = await fetch('https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', {
-        method: 'POST',
-        headers: {
-          Accept: 'audio/mpeg',
-          'Content-Type': 'application/json',
-          'xi-api-key': elevenLabsKey,
-        },
-        body: JSON.stringify({
-          text: storyText,
-          model_id: 'eleven_multilingual_v2',
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.5,
-          },
-        }),
-      })
-
-      if (audioResponse.ok) {
-        const audioBuffer = await audioResponse.arrayBuffer()
-        const audioBase64 = Buffer.from(audioBuffer).toString('base64')
-        audioUrl = toDataUrl(audioBase64, 'audio/mpeg')
+    try {
+      audioUrl = await generateNarrationAudioUrl(storyText)
+    } catch (error) {
+      if (error instanceof GeminiTtsError && error.status === 503) {
+        console.log('[Gemini TTS] Skipped: GEMINI_API_KEY is not configured')
       } else {
-        console.warn('ElevenLabs generation failed:', audioResponse.status)
+        console.warn('[Gemini TTS] Failed to generate narration audio:', error)
       }
     }
 

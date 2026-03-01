@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Story, Character } from '@/types'
-import { getCurrentStoryFromIndexedDB } from '@/lib/client-story-store'
+import { getCurrentStoryFromIndexedDB, setCurrentStoryInIndexedDB } from '@/lib/client-story-store'
+import { showToast } from '@/components/toast'
 
 export default function PlayStoryPage() {
   return (
@@ -24,6 +25,7 @@ function PlayStoryContent() {
   const [characters, setCharacters] = useState<Character[]>([])
   const [currentScene, setCurrentScene] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [isRegeneratingAudio, setIsRegeneratingAudio] = useState(false)
   const [sceneKey, setSceneKey] = useState(0)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -174,6 +176,67 @@ function PlayStoryContent() {
     }
     setIsPlaying(!isPlaying)
   }
+
+  const persistStoryLocally = useCallback(async (updatedStory: Story) => {
+    const storageType = localStorage.getItem('currentStoryStorage')
+
+    try {
+      if (storageType === 'indexedDB') {
+        await setCurrentStoryInIndexedDB(updatedStory)
+        return
+      }
+
+      localStorage.setItem('currentStory', JSON.stringify(updatedStory))
+      localStorage.setItem('currentStoryStorage', 'localStorage')
+    } catch (error) {
+      console.warn('Failed to persist updated story to localStorage, using IndexedDB.', error)
+      await setCurrentStoryInIndexedDB(updatedStory)
+      localStorage.removeItem('currentStory')
+      localStorage.setItem('currentStoryStorage', 'indexedDB')
+    }
+  }, [])
+
+  const handleRegenerateAudio = useCallback(async () => {
+    if (!story || isRegeneratingAudio) return
+
+    setIsRegeneratingAudio(true)
+
+    try {
+      const response = await fetch('/api/story/audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId: story.id,
+          content: story.content,
+        }),
+      })
+
+      const data = (await response.json().catch(() => null)) as { audioUrl?: string; error?: string } | null
+      if (!response.ok || !data?.audioUrl) {
+        showToast(data?.error || 'Could not generate audio right now. Please try again.', 'error')
+        return
+      }
+
+      const updatedStory: Story = {
+        ...story,
+        audioUrl: data.audioUrl,
+      }
+
+      setStory(updatedStory)
+      setIsPlaying(false)
+
+      if (!searchParams.get('id')) {
+        await persistStoryLocally(updatedStory)
+      }
+
+      showToast('Narration is ready! Press play to listen.', 'success')
+    } catch (error) {
+      console.error('Audio regeneration failed:', error)
+      showToast('Could not generate audio right now. Please try again.', 'error')
+    } finally {
+      setIsRegeneratingAudio(false)
+    }
+  }, [isRegeneratingAudio, persistStoryLocally, searchParams, story])
 
   // Split story content into scenes using [Scene X] markers
   const getSceneText = () => {
@@ -348,8 +411,8 @@ function PlayStoryContent() {
                   />
                 </div>
 
-                {/* Audio button */}
-                {story.audioUrl && (
+                {/* Audio controls */}
+                {story.audioUrl ? (
                   <button
                     onClick={togglePlay}
                     aria-label={isPlaying ? 'Pause' : 'Listen'}
@@ -363,6 +426,33 @@ function PlayStoryContent() {
                       <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M8 5v14l11-7z" />
                       </svg>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleRegenerateAudio}
+                    disabled={isRegeneratingAudio}
+                    aria-label="Regenerate audio narration"
+                    className={`h-11 px-4 rounded-full inline-flex items-center gap-2 text-sm font-bold transition-all duration-200 border-2 shadow-md ${
+                      isRegeneratingAudio
+                        ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'
+                        : 'bg-white border-candy-300 text-grape-600 hover:bg-candy-50 hover:scale-105 active:scale-95'
+                    }`}
+                  >
+                    {isRegeneratingAudio ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-candy-300 border-t-candy-600 rounded-full animate-spin" />
+                        Adding audio...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5L6 9H3v6h3l5 4V5z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.54 8.46a5 5 0 010 7.07" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.07 4.93a10 10 0 010 14.14" />
+                        </svg>
+                        Add Audio
+                      </>
                     )}
                   </button>
                 )}
