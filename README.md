@@ -79,9 +79,7 @@ Required:
 
 Optional (TTS voices):
 
-- `GEMINI_TTS_VOICE` (single-speaker fallback, default `Kore`)
-- `GEMINI_TTS_NARRATOR_VOICE` (default `Kore`)
-- `GEMINI_TTS_CHARACTER_VOICE` (default `Puck`)
+- `GEMINI_TTS_VOICE` (single-speaker narration voice, default `Kore`)
 
 ### 3. Run
 

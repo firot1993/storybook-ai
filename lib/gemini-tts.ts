@@ -6,7 +6,6 @@ const genAI = new GoogleGenAI({
 
 const TTS_MODEL = 'gemini-2.5-flash-preview-tts'
 const DEFAULT_VOICE_NAME = 'Kore'
-const DEFAULT_CHARACTER_VOICE_NAME = 'Puck'
 const WAV_SAMPLE_RATE = 24000
 const WAV_CHANNELS = 1
 const WAV_BITS_PER_SAMPLE = 16
@@ -160,7 +159,7 @@ async function requestGeminiAudio(
   return toDataUrl(wavBuffer.toString('base64'), 'audio/wav')
 }
 
-function toTwoSpeakerScript(sceneText: string): string {
+function toSingleSpeakerNarrationScript(sceneText: string): string {
   const lines = sceneText
     .split('\n')
     .map((line) => line.trim())
@@ -169,28 +168,34 @@ function toTwoSpeakerScript(sceneText: string): string {
   const scriptedLines = lines.map((line) => {
     const cleaned = line.replace(/\*+/g, '').trim()
 
-    // Keep explicit narrator tags if the model provided them.
     if (/^narrator\s*:/i.test(cleaned)) {
-      return `Narrator: ${cleaned.replace(/^narrator\s*:/i, '').trim()}`
+      return cleaned.replace(/^narrator\s*:/i, '').trim()
     }
 
-    // Any named speaker becomes the character channel (Gemini supports exactly 2 speakers here).
-    const namedSpeaker = cleaned.match(/^[A-Za-z][A-Za-z' -]{0,30}\s*:\s*(.+)$/)
+    const namedSpeaker = cleaned.match(/^([A-Za-z][A-Za-z' -]{0,30})\s*:\s*(.+)$/)
     if (namedSpeaker) {
-      return `Character: ${namedSpeaker[1].trim()}`
+      const speaker = namedSpeaker[1].trim()
+      const quote = namedSpeaker[2].trim().replace(/^["“]|["”]$/g, '')
+      return `${speaker} says, "${quote}".`
     }
 
-    // Pure quoted lines are treated as spoken character lines.
+    const quotedSpeaker = cleaned.match(/^([A-Za-z][A-Za-z' -]{0,30})\s*["“]\s*(.+?)\s*["”]?$/)
+    if (quotedSpeaker) {
+      const speaker = quotedSpeaker[1].trim()
+      const quote = quotedSpeaker[2].trim().replace(/^["“]|["”]$/g, '')
+      return `${speaker} says, "${quote}".`
+    }
+
     const pureQuote = cleaned.match(/^["“](.+?)["”]$/)
     if (pureQuote) {
-      return `Character: ${pureQuote[1].trim()}`
+      return `"${pureQuote[1].trim()}"`
     }
 
-    return `Narrator: ${cleaned}`
+    return cleaned
   })
 
   if (scriptedLines.length === 0) {
-    return 'Narrator: A gentle bedtime moment.'
+    return 'A gentle bedtime moment.'
   }
 
   return scriptedLines.join('\n')
@@ -206,34 +211,13 @@ export async function generateNarrationAudioUrl(text: string): Promise<string> {
 }
 
 export async function generateSceneNarrationAudioUrl(sceneText: string): Promise<string> {
-  const narratorVoice = process.env.GEMINI_TTS_NARRATOR_VOICE || process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
-  const characterVoice = process.env.GEMINI_TTS_CHARACTER_VOICE || DEFAULT_CHARACTER_VOICE_NAME
-  const scriptedScene = toTwoSpeakerScript(sceneText)
-
-  try {
-    return await requestGeminiAudio(scriptedScene, {
-      multiSpeakerVoiceConfig: {
-        speakerVoiceConfigs: [
-          {
-            speaker: 'Narrator',
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: narratorVoice },
-            },
-          },
-          {
-            speaker: 'Character',
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: characterVoice },
-            },
-          },
-        ],
-      },
-    })
-  } catch (error) {
-    // Graceful fallback to single speaker keeps narration available even if multi-speaker is unavailable.
-    console.warn('[Gemini TTS] Multi-speaker generation failed, falling back to single voice:', error)
-    return generateNarrationAudioUrl(sceneText)
-  }
+  const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
+  const scriptedScene = toSingleSpeakerNarrationScript(sceneText)
+  return requestGeminiAudio(scriptedScene, {
+    voiceConfig: {
+      prebuiltVoiceConfig: { voiceName },
+    },
+  })
 }
 
 export async function generateSceneNarrationAudioUrls(scenes: string[]): Promise<string[]> {
