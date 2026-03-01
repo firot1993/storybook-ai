@@ -250,6 +250,9 @@ export default function LibraryTab() {
     }
   }
 
+  const selectedA = characters.find(c => c.id === editingRelationship?.characterAId)
+  const selectedB = characters.find(c => c.id === editingRelationship?.characterBId)
+
   return (
     <div className="w-full">
       <div className="flex justify-center gap-2 mb-4 bg-grape-50 rounded-2xl p-1">
@@ -280,14 +283,59 @@ export default function LibraryTab() {
       </div>
 
       {activeTab === 'characters' && characters.length >= 2 && (
-        <div className="mb-6 flex justify-center">
-          <button
-            type="button"
-            onClick={openRelationshipEditor}
-            className="btn-secondary text-sm py-2.5 px-5"
-          >
-            Edit Relationship Between Two Characters
-          </button>
+        <div className="mb-8 page-enter">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-extrabold text-grape-700">Relationships &#128109;</h3>
+            <button
+              type="button"
+              onClick={openRelationshipEditor}
+              className="text-xs font-bold text-candy-500 hover:text-candy-600 bg-candy-50 hover:bg-candy-100 px-3 py-1.5 rounded-full transition-colors"
+            >
+              + New / Edit
+            </button>
+          </div>
+          
+          {relationships.length === 0 ? (
+            <div className="bg-white/50 border-2 border-dashed border-grape-100 rounded-3xl p-6 text-center">
+              <p className="text-xs text-grape-400 font-medium">No relationships defined yet. They&apos;ll help make better stories!</p>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {relationships.map((rel) => (
+                <div
+                  key={rel.id}
+                  className="bg-white border-2 border-grape-100 rounded-2xl p-2.5 pr-4 flex items-center gap-3 shadow-sm hover:shadow-md hover:border-grape-200 transition-all cursor-pointer group"
+                  onClick={() => setEditingRelationship({
+                    characterAId: rel.characterAId,
+                    characterBId: rel.characterBId,
+                    relationship: rel.relationship
+                  })}
+                >
+                  <div className="flex -space-x-3">
+                    <div className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow-sm relative">
+                      <Image src={rel.characterA.cartoonImage} alt={rel.characterA.name} fill className="object-cover" />
+                    </div>
+                    <div className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow-sm relative">
+                      <Image src={rel.characterB.cartoonImage} alt={rel.characterB.name} fill className="object-cover" />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-extrabold text-grape-400 leading-none mb-1">
+                      {rel.characterA.name} & {rel.characterB.name}
+                    </p>
+                    <p className="text-xs font-bold text-grape-700 leading-none">
+                      {rel.relationship}
+                    </p>
+                  </div>
+                  <div className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <svg className="w-3 h-3 text-grape-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6-4 1 1-4z" />
+                    </svg>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -300,68 +348,71 @@ export default function LibraryTab() {
           ))}
         </div>
       ) : activeTab === 'characters' ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 page-enter">
-          <Link
-            href="/character"
-            className="card-interactive p-0 overflow-hidden aspect-[3/4] flex flex-col items-center justify-center border-dashed border-candy-300 bg-candy-50/30 group"
-          >
-            <div className="w-14 h-14 rounded-full bg-candy-100 flex items-center justify-center text-2xl group-hover:scale-110 group-hover:rotate-12 transition-transform mb-2">
-              &#128247;
-            </div>
-            <p className="font-extrabold text-candy-600 text-sm">New Character</p>
-            <p className="text-[10px] text-candy-400 font-medium">Upload a photo</p>
-          </Link>
-          {characters.map((char) => (
-            <div key={char.id} className="group relative">
-              <div className="card-interactive p-0 overflow-hidden aspect-[3/4] flex flex-col">
-                <div className="relative flex-1 bg-grape-50">
-                  <Image
-                    src={char.cartoonImage}
-                    alt={char.name || 'Character'}
-                    fill
-                    className="object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
-                    <div className="flex gap-2">
-                      <Link
-                        href={`/story/create?characterId=${char.id}`}
-                        className="flex-1 bg-white/90 hover:bg-white text-grape-700 text-[10px] font-bold py-1.5 rounded-full text-center"
-                      >
-                        New Story
-                      </Link>
-                      <button
-                        onClick={() =>
-                          setEditingCharacter({
-                            id: char.id,
-                            name: char.name || '',
-                            description: char.description || '',
-                          })
-                        }
-                        className="bg-sky-500/90 hover:bg-sky-500 text-white p-1.5 rounded-full"
-                        aria-label="Edit character"
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6-4 1 1-4z" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget({ type: 'character', id: char.id, name: char.name })}
-                        className="bg-red-500/90 hover:bg-red-500 text-white p-1.5 rounded-full"
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+        <div className="page-enter">
+          <h3 className="font-extrabold text-grape-700 mb-4">Characters &#128101;</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <Link
+              href="/character"
+              className="card-interactive p-0 overflow-hidden aspect-[3/4] flex flex-col items-center justify-center border-dashed border-candy-300 bg-candy-50/30 group"
+            >
+              <div className="w-14 h-14 rounded-full bg-candy-100 flex items-center justify-center text-2xl group-hover:scale-110 group-hover:rotate-12 transition-transform mb-2">
+                &#128247;
+              </div>
+              <p className="font-extrabold text-candy-600 text-sm">New Character</p>
+              <p className="text-[10px] text-candy-400 font-medium">Upload a photo</p>
+            </Link>
+            {characters.map((char) => (
+              <div key={char.id} className="group relative">
+                <div className="card-interactive p-0 overflow-hidden aspect-[3/4] flex flex-col">
+                  <div className="relative flex-1 bg-grape-50">
+                    <Image
+                      src={char.cartoonImage}
+                      alt={char.name || 'Character'}
+                      fill
+                      className="object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                      <div className="flex gap-2">
+                        <Link
+                          href={`/story/create?characterId=${char.id}`}
+                          className="flex-1 bg-white/90 hover:bg-white text-grape-700 text-[10px] font-bold py-1.5 rounded-full text-center"
+                        >
+                          New Story
+                        </Link>
+                        <button
+                          onClick={() =>
+                            setEditingCharacter({
+                              id: char.id,
+                              name: char.name || '',
+                              description: char.description || '',
+                            })
+                          }
+                          className="bg-sky-500/90 hover:bg-sky-500 text-white p-1.5 rounded-full"
+                          aria-label="Edit character"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6-4 1 1-4z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget({ type: 'character', id: char.id, name: char.name })}
+                          className="bg-red-500/90 hover:bg-red-500 text-white p-1.5 rounded-full"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="p-3 bg-white text-center">
-                  <p className="font-bold text-grape-700 text-sm truncate">{char.name || 'Unnamed'}</p>
-                  <p className="text-[10px] text-candy-500 font-medium">{char._count.stories} stories</p>
+                  <div className="p-3 bg-white text-center">
+                    <p className="font-bold text-grape-700 text-sm truncate">{char.name || 'Unnamed'}</p>
+                    <p className="text-[10px] text-candy-500 font-medium">{char._count.stories} stories</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 page-enter">
@@ -488,6 +539,23 @@ export default function LibraryTab() {
           <div className="absolute inset-0 bg-black/40" onClick={() => !savingRelationship && setEditingRelationship(null)} />
           <div className="relative bg-white rounded-3xl shadow-2xl p-6 max-w-md w-full border-3 border-grape-200">
             <h2 className="text-xl font-extrabold text-grape-700 mb-4">Edit Relationship</h2>
+            
+            <div className="flex items-center justify-center gap-6 mb-8 mt-4">
+              <div className="text-center">
+                <div className="w-16 h-16 rounded-full border-4 border-white shadow-lg overflow-hidden relative mx-auto mb-2">
+                  {selectedA && <Image src={selectedA.cartoonImage} alt={selectedA.name} fill className="object-cover" />}
+                </div>
+                <p className="text-[10px] font-bold text-grape-500 truncate w-20">{selectedA?.name || 'Character 1'}</p>
+              </div>
+              <div className="text-2xl animate-pulse text-candy-400">&#10084;</div>
+              <div className="text-center">
+                <div className="w-16 h-16 rounded-full border-4 border-white shadow-lg overflow-hidden relative mx-auto mb-2">
+                  {selectedB && <Image src={selectedB.cartoonImage} alt={selectedB.name} fill className="object-cover" />}
+                </div>
+                <p className="text-[10px] font-bold text-grape-500 truncate w-20">{selectedB?.name || 'Character 2'}</p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-sm font-bold text-grape-600 mb-2">Character 1</label>
@@ -504,7 +572,7 @@ export default function LibraryTab() {
                       relationship: getRelationshipText(nextA, nextB),
                     })
                   }}
-                  className="input"
+                  className="input text-xs"
                 >
                   {characters.map((char) => (
                     <option key={char.id} value={char.id}>
@@ -528,7 +596,7 @@ export default function LibraryTab() {
                       relationship: getRelationshipText(nextA, nextB),
                     })
                   }}
-                  className="input"
+                  className="input text-xs"
                 >
                   {characters.map((char) => (
                     <option key={char.id} value={char.id}>
@@ -538,15 +606,15 @@ export default function LibraryTab() {
                 </select>
               </div>
             </div>
-            <label className="block text-sm font-bold text-grape-600 mb-2">Relationship</label>
+            <label className="block text-sm font-bold text-grape-600 mb-2">How are they related?</label>
             <input
               type="text"
               value={editingRelationship.relationship}
               onChange={(e) => setEditingRelationship((prev) => (prev ? { ...prev, relationship: e.target.value } : prev))}
               className="input"
-              placeholder="siblings, cousins, best friends..."
+              placeholder="e.g. siblings, cousins, best friends..."
             />
-            <p className="text-xs text-grape-400 mt-2">Leave blank to remove relationship for this pair.</p>
+            <p className="text-[10px] text-grape-400 mt-2 italic font-medium">Leave blank to remove the relationship.</p>
             <div className="flex gap-3 mt-6">
               <button
                 type="button"

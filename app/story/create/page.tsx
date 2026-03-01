@@ -64,6 +64,8 @@ function CreateStoryContent() {
   const [ageGroup, setAgeGroup] = useState<'2-4' | '4-6' | '6-8'>('4-6')
   const [characters, setCharacters] = useState<Character[]>([])
   const [allCharacters, setAllCharacters] = useState<Character[]>([])
+  const [relationship, setRelationship] = useState('')
+  const [isRelationshipLoading, setIsRelationshipLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [progressStep, setProgressStep] = useState(0)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -85,6 +87,26 @@ function CreateStoryContent() {
     }
   }, [loading])
 
+  const fetchRelationship = useCallback(async (ids: string[]) => {
+    if (ids.length !== 2) {
+      setRelationship('')
+      return
+    }
+    
+    setIsRelationshipLoading(true)
+    try {
+      const res = await fetch(`/api/relationship?characterAId=${ids[0]}&characterBId=${ids[1]}`)
+      if (res.ok) {
+        const data = await res.json()
+        setRelationship(data.relationship?.relationship || '')
+      }
+    } catch (error) {
+      console.error('Error fetching relationship:', error)
+    } finally {
+      setIsRelationshipLoading(false)
+    }
+  }, [])
+
   const fetchAllCharacters = useCallback(async () => {
     try {
       const res = await fetch('/api/character')
@@ -103,13 +125,15 @@ function CreateStoryContent() {
     const initialize = async () => {
       await fetchAllCharacters()
       
+      let initialCharacters: Character[] = []
       if (characterId) {
         try {
           const res = await fetch(`/api/character/${characterId}`)
           if (res.ok) {
             const data = await res.json()
             if (data?.character) {
-              setCharacters([data.character])
+              initialCharacters = [data.character]
+              setCharacters(initialCharacters)
             }
           }
         } catch (error) {
@@ -119,7 +143,8 @@ function CreateStoryContent() {
         const stored = localStorage.getItem('currentCharacter')
         if (stored) {
           const char = JSON.parse(stored)
-          setCharacters([char])
+          initialCharacters = [char]
+          setCharacters(initialCharacters)
           localStorage.removeItem('currentCharacter')
         }
       }
@@ -131,15 +156,24 @@ function CreateStoryContent() {
 
   const toggleCharacter = (char: Character) => {
     setCharacters((prev) => {
+      let next: Character[]
       const exists = prev.some((c) => c.id === char.id)
       if (exists) {
-        return prev.filter((c) => c.id !== char.id)
-      }
-      if (prev.length >= 3) {
+        next = prev.filter((c) => c.id !== char.id)
+      } else if (prev.length >= 3) {
         showToast('You can pick up to 3 characters!', 'error')
         return prev
+      } else {
+        next = [...prev, char]
       }
-      return [...prev, char]
+      
+      if (next.length === 2) {
+        fetchRelationship(next.map(c => c.id))
+      } else {
+        setRelationship('')
+      }
+      
+      return next
     })
   }
 
@@ -178,6 +212,19 @@ function CreateStoryContent() {
 
     setLoading(true)
     try {
+      // Save relationship if 2 characters are picked
+      if (characters.length === 2 && relationship.trim()) {
+        await fetch('/api/relationship', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            characterAId: characters[0].id,
+            characterBId: characters[1].id,
+            relationship: relationship.trim(),
+          }),
+        })
+      }
+
       const response = await fetch('/api/story/options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -187,6 +234,7 @@ function CreateStoryContent() {
           characterDescriptions: characters.map((c) => c.description || ''),
           keywords,
           ageGroup,
+          relationship: relationship.trim(),
         }),
       })
 
@@ -196,6 +244,7 @@ function CreateStoryContent() {
         localStorage.setItem('storyKeywords', keywords)
         localStorage.setItem('ageGroup', ageGroup)
         localStorage.setItem('currentCharacters', JSON.stringify(characters))
+        localStorage.setItem('storyRelationship', relationship.trim())
         router.push('/story/options')
       } else {
         const data = (await response.json().catch(() => null)) as { error?: string; details?: unknown } | null
@@ -328,6 +377,38 @@ function CreateStoryContent() {
               </div>
             )}
           </div>
+
+          {characters.length >= 2 && (
+            <div className="mb-10 animate-fade-in">
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="font-bold text-grape-600">
+                  {characters.length === 2 ? 'How are they related?' : 'How do they know each other?'}
+                </h3>
+                {isRelationshipLoading && (
+                  <div className="w-4 h-4 border-2 border-grape-200 border-t-grape-500 rounded-full animate-spin" />
+                )}
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={relationship}
+                  onChange={(e) => setRelationship(e.target.value)}
+                  placeholder={characters.length === 2 
+                    ? `e.g. ${characters[0].name} and ${characters[1].name} are best friends` 
+                    : "e.g. They are all cousins visiting the beach"}
+                  className="input pr-10"
+                />
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xl">
+                  {characters.length === 2 ? '\u{1F46D}' : '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}'}
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-candy-500 font-medium italic">
+                {characters.length === 2 
+                  ? "This helps the AI write better interactions between them!"
+                  : "Tell us how this group of friends interacts!"}
+              </p>
+            </div>
+          )}
 
           <div className="mb-10">
             <h3 className="font-bold text-grape-600 mb-4">Choose an adventure theme</h3>

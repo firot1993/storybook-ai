@@ -66,6 +66,7 @@ export default function StoryOptionsPage() {
 
     const storedKeywords = localStorage.getItem('storyKeywords') || ''
     const storedAgeGroup = localStorage.getItem('ageGroup') || '4-6'
+    const storedRelationship = localStorage.getItem('storyRelationship') || ''
     const selectedOption = options[index]
 
     setSelectedIndex(index)
@@ -85,6 +86,7 @@ export default function StoryOptionsPage() {
           optionDescription: selectedOption?.description,
           keywords: storedKeywords,
           ageGroup: storedAgeGroup,
+          relationship: storedRelationship,
         }),
       })
 
