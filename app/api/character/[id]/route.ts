@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCharacter, updateCharacter, deleteCharacter } from '@/lib/db'
+import { assignCharacterVoice } from '@/lib/gemini'
 
 export async function GET(
   _request: NextRequest,
@@ -18,14 +19,36 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const { name, description } = await request.json()
-  
-  const updateData: { name?: string; description?: string } = {}
-  if (typeof name === 'string' && name.trim()) {
-    updateData.name = name.trim()
+  const body = await request.json()
+
+  if (body.action === 'assignVoice') {
+    const character = await getCharacter(id)
+    if (!character) {
+      return NextResponse.json({ error: 'Character not found' }, { status: 404 })
+    }
+    try {
+      const { voiceName, reason } = await assignCharacterVoice(
+        character.name,
+        character.age,
+        character.style,
+        character.voiceName || undefined  // exclude current voice so re-assign picks a different one
+      )
+      const updated = await updateCharacter(id, { voiceName })
+      return NextResponse.json({ character: updated, voiceName, reason })
+    } catch {
+      return NextResponse.json({ error: 'Voice assignment failed' }, { status: 500 })
+    }
   }
-  if (typeof description === 'string') {
-    updateData.description = description.trim()
+
+  const updateData: { name?: string; age?: number | null; voiceName?: string } = {}
+  if (typeof body.name === 'string' && body.name.trim()) {
+    updateData.name = body.name.trim()
+  }
+  if (typeof body.age === 'number') {
+    updateData.age = body.age
+  }
+  if (typeof body.voiceName === 'string') {
+    updateData.voiceName = body.voiceName
   }
 
   if (Object.keys(updateData).length === 0) {

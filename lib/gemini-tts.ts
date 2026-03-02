@@ -201,6 +201,14 @@ function toSingleSpeakerNarrationScript(sceneText: string): string {
   return scriptedLines.join('\n')
 }
 
+export async function generateVoicePreviewAudioUrl(voiceName: string, text: string): Promise<string> {
+  return requestGeminiAudio(text, {
+    voiceConfig: {
+      prebuiltVoiceConfig: { voiceName },
+    },
+  })
+}
+
 export async function generateNarrationAudioUrl(text: string): Promise<string> {
   const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
   return requestGeminiAudio(text, {
