@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateStoryOptionsWithDiagnostics, getGeminiErrorResponse } from '@/lib/gemini'
-import { getRelationshipForCharacters } from '@/lib/db'
 
 // POST /api/story/options - Generate story options based on local character data
 export async function POST(request: NextRequest) {
   try {
-    const { characterName, characterNames, characterIds, keywords, ageGroup, characterDescriptions, relationship } = await request.json()
+    const { characterName, characterNames, keywords, ageGroup, relationship } = await request.json()
 
     if (!keywords) {
       return NextResponse.json(
@@ -33,10 +32,7 @@ export async function POST(request: NextRequest) {
       typeof relationship === 'string' && relationship.trim().length > 0
         ? relationship.trim()
         : ''
-    const normalizedCharacterIds: string[] = Array.isArray(characterIds)
-      ? characterIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
-      : []
-    const normalizedRelationship = providedRelationship || await getRelationshipForCharacters(normalizedCharacterIds) || undefined
+    const normalizedRelationship = providedRelationship || undefined
 
     let optionsResult: Awaited<ReturnType<typeof generateStoryOptionsWithDiagnostics>>
     try {
@@ -44,7 +40,7 @@ export async function POST(request: NextRequest) {
         names,
         keywords,
         normalizedAgeGroup,
-        characterDescriptions,
+        undefined,
         normalizedRelationship
       )
     } catch (error) {

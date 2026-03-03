@@ -1,161 +1,166 @@
+/* ── Google Fonts ─────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    @apply antialiased font-baloo;
+    @apply antialiased font-display;
   }
 }
 
+/* ── Component system ─────────────────────────────────────────── */
 @layer components {
+
+  /* Primary button: forest green gradient */
   .btn-primary {
-    @apply bg-gradient-to-r from-candy-500 to-grape-500 hover:from-candy-600 hover:to-grape-600 active:scale-95 text-white font-bold py-4 px-8 rounded-full transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 text-lg;
+    @apply bg-gradient-to-r from-forest-500 to-forest-600
+           hover:from-forest-600 hover:to-forest-700
+           active:scale-95 text-white font-bold
+           py-4 px-8 rounded-xl transition-all duration-200
+           shadow-lg shadow-forest-500/20 hover:shadow-xl hover:shadow-forest-500/30
+           hover:scale-[1.02] text-base;
   }
 
+  /* Secondary button: white with ember border */
   .btn-secondary {
-    @apply bg-white hover:bg-sun-50 active:scale-95 text-grape-700 font-bold py-4 px-8 rounded-full border-3 border-grape-300 hover:border-grape-400 transition-all duration-200 text-lg;
+    @apply bg-white/80 hover:bg-forest-50 active:scale-95
+           text-forest-700 font-bold py-4 px-8 rounded-xl
+           border-2 border-forest-200 hover:border-forest-400
+           transition-all duration-200 text-base
+           backdrop-blur-sm;
   }
 
+  /* Card: frosted glass with forest accent border */
   .card {
-    @apply bg-gradient-to-br from-white to-candy-50 rounded-3xl shadow-lg p-6 border-2 border-candy-200 transition-shadow duration-200;
+    @apply bg-white/70 backdrop-blur-sm rounded-2xl shadow-md p-6
+           border border-forest-100 transition-shadow duration-200;
   }
 
+  /* Interactive card: lifts on hover */
   .card-interactive {
-    @apply bg-gradient-to-br from-white to-sky-50 rounded-3xl shadow-lg p-6 border-2 border-sky-200 transition-all duration-200 hover:shadow-xl hover:-translate-y-1 hover:scale-[1.02];
+    @apply bg-white/70 backdrop-blur-sm rounded-2xl shadow-md p-6
+           border border-forest-100 transition-all duration-200
+           hover:shadow-xl hover:-translate-y-1 hover:scale-[1.02]
+           hover:border-forest-300 cursor-pointer;
   }
 
+  /* Input */
   .input {
-    @apply w-full px-5 py-4 border-3 border-grape-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-candy-300 focus:border-candy-400 transition-all duration-200 text-lg bg-white;
+    @apply w-full px-5 py-3.5 border-2 border-forest-200 rounded-xl
+           focus:outline-none focus:ring-4 focus:ring-forest-200
+           focus:border-forest-400 transition-all duration-200
+           text-base bg-white/80 backdrop-blur-sm
+           placeholder:text-slate-400 font-medium text-slate-800;
   }
 
+  /* Page enter animation */
   .page-enter {
-    animation: pageEnter 0.5s ease-out;
+    animation: pageEnter 0.45s ease-out;
+  }
+
+  /* Frosted header/nav */
+  .glass-header {
+    @apply bg-white/80 backdrop-blur-md border-b border-forest-100
+           shadow-sm sticky top-0 z-50;
   }
 }
 
+/* ── Keyframes ────────────────────────────────────────────────── */
 @keyframes pageEnter {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; transform: translateY(18px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 @keyframes sceneTransition {
-  from {
-    opacity: 0;
-    transform: scale(1.02);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  from { opacity: 0; transform: scale(1.02); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
-.animate-slide-in {
-  animation: slideIn 0.4s ease-out;
+@keyframes bounceStar {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25%       { transform: translateY(-8px) rotate(10deg); }
+  75%       { transform: translateY(-4px) rotate(-5deg); }
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.4s ease-out;
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-10px); }
 }
 
-.animate-scene {
-  animation: sceneTransition 0.4s ease-out;
-}
-
-.animate-shimmer {
-  animation: shimmer 1.5s linear infinite;
-}
-
-/* Drag-and-drop active state */
-.drop-active {
-  @apply border-candy-500 bg-candy-50;
-}
-
-/* Skeleton shimmer */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
 }
 
+@keyframes pageTurn {
+  0%   { opacity: 0; transform: rotateY(-8deg) scale(0.96); }
+  100% { opacity: 1; transform: rotateY(0) scale(1); }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25%       { transform: rotate(-5deg); }
+  75%       { transform: rotate(5deg); }
+}
+
+/* ── Animation utilities ──────────────────────────────────────── */
+.animate-slide-in      { animation: slideIn 0.4s ease-out; }
+.animate-fade-in       { animation: fadeIn 0.4s ease-out; }
+.animate-scene         { animation: sceneTransition 0.4s ease-out; }
+.animate-bounce-star   { animation: bounceStar 2s ease-in-out infinite; }
+.animate-float         { animation: float 3s ease-in-out infinite; }
+.animate-page-turn     { animation: pageTurn 0.4s ease-out; transform-origin: left center; }
+.animate-wiggle        { animation: wiggle 0.3s ease-in-out; }
+.animate-shimmer       { animation: shimmer 1.5s linear infinite; }
+
+.group:hover .group-hover\:animate-wiggle { animation: wiggle 0.5s ease-in-out; }
+
+/* ── Skeleton loader ──────────────────────────────────────────── */
 .skeleton {
-  @apply bg-candy-100 rounded-2xl;
-  background: linear-gradient(90deg, #fce7f3 25%, #fdf2f8 50%, #fce7f3 75%);
+  @apply rounded-xl;
+  background: linear-gradient(90deg, #dcfce7 25%, #f0fdf4 50%, #dcfce7 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
 
-/* Rainbow gradient text */
-.rainbow-text {
-  background: linear-gradient(to right, #ec4899, #f59e0b, #10b981, #0ea5e9, #8b5cf6);
+/* ── Background pattern (dot grid) ───────────────────────────── */
+.bg-dot-pattern {
+  background-image:
+    radial-gradient(#86efac 0.5px, transparent 0.5px),
+    radial-gradient(#fde047 0.5px, #f0fdf4 0.5px);
+  background-size: 20px 20px;
+  background-position: 0 0, 10px 10px;
+}
+
+/* ── Gradient text ────────────────────────────────────────────── */
+.forest-text {
+  background: linear-gradient(135deg, #22c55e, #4ade80, #facc15);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Bouncy star animation */
-@keyframes bounceStar {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  25% { transform: translateY(-8px) rotate(10deg); }
-  75% { transform: translateY(-4px) rotate(-5deg); }
+.rainbow-text {
+  background: linear-gradient(to right, #22c55e, #facc15, #fb923c, #22c55e);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.animate-bounce-star {
-  animation: bounceStar 2s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-
-.animate-float {
-  animation: float 3s ease-in-out infinite;
-}
-
-/* Page turn effect for story reader */
-@keyframes pageTurn {
-  0% { opacity: 0; transform: rotateY(-8deg) scale(0.96); }
-  100% { opacity: 1; transform: rotateY(0) scale(1); }
-}
-
-.animate-page-turn {
-  animation: pageTurn 0.4s ease-out;
-  transform-origin: left center;
-}
-
-/* Wiggle animation for feature cards */
-@keyframes wiggle {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-5deg); }
-  75% { transform: rotate(5deg); }
-}
-
-.animate-wiggle {
-  animation: wiggle 0.3s ease-in-out;
-}
-
-.group:hover .group-hover\:animate-wiggle {
-  animation: wiggle 0.5s ease-in-out;
+/* ── Drop-zone drag state ─────────────────────────────────────── */
+.drop-active {
+  @apply border-forest-500 bg-forest-50;
 }

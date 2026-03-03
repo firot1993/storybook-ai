@@ -9,35 +9,102 @@ datasource db {
 model Character {
   id            String   @id @default(cuid())
   name          String   @default("")
-  description   String   @default("")
-  originalImage String
+  originalImage String   @default("")
   cartoonImage  String
+  styleImages   String   @default("{}")
+  style         String   @default("")
+  age           Int?
+  voiceName     String   @default("")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  stories       Story[]
-  relationshipsA CharacterRelationship[] @relation("RelationshipA")
-  relationshipsB CharacterRelationship[] @relation("RelationshipB")
+}
+
+model Storybook {
+  id         String   @id @default(cuid())
+  name       String
+  ageRange   String   @default("4-6")  // "2-4" | "4-6" | "6-8"
+  styleId    String   @default("")
+  characters String   @default("[]")   // JSON: [{id, role: "protagonist"|"supporting"}]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  chapters Story[]
+}
+
+model Synopsis {
+  id           String   @id @default(cuid())
+  characterIds String   @default("[]")
+  theme        String   @default("")
+  keywords     String   @default("")
+  ageGroup     String   @default("4-6")
+  content      String
+  createdAt    DateTime @default(now())
+
+  stories Story[]
 }
 
 model Story {
-  id         String      @id @default(cuid())
-  title      String
-  content    String
-  images     String      @default("[]")
-  audioUrl   String      @default("")
-  createdAt  DateTime    @default(now())
-  characters Character[]
+  id           String   @id @default(cuid())
+  storybookId  String?
+  synopsisId   String?
+  characterIds String   @default("[]")
+  title        String
+  synopsis     String   @default("")   // selected synopsis text (A/B/C)
+  content      String
+  mainImage    String   @default("")   // first scene image (style reference)
+  status       String   @default("draft") // draft | generating | complete
+  images       String   @default("[]")
+  audioUrl     String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  storybook     Storybook?     @relation(fields: [storybookId], references: [id])
+  synopsis_rel  Synopsis?      @relation(fields: [synopsisId], references: [id])
+  scripts       Script[]
+  videoProjects VideoProject[]
+  scenes        Scene[]
 }
 
-model CharacterRelationship {
-  id           String    @id @default(cuid())
-  pairKey      String    @unique
-  characterAId String
-  characterBId String
-  relationship String    @default("")
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+model Scene {
+  id        String   @id @default(cuid())
+  storyId   String
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  index     Int
+  script    String   @default("")    // 该分镜的脚本文案
+  imageUrl  String   @default("")    // nano banana 生成的分镜图
+  lastFrame String   @default("")    // 末帧图（下一分镜连续性参考）
+  videoUrl  String   @default("")    // veo 生成的视频
+  status    String   @default("pending") // pending | img_gen | vid_gen | done | failed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
-  characterA Character @relation("RelationshipA", fields: [characterAId], references: [id], onDelete: Cascade)
-  characterB Character @relation("RelationshipB", fields: [characterBId], references: [id], onDelete: Cascade)
+model Script {
+  id            String   @id @default(cuid())
+  storyId       String
+  scenesJson    String   @default("[]")
+  totalDuration Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  story         Story          @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  videoProjects VideoProject[]
+}
+
+model VideoProject {
+  id             String   @id @default(cuid())
+  storyId        String
+  scriptId       String
+  status         String   @default("pending")
+  progress       Int      @default(0)
+  sceneVideoUrls String   @default("[]")
+  rawVideoUrl    String   @default("")
+  subtitlesJson  String   @default("[]")
+  finalVideoUrl  String   @default("")
+  errorMessage   String   @default("")
+  videoSettings  String   @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  story  Story  @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  script Script @relation(fields: [scriptId], references: [id])
 }

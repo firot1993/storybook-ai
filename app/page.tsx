@@ -1,106 +1,71 @@
-'use client'
-
-import { useState } from 'react'
 import Link from 'next/link'
-import LibraryTab from '@/components/library-tab'
 
 export default function Home() {
-  const [tab, setTab] = useState<'create' | 'library'>('create')
-
   return (
-    <div className="min-h-screen flex flex-col items-center px-4 pt-8 pb-16">
-      {/* Tab pills */}
-      <div className="flex gap-2 mb-8 bg-white/60 rounded-full p-1.5 border border-grape-100 shadow-sm">
-        <button
-          onClick={() => setTab('create')}
-          className={`px-6 py-2.5 rounded-full text-sm font-bold transition-all ${
-            tab === 'create'
-              ? 'bg-gradient-to-r from-candy-500 to-grape-500 text-white shadow-md'
-              : 'text-grape-500 hover:bg-grape-50'
-          }`}
-        >
-          Create New
-        </button>
-        <button
-          onClick={() => setTab('library')}
-          className={`px-6 py-2.5 rounded-full text-sm font-bold transition-all ${
-            tab === 'library'
-              ? 'bg-gradient-to-r from-candy-500 to-grape-500 text-white shadow-md'
-              : 'text-grape-500 hover:bg-grape-50'
-          }`}
-        >
-          My Library
-        </button>
+    <div className="min-h-[calc(100vh-60px)] flex flex-col items-center px-4 pt-10 pb-20">
+      <div className="text-center max-w-2xl page-enter flex-1 flex flex-col justify-center w-full">
+
+        {/* Badge */}
+        <div className="inline-flex items-center gap-2 mb-6 px-4 py-1.5 bg-forest-100 text-forest-700 rounded-full text-xs font-bold mx-auto border border-forest-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-forest-500 animate-pulse" />
+          由 Gemini AI 驱动
+        </div>
+
+        {/* Hero title */}
+        <h1 className="text-5xl md:text-7xl font-bold mb-5 leading-tight tracking-tight forest-text">
+          童梦奇缘
+        </h1>
+
+        <p className="text-lg md:text-xl text-slate-600 mb-10 leading-relaxed font-medium max-w-lg mx-auto">
+          上传照片，创建专属角色，让 AI 为你生成独一无二的绘本故事与视频 ✨
+        </p>
+
+        {/* CTA buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 justify-center mb-16">
+          <Link
+            href="/story/create"
+            className="btn-primary inline-flex items-center justify-center gap-2 py-4 px-8 text-base"
+          >
+            <span>开始创作故事</span>
+            <span>📖</span>
+          </Link>
+          <Link
+            href="/character"
+            className="btn-secondary inline-flex items-center justify-center gap-2 py-4 px-8 text-base"
+          >
+            <span>创建角色</span>
+            <span>📸</span>
+          </Link>
+        </div>
+
+        {/* Feature cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
+          <div className="card-interactive group bg-gradient-to-br from-white to-forest-50 border-forest-100">
+            <div className="text-3xl mb-3 group-hover:animate-wiggle inline-block">📸</div>
+            <h3 className="font-bold text-base mb-1.5 text-forest-800">AI 角色生成</h3>
+            <p className="text-slate-500 text-sm leading-relaxed">上传照片，一键生成绘本风格角色肖像</p>
+          </div>
+
+          <div className="card-interactive group bg-gradient-to-br from-white to-honey-50 border-honey-100">
+            <div className="text-3xl mb-3 group-hover:animate-wiggle inline-block">✨</div>
+            <h3 className="font-bold text-base mb-1.5 text-honey-700">智能故事创作</h3>
+            <p className="text-slate-500 text-sm leading-relaxed">AI 根据角色形象自动生成个性化故事内容</p>
+          </div>
+
+          <div className="card-interactive group bg-gradient-to-br from-white to-ember-50 border-ember-100">
+            <div className="text-3xl mb-3 group-hover:animate-wiggle inline-block">🎬</div>
+            <h3 className="font-bold text-base mb-1.5 text-ember-700">视频生成</h3>
+            <p className="text-slate-500 text-sm leading-relaxed">配音、配图、合成视频，一键生成绘本动画</p>
+          </div>
+        </div>
+
+        {/* Bottom decorative text */}
+        <div className="mt-16 flex justify-center items-center gap-8 opacity-30">
+          <span className="text-3xl">🌿</span>
+          <span className="text-2xl">🌸</span>
+          <span className="text-3xl">🍀</span>
+        </div>
       </div>
-
-      {tab === 'create' ? (
-        <div className="text-center max-w-2xl page-enter flex-1 flex flex-col justify-center">
-          <div className="inline-block mb-4 px-5 py-2 bg-gradient-to-r from-sun-200 to-candy-200 text-candy-700 rounded-full text-sm font-bold">
-            Powered by Gemini AI
-          </div>
-
-          <h1 className="text-5xl md:text-7xl font-extrabold mb-6 leading-tight rainbow-text">
-            Storybook AI
-          </h1>
-
-          <p className="text-xl md:text-2xl text-grape-600 mb-10 leading-relaxed font-medium">
-            Make your very own story! Create a character or start a new adventure!
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/story/create"
-              className="btn-primary text-xl inline-flex items-center justify-center gap-3 py-5 px-10"
-            >
-              Create Story
-              <span className="text-2xl">&#128214;</span>
-            </Link>
-            <Link
-              href="/character"
-              className="btn-secondary text-xl inline-flex items-center justify-center gap-3 py-5 px-10"
-            >
-              Make Character
-              <span className="text-2xl">&#128247;</span>
-            </Link>
-          </div>
-
-          <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
-            <div className="card-interactive group bg-gradient-to-br from-candy-50 to-candy-100 border-candy-200">
-              <div className="text-4xl mb-4 group-hover:animate-wiggle inline-block">
-                &#128247;
-              </div>
-              <h3 className="font-bold text-xl mb-2 text-candy-700">Make Friends</h3>
-              <p className="text-candy-600 text-sm leading-relaxed">Turn any photo into a cartoon friend to use in your stories!</p>
-            </div>
-
-            <div className="card-interactive group bg-gradient-to-br from-grape-50 to-grape-100 border-grape-200">
-              <div className="text-4xl mb-4 group-hover:animate-wiggle inline-block">
-                &#10024;
-              </div>
-              <h3 className="font-bold text-xl mb-2 text-grape-700">AI Magic</h3>
-              <p className="text-grape-600 text-sm leading-relaxed">Magic makes your characters and stories come to life!</p>
-            </div>
-
-            <div className="card-interactive group bg-gradient-to-br from-sun-50 to-sun-100 border-sun-200">
-              <div className="text-4xl mb-4 group-hover:animate-wiggle inline-block">
-                &#128101;
-              </div>
-              <h3 className="font-bold text-xl mb-2 text-sun-700">Multi-Character</h3>
-              <p className="text-sun-600 text-sm leading-relaxed">Pick up to 3 friends to go on an adventure together!</p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="w-full max-w-2xl page-enter">
-          <h2 className="text-3xl font-extrabold text-grape-700 text-center mb-2">
-            My Library &#128218;
-          </h2>
-          <p className="text-candy-500 text-center mb-4">
-            Your characters and stories
-          </p>
-          <LibraryTab />
-        </div>
-      )}
     </div>
   )
 }

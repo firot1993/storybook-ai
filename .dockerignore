@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env*
+node_modules
+.next
+image-file
+README.md
+ARCHITECTURE.md
+GEMINI.md
+MODIFICATION_PLAN.md
+AGENTS.md
+*.log

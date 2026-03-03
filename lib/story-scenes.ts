@@ -1,5 +1,14 @@
+export function extractStoryChoices(content: string): string[] {
+  const match = content.match(/<!--CHOICES:(.*?)-->/)
+  if (!match) return []
+  try { return JSON.parse(match[1]) as string[] } catch { return [] }
+}
+
 export function splitStoryIntoScenes(content: string): string[] {
-  const normalized = typeof content === 'string' ? content.trim() : ''
+  // Strip the choices marker before parsing scenes
+  const normalized = typeof content === 'string'
+    ? content.replace(/<!--CHOICES:.*?-->/, '').trim()
+    : ''
   if (!normalized) return []
 
   // Preferred format from prompts: [Scene 1], [Scene 2], ...

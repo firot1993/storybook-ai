@@ -13,10 +13,10 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Story, Character } from '@/types'
+import { Story, Character, VideoProject } from '@/types'
 import { getCurrentStoryFromIndexedDB, setCurrentStoryInIndexedDB } from '@/lib/client-story-store'
 import { showToast } from '@/components/toast'
-import { splitStoryIntoScenes } from '@/lib/story-scenes'
+import { splitStoryIntoScenes, extractStoryChoices } from '@/lib/story-scenes'
 
 function formatAudioTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -117,6 +117,64 @@ function parseSceneLines(rawText: string): StoryLine[] {
   return mergeNearbyNarrationLines(lines)
 }
 
+function VideoStartButton({
+  storyId,
+  onStarted,
+  label = '🎬 开始制作视频',
+}: {
+  storyId: string
+  onStarted: (vp: VideoProject) => void
+  label?: string
+}) {
+  const [loading, setLoading] = useState(false)
+
+  const handleStart = useCallback(async () => {
+    if (loading) return
+    setLoading(true)
+    try {
+      const scriptRes = await fetch('/api/story/director-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId }),
+      })
+      if (!scriptRes.ok) throw new Error('Script generation failed')
+      const { script } = await scriptRes.json() as { script: { id: string } }
+
+      const videoRes = await fetch('/api/video/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scriptId: script.id, storyId }),
+      })
+      if (!videoRes.ok) throw new Error('Video start failed')
+      const { videoProject } = await videoRes.json() as { videoProject: VideoProject }
+      onStarted(videoProject)
+    } catch {
+      showToast('视频启动失败，请重试', 'error')
+      setLoading(false)
+    }
+  }, [loading, storyId, onStarted])
+
+  return (
+    <button
+      onClick={handleStart}
+      disabled={loading}
+      className="mt-3 w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-forest-500 hover:bg-forest-600 active:scale-95 text-white font-extrabold text-sm transition-all shadow-lg shadow-forest-500/25 disabled:opacity-70 disabled:cursor-not-allowed"
+    >
+      {loading ? (
+        <>
+          <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+          脚本生成中，请稍候…
+        </>
+      ) : (
+        <>{label}</>
+      )}
+    </button>
+  )
+}
+
 export default function PlayStoryPage() {
   return (
     <Suspense fallback={
@@ -143,6 +201,7 @@ function PlayStoryContent() {
   const [focusTextMode, setFocusTextMode] = useState(false)
   const [isRegeneratingAudio, setIsRegeneratingAudio] = useState(false)
   const [sceneKey, setSceneKey] = useState(0)
+  const [videoProject, setVideoProject] = useState<VideoProject | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -170,6 +229,7 @@ function PlayStoryContent() {
             const data = await res.json()
             if (active && data.story) {
               setStory(data.story)
+              if (data.videoProject) setVideoProject(data.videoProject)
               if (data.characters && data.characters.length > 0) {
                 setCharacters(data.characters)
               }
@@ -227,6 +287,27 @@ function PlayStoryContent() {
       }
     }
   }, [router, searchParams])
+
+  // Poll video project status while generation is in progress
+  useEffect(() => {
+    const urlStoryId = searchParams.get('id')
+    if (!urlStoryId || !videoProject) return
+    const isTerminal = videoProject.status === 'complete' || videoProject.status === 'failed'
+    if (isTerminal) return
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/story/${urlStoryId}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.videoProject) setVideoProject(data.videoProject)
+        }
+      } catch { /* ignore polling errors */ }
+    }, 3000)
+
+    return () => clearInterval(interval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoProject?.status, searchParams])
 
   useEffect(() => {
     if (!storyId) return
@@ -514,6 +595,12 @@ function PlayStoryContent() {
     }
   }, [isRegeneratingAudio, persistStoryLocally, searchParams, story])
 
+  // Interactive choices from open-ended story hook
+  const storyChoices = useMemo(() => {
+    if (!story) return []
+    return extractStoryChoices(story.content)
+  }, [story])
+
   const sceneLines = useMemo(() => {
     if (!story) return []
 
@@ -544,7 +631,7 @@ function PlayStoryContent() {
       : 'text-base sm:text-lg leading-6 sm:leading-7'
   const readerSizeLabel = readerTextSize === 'sm' ? 'Small' : readerTextSize === 'md' ? 'Medium' : 'Large'
 
-  if (!story || characters.length === 0) {
+  if (!story) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-4xl animate-bounce-star">&#10024;</div>
@@ -591,6 +678,120 @@ function PlayStoryContent() {
         </Link>
       </div>
 
+      {/* Video / Cover section */}
+      {(() => {
+        const VIDEO_STAGES = [
+          { status: 'pending',           label: '脚本设计中',  emoji: '📝', etaMin: 5 },
+          { status: 'generating_images', label: '分镜绘制中',  emoji: '🎨', etaMin: 8 },
+          { status: 'generating_audio',  label: '故事配音中',  emoji: '🎙️', etaMin: 3 },
+          { status: 'composing',         label: '视频合成中',  emoji: '🎬', etaMin: 4 },
+          { status: 'editing',           label: '视频剪辑中',  emoji: '✂️', etaMin: 2 },
+          { status: 'adding_subtitles',  label: '增加字幕中',  emoji: '💬', etaMin: 1 },
+        ]
+        const urlStoryId = searchParams.get('id')
+        const isFailed = videoProject?.status === 'failed'
+        const isInProgress = videoProject &&
+          videoProject.status !== 'complete' && videoProject.status !== 'failed'
+        const stageIdx = isInProgress
+          ? Math.max(VIDEO_STAGES.findIndex(s => s.status === videoProject.status), 0)
+          : 0
+        const stage = VIDEO_STAGES[stageIdx]
+        const remaining = isInProgress
+          ? VIDEO_STAGES.slice(stageIdx).reduce((a, s) => a + s.etaMin, 0) : 0
+        const etaLabel = remaining <= 1 ? '约 1 分钟' : `约 ${remaining} 分钟`
+
+        return (
+          <div className="max-w-2xl mx-auto w-full mb-4">
+            {/* Step 3 badge — only when generating */}
+            {isInProgress && (
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-full bg-forest-500 flex items-center justify-center shrink-0">
+                  <span className="text-white text-[10px] font-extrabold">3</span>
+                </div>
+                <span className="text-sm font-extrabold text-forest-700">第三步：视频制作中</span>
+                <span className="text-[10px] text-gray-400 ml-1">· 每 3 秒自动刷新</span>
+              </div>
+            )}
+
+            {/* Completed video player */}
+            {videoProject?.finalVideoUrl ? (
+              <div className="relative aspect-video rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/10 bg-black">
+                <video
+                  src={videoProject.finalVideoUrl}
+                  controls
+                  playsInline
+                  autoPlay
+                  poster={story.mainImage || undefined}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              /* Cover image — with progress overlay when generating */
+              <div
+                className="relative aspect-video rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/10 bg-forest-100"
+                style={story.mainImage ? { backgroundImage: `url(${story.mainImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+              >
+                <div className={`absolute inset-0 transition-all ${isInProgress ? 'bg-black/55' : 'bg-black/25'}`} />
+
+                {isInProgress ? (
+                  /* Centred circular progress on cover */
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <div className="relative w-20 h-20 mb-3">
+                      <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
+                        <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="6" />
+                        <circle
+                          cx="40" cy="40" r="32" fill="none" stroke="white" strokeWidth="6"
+                          strokeDasharray={`${2 * Math.PI * 32}`}
+                          strokeDashoffset={`${2 * Math.PI * 32 * (1 - (videoProject?.progress ?? 0) / 100)}`}
+                          strokeLinecap="round"
+                          className="transition-all duration-700"
+                        />
+                      </svg>
+                      <span className="absolute inset-0 flex items-center justify-center text-white font-extrabold text-sm">
+                        {videoProject?.progress ?? 0}%
+                      </span>
+                    </div>
+                    <p className="text-white font-extrabold text-sm mb-0.5">{stage.emoji} {stage.label}</p>
+                    <p className="text-white/60 text-xs">预计还需 {etaLabel}</p>
+                    <div className="flex gap-1.5 mt-4">
+                      {VIDEO_STAGES.map((s, i) => (
+                        <div key={i} title={s.label}
+                          className={`h-1.5 rounded-full transition-all duration-500 ${i <= stageIdx ? 'bg-white w-5' : 'bg-white/25 w-1.5'}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : isFailed ? (
+                  /* Failed state */
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-3xl mb-2">⚠️</span>
+                    <p className="text-white font-extrabold text-sm mb-1">视频制作失败</p>
+                    <p className="text-white/60 text-xs text-center px-6">
+                      {videoProject?.errorMessage || '制作过程出现错误，请重新尝试'}
+                    </p>
+                  </div>
+                ) : (
+                  /* Static: title at bottom */
+                  <div className="absolute inset-x-0 bottom-0 px-4 py-4 bg-gradient-to-t from-black/60 to-transparent">
+                    <p className="text-white font-extrabold text-base leading-tight drop-shadow">{story.title}</p>
+                    <p className="text-white/70 text-xs mt-0.5">专属封面插画</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Start / retry video CTA */}
+            {urlStoryId && !isInProgress && !videoProject?.finalVideoUrl && (
+              <VideoStartButton
+                storyId={urlStoryId}
+                onStarted={(vp) => setVideoProject(vp)}
+                label={isFailed ? '🔄 重新制作视频' : '🎬 开始制作视频'}
+              />
+            )}
+          </div>
+        )
+      })()}
+
       {/* Storybook card */}
       <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full">
         <div
@@ -602,30 +803,47 @@ function PlayStoryContent() {
           onTouchEnd={handleTouchEnd}
         >
           {isTheEnd ? (
-            <div className="p-8 text-center animate-scene">
-              <h2 className="text-5xl font-extrabold mb-6 rainbow-text animate-bounce">The End!</h2>
-              <div className="flex justify-center gap-4 mb-8">
-                {characters.map((char) => (
-                  <div key={char.id} className="animate-float">
-                    <div className="rounded-full p-1 bg-gradient-to-r from-candy-400 to-grape-400 shadow-lg">
-                      <Image
-                        src={char.cartoonImage}
-                        alt={char.name}
-                        width={96}
-                        height={96}
-                        className="w-24 h-24 rounded-full bg-white object-cover"
-                      />
-                    </div>
-                  </div>
+            <div className="p-6 animate-scene">
+              {/* Header */}
+              <div className="text-center mb-5">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-forest-100 rounded-full mb-3">
+                  <span className="text-base">✨</span>
+                  <span className="text-forest-700 text-xs font-extrabold tracking-wide">命运抉择</span>
+                </div>
+                <h2 className="text-lg font-extrabold text-gray-800 leading-snug">下一站，你会去哪里？</h2>
+                <p className="text-xs text-gray-400 mt-1">选择你的冒险方向，开启下一集故事</p>
+              </div>
+
+              {/* Choices */}
+              <div className="space-y-2.5 mb-5">
+                {(storyChoices.length > 0 ? storyChoices : ['继续探索魔法森林', '寻找神秘的新朋友', '回到温暖的家园']).map((choice, i) => (
+                  <Link
+                    key={i}
+                    href={`/story/create?hint=${encodeURIComponent(choice)}`}
+                    className="flex items-center justify-between p-4 rounded-xl bg-white border-2 border-forest-100 hover:border-forest-400 hover:bg-forest-50 transition-all text-left shadow-sm group"
+                  >
+                    <span className="font-bold text-sm text-gray-800 group-hover:text-forest-700 transition-colors">{choice}</span>
+                    <svg className="w-4 h-4 text-gray-300 group-hover:text-forest-500 group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Link>
                 ))}
               </div>
-              <p className="text-xl text-grape-600 font-bold mb-8">What a wonderful adventure!</p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <button onClick={() => goToScene(0)} className="btn-secondary py-3 px-6">
-                  Read Again &#128257;
+
+              {/* Divider */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-1 h-px bg-gray-100" />
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">或者</span>
+                <div className="flex-1 h-px bg-gray-100" />
+              </div>
+
+              {/* Secondary actions */}
+              <div className="flex gap-3">
+                <button onClick={() => goToScene(0)} className="btn-secondary flex-1 py-3 text-sm">
+                  重新阅读 🔁
                 </button>
-                <Link href="/story/create" className="btn-primary py-3 px-6 text-base">
-                  New Story &#10024;
+                <Link href="/storybook" className="btn-secondary flex-1 py-3 text-sm text-center">
+                  故事书库 📚
                 </Link>
               </div>
             </div>

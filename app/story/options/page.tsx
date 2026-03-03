@@ -80,7 +80,6 @@ export default function StoryOptionsPage() {
           characterIds: characters.map((c) => c.id),
           characterNames: characters.map((c) => c.name || 'the character'),
           characterImages: characters.map((c) => c.cartoonImage),
-          characterDescriptions: characters.map((c) => c.description || ''),
           optionIndex: index,
           optionTitle: selectedOption?.title,
           optionDescription: selectedOption?.description,
