@@ -105,10 +105,22 @@ export interface ScriptScene {
   narration: string
   dialogue: ScriptDialogueLine[]
   imagePrompt: string
+  /** Director-mode: 3 image prompts [opening, midAction, ending] per storyboard scene */
+  imagePrompts?: string[]
   estimatedDuration: number  // seconds
   imageUrl?: string
   audioUrl?: string
   videoClipUrl?: string
+}
+
+/**
+ * Full anime-director storyboard scene produced by generateStorybookDirectorScript().
+ * Stored in Script.scenesJson; compatible with ScriptScene (narration, dialogue, etc. are mapped).
+ */
+export interface DirectorStoryboardScene extends ScriptScene {
+  sceneDescription: string   // 场景描述 (time / location / atmosphere)
+  cameraDesign: string       // 镜头设计 (shot type + camera movement)
+  animationAction: string    // 动画动作 8s
 }
 
 export interface Script {

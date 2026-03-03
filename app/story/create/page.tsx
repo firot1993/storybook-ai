@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Character, Storybook, StorybookCharacter, SynopsisOption, CompanionSuggestion } from '@/types'
+import { Character, Story, Storybook, StorybookCharacter, SynopsisOption, CompanionSuggestion } from '@/types'
 import { STYLES } from '@/lib/styles'
 import { showToast } from '@/components/toast'
 
@@ -72,6 +72,7 @@ function CreateStoryWizard() {
   const [generatedStoryId, setGeneratedStoryId] = useState<string | null>(null)
   const [generatedTitle, setGeneratedTitle] = useState('')
   const [generatedCoverImage, setGeneratedCoverImage] = useState('')
+  const [generatedStoryContent, setGeneratedStoryContent] = useState('')
   const [selectedSynopsisOpt, setSelectedSynopsisOpt] = useState<SynopsisOption | null>(null)
   const [startingVideo, setStartingVideo] = useState(false)
 
@@ -279,6 +280,17 @@ function CreateStoryWizard() {
       setGeneratedStoryId(data.story.id)
       setGeneratedTitle(data.story.title)
       if (data.story.mainImage) setGeneratedCoverImage(data.story.mainImage)
+      setGeneratedStoryContent(
+        (data.story.content as string ?? '').replace(/<!--CHOICES:[\s\S]*?-->/g, '').trim()
+      )
+      // Append new chapter to storybooks so the chapter list in step 2 is up-to-date
+      setStorybooks((prev) =>
+        prev.map((b) =>
+          b.id !== selectedStorybookId
+            ? b
+            : { ...b, chapters: [...(b.chapters ?? []), data.story as Story] }
+        )
+      )
     } catch {
       showToast('故事生成失败，请重试', 'error')
       setStep(1)
@@ -292,8 +304,8 @@ function CreateStoryWizard() {
     if (!generatedStoryId || startingVideo) return
     setStartingVideo(true)
     try {
-      // Step 1: generate script from story
-      const scriptRes = await fetch('/api/story/script', {
+      // Step 1: generate director storyboard script from story (15-18 scenes × 3 keyframes)
+      const scriptRes = await fetch('/api/story/director-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId: generatedStoryId }),
@@ -638,13 +650,15 @@ function CreateStoryWizard() {
                       )}
                     </div>
 
-                    <div className="bg-forest-50 px-3.5 py-3 rounded-xl border border-dashed border-forest-200 mt-auto">
-                      <p className="text-[11px] text-gray-500 leading-snug">
-                        专属童话已生成，包含{' '}
-                        <span className="text-forest-600 font-bold">冒险</span>{' '}与{' '}
-                        <span className="text-forest-600 font-bold">成长</span>{' '}主题，点击下方开始制作视频
-                      </p>
-                    </div>
+                    {/* Generated story content */}
+                    {generatedStoryContent && (
+                      <div className="mt-auto">
+                        <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1.5">本集故事</p>
+                        <div className="max-h-28 overflow-y-auto rounded-xl bg-forest-50 border border-forest-100 px-3 py-2.5">
+                          <p className="text-[11px] text-gray-700 leading-relaxed whitespace-pre-line">{generatedStoryContent}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -675,6 +689,7 @@ function CreateStoryWizard() {
                       setSynopsisOptions([])
                       setGeneratedStoryId(null)
                       setGeneratedCoverImage('')
+                      setGeneratedStoryContent('')
                       setSelectedSynopsisOpt(null)
                     }}
                     className="btn-secondary w-full text-sm"

@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
-import type { CompanionSuggestion } from '@/types'
+import type { CompanionSuggestion, StoryOption } from '@/types'
 
 const genAI = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
@@ -113,11 +113,6 @@ export type GeminiImageDiagnostics = {
   textPreview: string;
 };
 
-export type StoryOption = {
-  title: string;
-  description: string;
-};
-
 export type StoryOptionsDiagnostics = {
   strategy: 'strict' | 'loose' | 'fallback' | 'none';
   parsedCount: number;
@@ -210,16 +205,6 @@ function buildImageDiagnostics(response: GeminiImageResponse): GeminiImageDiagno
     blockedBySafety,
     textPreview,
   };
-}
-
-export async function generateStoryOptions(
-  characterNames: string[],
-  keywords: string,
-  ageGroup: string,
-  relationship?: string
-) {
-  const result = await generateStoryOptionsWithDiagnostics(characterNames, keywords, ageGroup, undefined, relationship);
-  return result.options;
 }
 
 function parseStoryOptionLine(line: string): StoryOption | null {
@@ -631,6 +616,27 @@ Write in simple, warm language. Return only the outline text.`
   return response.text?.trim() ?? ''
 }
 
+// ── JSON parsing helpers ──────────────────────────────────────
+
+/** Strip markdown fences, locate the first `{...}` block, fix trailing commas, and parse. */
+function safeParseJsonObject(raw: string): unknown {
+  let text = raw.replace(/```json|```/g, '').trim()
+  const m = text.match(/\{[\s\S]*\}/)
+  if (m) text = m[0]
+  text = text.replace(/,\s*([}\]])/g, '$1')
+  return JSON.parse(text)
+}
+
+/** Strip markdown fences, locate the first `[...]` block, fix trailing commas, and parse. */
+function safeParseJsonArray(raw: string): unknown[] {
+  let text = raw.replace(/```json|```/g, '').trim()
+  const m = text.match(/\[[\s\S]*\]/)
+  if (m) text = m[0]
+  text = text.replace(/,\s*([}\]])/g, '$1')
+  const parsed = JSON.parse(text)
+  return Array.isArray(parsed) ? parsed : []
+}
+
 // ── Storybook v2: 三版梗概生成 ───────────────────────────────
 
 /**
@@ -672,16 +678,8 @@ export async function generateSynopsisVersions(params: {
 
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
 
-  function safeParseJson(raw: string) {
-    let text = raw.replace(/```json|```/g, '').trim()
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (jsonMatch) text = jsonMatch[0]
-    text = text.replace(/,\s*([}\]])/g, '$1')
-    return JSON.parse(text)
-  }
-
   try {
-    const parsed = safeParseJson(response.text ?? '{}')
+    const parsed = safeParseJsonObject(response.text ?? '{}') as Record<string, unknown>
     const pick = (v: unknown) => {
       if (!v) return { title: '', content: '' }
       if (typeof v === 'string') return { title: '', content: v }
@@ -731,13 +729,8 @@ export async function generateCompanionSuggestions(params: {
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
 
   try {
-    let text = (response.text ?? '').replace(/```json|```/g, '').trim()
-    const arrMatch = text.match(/\[[\s\S]*\]/)
-    if (arrMatch) text = arrMatch[0]
-    text = text.replace(/,\s*([}\]])/g, '$1')
-    const parsed = JSON.parse(text)
-    if (Array.isArray(parsed)) return parsed.slice(0, 3) as CompanionSuggestion[]
-    return []
+    const parsed = safeParseJsonArray(response.text ?? '')
+    return parsed.slice(0, 3) as CompanionSuggestion[]
   } catch (e) {
     console.error('[generateCompanionSuggestions] Failed to parse JSON:', e)
     return []
@@ -854,6 +847,100 @@ export async function generateStoryCoverImage(params: {
   return { data: compressed.data, mimeType: compressed.mimeType }
 }
 
+// ── Storybook v2: 动漫导演分镜脚本生成 ──────────────────────
+
+/**
+ * 生成完整的动漫导演分镜脚本（15-18个分镜），每个分镜包含：
+ * - 场景描述、镜头设计、动画动作(8s)、旁白VO、对话
+ * - 三帧图片 prompt（开头帧/中间帧/结尾帧，16:9，英文）
+ *
+ * 返回格式与 ScriptScene[] 兼容，imagePrompts 包含三帧 prompt。
+ */
+export async function generateStorybookDirectorScript(params: {
+  storyName: string
+  protagonistName: string
+  supportingName: string
+  storyContent: string
+  ageRange: string
+  styleDesc: string
+}): Promise<import('@/types').DirectorStoryboardScene[]> {
+  const { storyName, protagonistName, supportingName, storyContent, ageRange, styleDesc } = params
+
+  const prompt = `[系统设定]
+你是一位享誉全球的儿童动漫导演与金牌分镜设计师，擅长将温馨的童话转化为极具视觉冲击力且节奏感极强的动漫画面。你的风格融合了新海诚的光影美学与吉卜力工作室的纯真叙事。
+
+[创作指令]
+请根据提供的【创作参数】，设计一套共 15-18 个分镜的故事书动漫化脚本。
+
+[脚本核心规范]
+- 时长掌控：每个分镜需要有支撑 8-12 秒的动画内容，避免画面停滞。
+- 视觉通感：严禁使用抽象词汇。请使用具体的比喻，如"云朵像刚出炉的松饼"、"星尘像跳跳糖一样闪烁"。
+- 镜头语言：明确标注景别（全景、特写、俯瞰）与运镜（推、拉、摇、移）。
+- 童趣互动：对话需符合 ${ageRange} 岁心理，强调 ${protagonistName} 与 ${supportingName} 之间细微的体贴与好奇。
+- 画风统一：${styleDesc || '温馨2D动漫风格'}。
+- 三帧连贯性：每个分镜的【开头帧】必须与上一个分镜的【结尾帧】保持视觉衔接（位置、光影、角色姿态连贯）。
+
+[创作参数]
+故事名称：${storyName}
+角色设定：${protagonistName}（主角）/ ${supportingName}（配角）
+核心文本：${storyContent}
+受众年龄：${ageRange} 岁
+
+[输出要求]
+严格按照以下 JSON 数组格式输出，不包含任何其他内容（无 markdown 代码块）：
+[
+  {
+    "index": 1,
+    "sceneDescription": "场景描述（时间/地点/环境氛围，20字内）",
+    "cameraDesign": "景别+运镜方式+画面中心点",
+    "animationAction": "详细描述角色动作与环境特效变化（8s内容）",
+    "voiceOver": "富有韵律感的旁白讲述（适合大声朗读）",
+    "dialogue": [{"speaker": "角色名", "text": "简洁温暖的对白（10字内）"}],
+    "estimatedDuration": 10,
+    "openingFramePrompt": "16:9 children's anime illustration, ${styleDesc || 'warm 2D anime style'}: [opening frame — establishing shot with visual continuity from previous scene, character positions, lighting, atmosphere, NO text]",
+    "midActionFramePrompt": "16:9 children's anime illustration, ${styleDesc || 'warm 2D anime style'}: [peak action or emotional climax moment of the scene, highest energy, NO text]",
+    "endingFramePrompt": "16:9 children's anime illustration, ${styleDesc || 'warm 2D anime style'}: [scene completion state, calm after action, leaving visual hook for next scene, NO text]"
+  }
+]`
+
+  const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
+
+  try {
+    const rawScenes = safeParseJsonArray(response.text ?? '') as Array<{
+      index: number
+      sceneDescription: string
+      cameraDesign: string
+      animationAction: string
+      voiceOver: string
+      dialogue: { speaker: string; text: string }[]
+      estimatedDuration: number
+      openingFramePrompt: string
+      midActionFramePrompt: string
+      endingFramePrompt: string
+    }>
+
+    return rawScenes.map((s) => ({
+      index: s.index - 1,  // convert to 0-based
+      title: s.sceneDescription?.slice(0, 40) ?? `分镜 ${s.index}`,
+      narration: s.voiceOver ?? '',
+      dialogue: s.dialogue ?? [],
+      imagePrompt: s.openingFramePrompt ?? '',
+      imagePrompts: [
+        s.openingFramePrompt ?? '',
+        s.midActionFramePrompt ?? '',
+        s.endingFramePrompt ?? '',
+      ],
+      estimatedDuration: s.estimatedDuration ?? 10,
+      sceneDescription: s.sceneDescription ?? '',
+      cameraDesign: s.cameraDesign ?? '',
+      animationAction: s.animationAction ?? '',
+    }))
+  } catch (e) {
+    console.error('[generateStorybookDirectorScript] Parse error:', e, '\nRaw:', response.text?.slice(0, 500))
+    return []
+  }
+}
+
 // ── Script generation ────────────────────────────────────────
 
 export async function generateScript(
@@ -895,9 +982,7 @@ Return valid JSON array only.`
 
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
   try {
-    const text = (response.text ?? '[]').replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(text)
-    return Array.isArray(parsed) ? parsed : []
+    return safeParseJsonArray(response.text ?? '') as import('@/types').ScriptScene[]
   } catch (e) {
     console.error('Failed to parse script JSON:', e)
     return []
@@ -1011,8 +1096,7 @@ Choose the single most fitting voice. Respond with valid JSON only:
 
   try {
     const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
-    const text = (response.text ?? '').replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(text)
+    const parsed = safeParseJsonObject(response.text ?? '') as Record<string, string>
     if (parsed.voiceName && available.some(v => v.name === parsed.voiceName)) {
       return { voiceName: parsed.voiceName, reason: parsed.reason ?? '' }
     }

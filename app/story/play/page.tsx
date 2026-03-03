@@ -132,7 +132,7 @@ function VideoStartButton({
     if (loading) return
     setLoading(true)
     try {
-      const scriptRes = await fetch('/api/story/script', {
+      const scriptRes = await fetch('/api/story/director-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId }),

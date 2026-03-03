@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStorybook, getCharacter, createStory, updateStory } from '@/lib/db'
+import { getStorybook, createStory } from '@/lib/db'
 import { generateStoryFromSynopsis, generateStoryCoverImage } from '@/lib/gemini'
-import { STYLES } from '@/lib/styles'
+import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
 import type { Story } from '@/types'
 
 // POST /api/storybook/[id]/story
@@ -18,28 +18,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const storybook = await getStorybook(id)
     if (!storybook) return NextResponse.json({ error: 'Storybook not found' }, { status: 404 })
 
-    // 获取主角信息（包含styleImages）
-    const protagonistEntry = storybook.characters.find((c) => c.role === 'protagonist')
-    const protagonistChar = protagonistEntry?.id ? await getCharacter(protagonistEntry.id) : null
-    const protagonistName = protagonistChar?.name || '小主角'
-
-    // 获取所有配角名称（支持多个）
-    const supportingEntries = storybook.characters.filter((c) => c.role === 'supporting')
-    const supportingNames = await Promise.all(
-      supportingEntries.map(async (c) => {
-        if (c.name) return c.name
-        if (c.id) {
-          const char = await getCharacter(c.id)
-          return char?.name || null
-        }
-        return null
-      })
-    )
-    const supportingName = supportingNames.filter(Boolean).join('、') || '小伙伴'
-
-    // 获取风格描述
-    const styleConfig = STYLES.find((s) => s.id === storybook.styleId)
-    const styleDesc = styleConfig?.description || '梦幻水彩、马卡龙色调、星光熠熠的氛围'
+    const { protagonistName, supportingName, protagonistChar } = await resolveStorybookCharacters(storybook)
+    const styleDesc = resolveStorybookStyle(storybook)
 
     const title = storyName?.trim() || storybook.name
 
@@ -95,11 +75,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       images: [],
       status: 'complete',
     })
-
-    // 如果封面在createStory之后才生成完毕，补充更新（实际上这里是同步的）
-    if (mainImage && !dbStory.mainImage) {
-      await updateStory(dbStory.id, { mainImage })
-    }
 
     const story: Story = {
       id: dbStory.id,

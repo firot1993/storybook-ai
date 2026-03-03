@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStorybook, getCharacter } from '@/lib/db'
+import { getStorybook } from '@/lib/db'
 import { generateSynopsisVersions } from '@/lib/gemini'
+import { resolveStorybookCharacters } from '@/lib/storybook-helpers'
 import type { SynopsisOption } from '@/types'
 
 // POST /api/storybook/[id]/synopsis
@@ -17,24 +18,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const storybook = await getStorybook(id)
     if (!storybook) return NextResponse.json({ error: 'Storybook not found' }, { status: 404 })
 
-    // 获取主角名称
-    const protagonistEntry = storybook.characters.find((c) => c.role === 'protagonist')
-    const protagonistChar = protagonistEntry?.id ? await getCharacter(protagonistEntry.id) : null
-    const protagonistName = protagonistChar?.name || '小主角'
-
-    // 获取所有配角名称（支持多个，可能是AI推荐的直接name，也可能是真实角色id）
-    const supportingEntries = storybook.characters.filter((c) => c.role === 'supporting')
-    const supportingNames = await Promise.all(
-      supportingEntries.map(async (c) => {
-        if (c.name) return c.name
-        if (c.id) {
-          const char = await getCharacter(c.id)
-          return char?.name || null
-        }
-        return null
-      })
-    )
-    const supportingName = supportingNames.filter(Boolean).join('、') || '小伙伴'
+    const { protagonistName, supportingName } = await resolveStorybookCharacters(storybook)
 
     const versions = await generateSynopsisVersions({
       storyName: storyName?.trim() || storybook.name,

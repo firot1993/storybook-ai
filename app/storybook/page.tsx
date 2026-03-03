@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { Character, Storybook, Story } from '@/types'
 import { STYLES } from '@/lib/styles'
+import { CharacterAvatar } from '@/components/character-avatar'
 
 type ChapterItem = Pick<Story, 'id' | 'title' | 'synopsis' | 'status' | 'createdAt'>
 type StorybookWithChapters = Storybook & { chapters: ChapterItem[] }
@@ -94,21 +94,12 @@ export default function StorybookLibraryPage() {
                   >
                     {/* Protagonist avatar */}
                     <div className="relative shrink-0">
-                      {styledImage ? (
-                        <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-forest-100 shadow-sm">
-                          <Image
-                            src={styledImage}
-                            alt={protagonist?.name ?? ''}
-                            width={56}
-                            height={56}
-                            className="object-cover w-full h-full"
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-14 h-14 rounded-2xl bg-forest-100 flex items-center justify-center border-2 border-forest-100">
-                          <span className="text-2xl">{styleConfig?.emoji ?? '📖'}</span>
-                        </div>
-                      )}
+                      <CharacterAvatar
+                        src={styledImage}
+                        name={protagonist?.name}
+                        fallbackEmoji={styleConfig?.emoji ?? '📖'}
+                        size={56}
+                      />
                       {/* Style emoji badge */}
                       <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center shadow-sm border border-gray-100 text-xs">
                         {styleConfig?.emoji ?? '📖'}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStorybook, getCharacter } from '@/lib/db'
+import { getStorybook } from '@/lib/db'
 import { generateCompanionSuggestions } from '@/lib/gemini'
+import { resolveStorybookCharacters } from '@/lib/storybook-helpers'
 
 // POST /api/storybook/[id]/companions
 // 根据故事书主角和关键词，生成 3 个 AI 推荐冒险小伙伴
@@ -12,9 +13,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const storybook = await getStorybook(id)
     if (!storybook) return NextResponse.json({ error: 'Storybook not found' }, { status: 404 })
 
-    const protagonistEntry = storybook.characters.find((c) => c.role === 'protagonist')
-    const protagonistChar = protagonistEntry ? await getCharacter(protagonistEntry.id) : null
-    const protagonistName = protagonistChar?.name || '小主角'
+    const { protagonistName } = await resolveStorybookCharacters(storybook)
 
     const companions = await generateCompanionSuggestions({
       protagonistName,
