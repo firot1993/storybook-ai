@@ -72,8 +72,7 @@ async function runPipeline(
 
     // Determine which provider to use for scene visuals
     const provider = settings.imageProvider ?? 'auto'
-    const useXaiVideo =
-      (provider === 'xai' || provider === 'auto') && isXaiConfigured()
+    const useXaiVideo = provider === 'xai' && isXaiConfigured()
 
     if (useXaiVideo) {
       // ════════════════════════════════════════════════════════

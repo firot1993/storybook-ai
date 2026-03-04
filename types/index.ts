@@ -161,11 +161,11 @@ export interface VideoSettings {
   }
   /**
    * Image/video generation provider for scene visuals.
-   *  'xai'    – Use xAI Grok Imagine (video clips via grok-imagine-video;
-   *             requires XAI_API_KEY).
+   *  'xai'    – Use xAI Grok Imagine (Gemini image → xAI image-to-video;
+   *             requires XAI_API_KEY).  Must be set explicitly to opt in.
    *  'banana' – Use Banana.dev image API (requires BANANA_API_KEY).
    *  'gemini' – Use Google Gemini image generation.
-   *  'auto'   – Try xAI first (if configured), then Banana, then Gemini.
+   *  'auto'   – Banana if configured, otherwise Gemini.  Never xAI.
    * Defaults to 'auto'.
    */
   imageProvider?: 'auto' | 'xai' | 'banana' | 'gemini'
