@@ -70,12 +70,11 @@ async function runPipeline(
       .map((img) => (img.includes('base64,') ? img.split('base64,')[1] : img))
       .filter(Boolean)
 
-    // Determine which provider to use for scene visuals
-    const provider = settings.imageProvider ?? 'auto'
-    const useXaiVideo = provider === 'xai' && isXaiConfigured()
+    // Determine whether to use xAI image-to-video or the legacy pipeline
+    const useXaiVideo = settings.videoProvider === 'xai' && isXaiConfigured()
 
-    if (provider === 'xai' && !isXaiConfigured()) {
-      console.warn('[Pipeline] imageProvider is "xai" but XAI_API_KEY is not set — falling back to legacy pipeline')
+    if (settings.videoProvider === 'xai' && !isXaiConfigured()) {
+      console.warn('[Pipeline] videoProvider is "xai" but XAI_API_KEY is not set — falling back to legacy pipeline')
     }
 
     if (useXaiVideo) {

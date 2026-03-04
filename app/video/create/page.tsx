@@ -148,20 +148,20 @@ export default function VideoCreatePage() {
             </div>
             <button
               role="switch"
-              aria-checked={settings.imageProvider === 'xai'}
+              aria-checked={settings.videoProvider === 'xai'}
               onClick={() =>
                 setSettings((s) => ({
                   ...s,
-                  imageProvider: s.imageProvider === 'xai' ? 'auto' : 'xai',
+                  videoProvider: s.videoProvider === 'xai' ? 'default' : 'xai',
                 }))
               }
               className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${
-                settings.imageProvider === 'xai' ? 'bg-grape-500' : 'bg-gray-200'
+                settings.videoProvider === 'xai' ? 'bg-grape-500' : 'bg-gray-200'
               }`}
             >
               <span
                 className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  settings.imageProvider === 'xai' ? 'translate-x-5' : 'translate-x-0'
+                  settings.videoProvider === 'xai' ? 'translate-x-5' : 'translate-x-0'
                 }`}
               />
             </button>

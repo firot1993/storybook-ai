@@ -160,15 +160,21 @@ export interface VideoSettings {
     position: 'top' | 'bottom' | 'center'
   }
   /**
-   * Image/video generation provider for scene visuals.
-   *  'xai'    – Use xAI Grok Imagine (Gemini image → xAI image-to-video;
-   *             requires XAI_API_KEY).  Must be set explicitly to opt in.
+   * Image generation provider for scene illustrations.
    *  'banana' – Use Banana.dev image API (requires BANANA_API_KEY).
    *  'gemini' – Use Google Gemini image generation.
-   *  'auto'   – Banana if configured, otherwise Gemini.  Never xAI.
+   *  'auto'   – Banana if configured, otherwise Gemini.
    * Defaults to 'auto'.
    */
-  imageProvider?: 'auto' | 'xai' | 'banana' | 'gemini'
+  imageProvider?: 'auto' | 'banana' | 'gemini'
+  /**
+   * Video generation provider that animates scene images.
+   *  'xai'     – Use xAI image-to-video (requires XAI_API_KEY).
+   *              Falls back to the legacy static-image pipeline if unavailable.
+   *  'default' – Legacy pipeline: static image + FFmpeg.
+   * Defaults to 'default'.
+   */
+  videoProvider?: 'xai' | 'default'
 }
 
 export interface VideoProject {
