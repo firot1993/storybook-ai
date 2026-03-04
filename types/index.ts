@@ -159,6 +159,16 @@ export interface VideoSettings {
     color: string
     position: 'top' | 'bottom' | 'center'
   }
+  /**
+   * Image/video generation provider for scene visuals.
+   *  'xai'    – Use xAI Grok Imagine (video clips via grok-imagine-video;
+   *             requires XAI_API_KEY).
+   *  'banana' – Use Banana.dev image API (requires BANANA_API_KEY).
+   *  'gemini' – Use Google Gemini image generation.
+   *  'auto'   – Try xAI first (if configured), then Banana, then Gemini.
+   * Defaults to 'auto'.
+   */
+  imageProvider?: 'auto' | 'xai' | 'banana' | 'gemini'
 }
 
 export interface VideoProject {

@@ -137,6 +137,48 @@ export function burnSubtitles(
 }
 
 /**
+ * Replace the audio track of a video file with a new audio file.
+ *
+ * The video stream is re-encoded so that it can be scaled to the requested
+ * resolution and made consistent with clips produced by createSceneVideoClip().
+ * The video is looped (stream_loop) so it always covers the full audio duration,
+ * and -shortest ensures the output ends when the audio ends.
+ */
+export function replaceVideoAudio(
+  videoPath: string,
+  audioPath: string,
+  outputPath: string,
+  options: { resolution?: string; fps?: number } = {}
+): Promise<void> {
+  const { resolution = '1280x720', fps = 24 } = options
+  const [w, h] = resolution.split('x')
+
+  return new Promise((resolve, reject) => {
+    ffmpeg()
+      .input(videoPath)
+      .inputOptions(['-stream_loop -1'])   // loop video to cover full audio length
+      .input(audioPath)
+      .outputOptions([
+        `-vf scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black`,
+        `-r ${fps}`,
+        '-map 0:v:0',
+        '-map 1:a:0',
+        '-c:v libx264',
+        '-preset fast',
+        '-pix_fmt yuv420p',
+        '-c:a aac',
+        '-b:a 192k',
+        '-shortest',
+        '-movflags +faststart',
+      ])
+      .output(outputPath)
+      .on('end', () => resolve())
+      .on('error', (err) => reject(new Error(`FFmpeg audio replace error: ${err.message}`)))
+      .run()
+  })
+}
+
+/**
  * Get video duration in milliseconds.
  */
 export function getVideoDuration(videoPath: string): Promise<number> {
