@@ -9,9 +9,24 @@ import { STYLES } from '@/lib/styles'
 import { showToast } from '@/components/toast'
 
 const AGE_OPTIONS: { value: '2-4' | '4-6' | '6-8'; label: string; emoji: string }[] = [
-  { value: '2-4', label: '2-4岁', emoji: '🍼' },
-  { value: '4-6', label: '4-6岁', emoji: '⭐' },
-  { value: '6-8', label: '6-8岁', emoji: '🚀' },
+  { value: '2-4', label: '2-4岁', emoji: '🧒' },
+  { value: '4-6', label: '4-6岁', emoji: '🎨' },
+  { value: '6-8', label: '6-8岁', emoji: '📚' },
+]
+
+const INSPIRATION_KEYWORDS = [
+  { emoji: '🐉', text: '龙' },
+  { emoji: '🌙', text: '月亮' },
+  { emoji: '🦊', text: '小狐狸' },
+  { emoji: '✨', text: '魔法' },
+  { emoji: '🌈', text: '彩虹' },
+  { emoji: '🏰', text: '城堡' },
+  { emoji: '🌊', text: '大海' },
+  { emoji: '🎈', text: '气球' },
+  { emoji: '🌸', text: '花园' },
+  { emoji: '⭐', text: '星空' },
+  { emoji: '📖', text: '魔法书' },
+  { emoji: '🤝', text: '友谊' },
 ]
 
 const SYNOPSIS_STYLE = {
@@ -66,6 +81,7 @@ function CreateStoryWizard() {
   const audioChunksRef = useRef<Blob[]>([])
   const [synopsisOptions, setSynopsisOptions] = useState<SynopsisOption[]>([])
   const [generatingSynopsis, setGeneratingSynopsis] = useState(false)
+  const [keywordsError, setKeywordsError] = useState('')
 
   // ── Step 2 — Story generation ────────────────────────────
   const [generatingStory, setGeneratingStory] = useState(false)
@@ -235,7 +251,8 @@ function CreateStoryWizard() {
   }
 
   const handleGenerateSynopsis = async () => {
-    if (!keywords.trim()) { showToast('请输入灵感关键词', 'error'); return }
+    if (!keywords.trim()) { setKeywordsError('请输入至少一个背景关键词'); return }
+    setKeywordsError('')
     setGeneratingSynopsis(true)
     setSynopsisOptions([])
     try {
@@ -348,33 +365,6 @@ function CreateStoryWizard() {
           </Link>
         )}
 
-        {/* Episode creation step indicator (steps 1 & 2) */}
-        {(step === 1 || step === 2) && (
-          <div className="flex items-center gap-1 mb-6">
-            {EPISODE_STEPS.map((label, i) => {
-              // 0=灵感种子 1=生成故事 2=完成
-              const activeIndicator = step === 1 ? 0 : generatingStory ? 1 : 2
-              const isDone = activeIndicator > i
-              const isActive = activeIndicator === i
-              return (
-                <div key={i} className="flex items-center gap-1 flex-1">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 shrink-0 transition-all ${
-                    isActive ? 'bg-forest-500 border-forest-500 text-white' :
-                    isDone   ? 'bg-forest-100 border-forest-300 text-forest-600' :
-                               'bg-white border-gray-200 text-gray-400'
-                  }`}>
-                    {isDone ? '✓' : i + 1}
-                  </div>
-                  <span className={`text-[10px] font-bold hidden sm:block ${isActive ? 'text-forest-700' : 'text-gray-400'}`}>
-                    {label}
-                  </span>
-                  {i < EPISODE_STEPS.length - 1 && <div className="flex-1 h-px bg-gray-200 mx-1" />}
-                </div>
-              )
-            })}
-          </div>
-        )}
-
         {/* ══ STEP 0: 选择 / 创建故事书 ══ */}
         {step === 0 && (
           <div className="page-enter">
@@ -430,6 +420,37 @@ function CreateStoryWizard() {
         {/* ══ STEP 1: 灵感种子 ══ */}
         {step === 1 && (
           <div className="page-enter">
+            {/* Step progress indicator */}
+            <div className="flex items-center gap-1 mb-6 px-4">
+              {EPISODE_STEPS.map((label, i) => {
+                const isDone = i < 0
+                const isActive = i === 0
+                return (
+                  <div key={i} className={`flex items-center gap-1 ${i < EPISODE_STEPS.length - 1 ? 'flex-1' : 'shrink-0'}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-all ${
+                      isActive ? 'border-2 bg-forest-500 border-forest-500 text-white shadow-md shadow-forest-500/30' :
+                      isDone   ? 'border-2 bg-forest-100 border-forest-300 text-forest-600' :
+                                 'border-2 border-dashed border-gray-400 bg-transparent text-gray-500'
+                    }`}>
+                      {isDone ? '✓' : i + 1}
+                    </div>
+                    <span className={`text-[10px] font-bold ${isActive ? 'text-forest-700' : isDone ? 'text-forest-500' : 'text-gray-500'}`}>
+                      {label}
+                    </span>
+                    {i < EPISODE_STEPS.length - 1 && (
+                      <div className="flex-1 h-1 rounded-full bg-gray-300 mx-1 overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${
+                          isDone ? 'w-full bg-forest-400' :
+                          isActive ? 'w-1/2 bg-forest-300 animate-pulse' :
+                          'w-0'
+                        }`} />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
             {/* Book context mini-header */}
             {currentBook && (
               <div className="flex items-center gap-3 mb-5 px-4 py-3 bg-white/80 rounded-2xl border border-forest-100 shadow-sm">
@@ -442,34 +463,43 @@ function CreateStoryWizard() {
                   <p className="font-extrabold text-forest-800 text-sm truncate">{currentBook.name}</p>
                   <p className="text-[10px] text-gray-400">{STYLES.find(s => s.id === currentBook.styleId)?.emoji} {STYLES.find(s => s.id === currentBook.styleId)?.label} · {currentBook.ageRange}岁</p>
                 </div>
-                <button onClick={() => setStep(0)} className="ml-auto text-xs text-forest-500 font-bold hover:text-forest-700 shrink-0">切换</button>
+                <button onClick={() => setStep(0)} className="ml-auto flex items-center gap-1 text-xs text-forest-600 font-bold hover:text-forest-700 bg-forest-50 border border-forest-200 px-3 py-1.5 rounded-lg shrink-0 transition-colors hover:bg-forest-100">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                  </svg>
+                  切换
+                </button>
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-[5fr_7fr] gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-[5fr_7fr] sm:items-start gap-4">
               {/* ── Left panel ── */}
               <div className="flex flex-col gap-4">
-                <div className="card">
-                  <h2 className="text-base font-extrabold text-forest-800 mb-1">灵感种子 ✨</h2>
+                <div className="card flex-1 flex flex-col">
+                  <div className="flex items-start justify-between mb-1">
+                    <h2 className="text-base font-extrabold text-forest-800">灵感种子 ✨</h2>
+                    <span className="text-[10px] text-gray-400 shrink-0 mt-1">* 为必填项</span>
+                  </div>
                   <p className="text-xs text-gray-400 mb-4">输入关键词，AI 生成三版故事梗概</p>
 
                   {/* Keywords + mic */}
                   <div className="mb-3">
                     <label className="block text-xs font-bold text-forest-600 mb-1">背景关键词 *</label>
-                    <div className="flex gap-2">
+                    <div className="relative">
                       <textarea
                         value={keywords}
-                        onChange={(e) => setKeywords(e.target.value)}
+                        onChange={(e) => { setKeywords(e.target.value); if (keywordsError) setKeywordsError('') }}
                         placeholder="例如：星空、魔法书、会说话的猫、友谊"
-                        className="input text-sm flex-1 resize-none"
+                        className="input text-sm w-full resize-none pr-12"
                         rows={2}
+                        maxLength={50}
                       />
                       <button
                         type="button"
                         onClick={handleMicClick}
                         disabled={transcribing}
-                        className={`w-11 h-11 mt-0.5 rounded-xl border-2 flex items-center justify-center transition-all shrink-0 ${
-                          isRecording ? 'border-red-500 bg-red-500 text-white animate-pulse' :
+                        className={`absolute right-2 top-2 w-9 h-9 rounded-xl border-2 flex items-center justify-center transition-all shrink-0 ${
+                          isRecording ? 'border-red-500 bg-red-500 text-white' :
                           transcribing ? 'border-gray-200 bg-gray-100 text-gray-400' :
                           'border-forest-300 bg-forest-50 text-forest-600 hover:bg-forest-100'
                         }`}
@@ -477,31 +507,62 @@ function CreateStoryWizard() {
                       >
                         {transcribing ? (
                           <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                        ) : isRecording ? (
+                          <div className="flex items-end gap-[2px] h-4">
+                            {[0, 1, 2, 3, 4].map((j) => (
+                              <span key={j} className="w-[3px] bg-white rounded-full animate-bounce" style={{ height: '60%', animationDelay: `${j * 0.1}s` }} />
+                            ))}
+                          </div>
                         ) : (
-                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v6a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm6.25 7.5a.75.75 0 0 1 .743.648l.007.102A6.5 6.5 0 0 1 12.5 17.45V20h2.25a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1 0-1.5H11.5v-2.55A6.5 6.5 0 0 1 5 11.25a.75.75 0 0 1 1.5 0 5 5 0 0 0 10 0 .75.75 0 0 1 .75-.75z" />
                           </svg>
                         )}
                       </button>
                     </div>
-                    {isRecording && (
-                      <p className="text-xs text-red-500 font-bold mt-1 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-                        正在录音，点击麦克风停止...
-                      </p>
-                    )}
+                    <div className="flex items-center justify-between mt-1">
+                      {isRecording ? (
+                        <p className="text-xs text-red-500 font-bold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                          正在录音，点击麦克风停止...
+                        </p>
+                      ) : keywordsError ? (
+                        <p className="text-xs text-red-500 font-medium">{keywordsError}</p>
+                      ) : <span />}
+                      <span className={`text-[10px] font-medium ${keywords.length >= 45 ? 'text-orange-500' : 'text-gray-300'}`}>
+                        {keywords.length}/50
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Hot keyword tags */}
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {INSPIRATION_KEYWORDS.slice(0, 6).map((kw) => (
+                      <button
+                        key={kw.text}
+                        type="button"
+                        onClick={() => {
+                          const sep = keywords.trim() ? '、' : ''
+                          const next = keywords + sep + kw.text
+                          if (next.length <= 50) setKeywords(next)
+                        }}
+                        className="text-xs px-2.5 py-1 rounded-full bg-forest-50 border border-forest-200 text-forest-700 hover:bg-forest-100 transition-colors"
+                      >
+                        {kw.emoji} {kw.text}
+                      </button>
+                    ))}
                   </div>
 
                   {/* Age range */}
                   <div className="mb-4">
                     <label className="block text-xs font-bold text-forest-600 mb-1.5">小读者年龄</label>
-                    <div className="flex gap-2">
+                    <div className="flex flex-nowrap gap-2">
                       {AGE_OPTIONS.map((a) => (
                         <button
                           key={a.value}
                           type="button"
                           onClick={() => setEpisodeAge(a.value)}
-                          className={`flex-1 py-2 rounded-xl border-2 text-xs font-bold transition-all ${
+                          className={`flex-1 min-w-0 whitespace-nowrap py-2 rounded-xl border-2 text-xs font-bold transition-all ${
                             episodeAge === a.value
                               ? 'border-forest-500 bg-forest-100 text-forest-700'
                               : 'border-gray-200 text-gray-500 hover:border-forest-200'
@@ -516,7 +577,7 @@ function CreateStoryWizard() {
                   <button
                     onClick={handleGenerateSynopsis}
                     disabled={generatingSynopsis || !keywords.trim()}
-                    className="btn-primary w-full disabled:opacity-50 text-sm"
+                    className="btn-primary w-full disabled:opacity-50 text-sm mt-auto"
                   >
                     {generatingSynopsis ? (
                       <span className="flex items-center justify-center gap-2">
@@ -592,6 +653,38 @@ function CreateStoryWizard() {
         {/* ══ STEP 2: 生成中 / 完成 ══ */}
         {step === 2 && (
           <div className="page-enter">
+            {/* Step progress indicator */}
+            <div className="flex items-center gap-1 mb-6 px-4">
+              {EPISODE_STEPS.map((label, i) => {
+                const activeIndicator = generatingStory ? 1 : 2
+                const isDone = activeIndicator > i
+                const isActive = activeIndicator === i
+                return (
+                  <div key={i} className={`flex items-center gap-1 ${i < EPISODE_STEPS.length - 1 ? 'flex-1' : 'shrink-0'}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-all ${
+                      isActive ? 'border-2 bg-forest-500 border-forest-500 text-white shadow-md shadow-forest-500/30' :
+                      isDone   ? 'border-2 bg-forest-100 border-forest-300 text-forest-600' :
+                                 'border-2 border-dashed border-gray-400 bg-transparent text-gray-500'
+                    }`}>
+                      {isDone ? '✓' : i + 1}
+                    </div>
+                    <span className={`text-[10px] font-bold ${isActive ? 'text-forest-700' : isDone ? 'text-forest-500' : 'text-gray-500'}`}>
+                      {label}
+                    </span>
+                    {i < EPISODE_STEPS.length - 1 && (
+                      <div className="flex-1 h-1 rounded-full bg-gray-300 mx-1 overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${
+                          isDone ? 'w-full bg-forest-400' :
+                          isActive ? 'w-1/2 bg-forest-300 animate-pulse' :
+                          'w-0'
+                        }`} />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
             {generatingStory ? (
               <div className="text-center py-16">
                 <div className="w-20 h-20 mx-auto mb-6 relative">

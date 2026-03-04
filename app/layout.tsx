@@ -62,7 +62,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
             <div className="flex items-center gap-3">
               <Link href="/character/create"
-                className="text-xs font-bold px-4 py-2 bg-forest-500 text-white rounded-full hover:bg-forest-600 transition-colors shadow-sm">
+                className="text-xs font-bold px-3 py-1.5 border-[1.5px] border-forest-500 text-forest-600 rounded-full hover:bg-forest-50 transition-colors">
                 + 创建角色
               </Link>
             </div>
