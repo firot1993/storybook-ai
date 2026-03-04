@@ -137,6 +137,37 @@ export default function VideoCreatePage() {
           </div>
         </div>
 
+        <div className="card mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-gray-700">AI Video (xAI)</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Animate scenes with xAI image-to-video. Requires <code>XAI_API_KEY</code>.
+                Falls back to the standard image pipeline if unavailable.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={settings.imageProvider === 'xai'}
+              onClick={() =>
+                setSettings((s) => ({
+                  ...s,
+                  imageProvider: s.imageProvider === 'xai' ? 'auto' : 'xai',
+                }))
+              }
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${
+                settings.imageProvider === 'xai' ? 'bg-grape-500' : 'bg-gray-200'
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  settings.imageProvider === 'xai' ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
         <div className="card mb-8">
           <h2 className="font-semibold text-gray-700 mb-3">Subtitles</h2>
           <div className="flex gap-3 items-center">
