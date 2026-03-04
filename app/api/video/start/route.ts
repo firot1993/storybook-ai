@@ -74,6 +74,10 @@ async function runPipeline(
     const provider = settings.imageProvider ?? 'auto'
     const useXaiVideo = provider === 'xai' && isXaiConfigured()
 
+    if (provider === 'xai' && !isXaiConfigured()) {
+      console.warn('[Pipeline] imageProvider is "xai" but XAI_API_KEY is not set — falling back to legacy pipeline')
+    }
+
     if (useXaiVideo) {
       // ════════════════════════════════════════════════════════
       // xAI Video Pipeline
@@ -134,8 +138,9 @@ async function runPipeline(
             xaiVideoLocalPaths[i] = getLocalPath(relPath)
             console.log(`[Pipeline] xAI clip ${i} saved`)
           } catch (err) {
-            console.warn(`[Pipeline] xAI animation ${i} failed — using static image fallback:`, err)
-            // fallbackImageLocalPaths[i] already set from step 1a
+            console.warn(`[Pipeline] xAI animation ${i} failed — falling back to legacy static-image pipeline:`, err)
+            // fallbackImageLocalPaths[i] already saved from step 1a; stage 3 will
+            // use createSceneVideoClip (old workflow) for this scene.
           }
         }
 
