@@ -83,27 +83,57 @@ export async function generateSceneImageWithXai(
 /**
  * Generate an animated scene video clip using xAI's Grok Imagine video model.
  *
+ * Supports two modes:
+ *  - Image-to-video (recommended): pass `imageBase64` to animate a Gemini-
+ *    generated scene illustration.  The base64 image is sent as a data URI
+ *    so no public URL is required.
+ *  - Text-to-video: omit `imageBase64` and xAI generates the visuals from
+ *    the prompt alone.
+ *
  * The generation is asynchronous: the API returns a request_id that is polled
  * until the video is ready.  The completed video (as a temporary URL) is then
  * downloaded and returned as a Buffer so it can be saved locally.
  *
- * @param prompt   Text description of the scene to animate.
- * @param options.duration     Clip length in seconds (1–10, default 8).
- * @param options.aspectRatio  '16:9' | '1:1' | '9:16' etc. (default '16:9').
- * @param options.resolution   '480p' | '720p' (default '720p').
+ * @param prompt              Motion/animation description for the scene.
+ * @param options.imageBase64 Base64-encoded source image (image-to-video mode).
+ * @param options.imageMimeType MIME type of the source image (default 'image/jpeg').
+ * @param options.duration    Clip length in seconds (1–10, default 8).
+ * @param options.aspectRatio '16:9' | '1:1' | '9:16' etc. (default '16:9').
+ * @param options.resolution  '480p' | '720p' (default '720p').
  */
 export async function generateSceneVideoClipWithXai(
   prompt: string,
   options: {
+    imageBase64?: string
+    imageMimeType?: string
     duration?: number
     aspectRatio?: string
     resolution?: '480p' | '720p'
   } = {}
 ): Promise<Buffer> {
-  const { duration = 8, aspectRatio = '16:9', resolution = '720p' } = options
+  const {
+    imageBase64,
+    imageMimeType = 'image/jpeg',
+    duration = 8,
+    aspectRatio = '16:9',
+    resolution = '720p',
+  } = options
 
   // Clamp duration to xAI's supported range (1–10 s)
   const clampedDuration = Math.min(Math.max(Math.round(duration), 1), 10)
+
+  const requestBody: Record<string, unknown> = {
+    model: XAI_VIDEO_MODEL,
+    prompt,
+    duration: clampedDuration,
+    aspect_ratio: aspectRatio,
+    resolution,
+  }
+
+  // Image-to-video: pass the source image as a base64 data URI
+  if (imageBase64) {
+    requestBody.image = { url: `data:${imageMimeType};base64,${imageBase64}` }
+  }
 
   // ── 1. Start video generation job ────────────────────────
   const startResponse = await fetch(`${XAI_API_URL}/videos/generations`, {
@@ -112,13 +142,7 @@ export async function generateSceneVideoClipWithXai(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${XAI_API_KEY}`,
     },
-    body: JSON.stringify({
-      model: XAI_VIDEO_MODEL,
-      prompt,
-      duration: clampedDuration,
-      aspect_ratio: aspectRatio,
-      resolution,
-    }),
+    body: JSON.stringify(requestBody),
   })
 
   if (!startResponse.ok) {

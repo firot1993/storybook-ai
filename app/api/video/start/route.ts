@@ -78,54 +78,65 @@ async function runPipeline(
     if (useXaiVideo) {
       // ════════════════════════════════════════════════════════
       // xAI Video Pipeline
-      //   Stage 1 : xAI generates animated video clips per scene
+      //   Stage 1a: Gemini generates scene illustration (character-aware)
+      //   Stage 1b: xAI animates the image into a video clip (image-to-video)
       //   Stage 2 : Gemini TTS generates narration audio
       //   Stage 3 : Replace xAI clip audio with TTS narration
       //   Stage 4 : Concatenate all clips
       //   Stage 5 : Burn subtitles
       // ════════════════════════════════════════════════════════
 
-      // Helper: map resolution string → xAI aspect_ratio
       const aspectRatio = settings.resolution === '1080x1080' ? '1:1' : '16:9'
       const xaiResolution: '480p' | '720p' = '720p'
 
-      // ── Stage 1: Generate scene video clips via xAI ─────────
+      // ── Stage 1: Gemini image → xAI image-to-video ──────────
       await updateVideoProject(projectId, { status: 'generating_images', progress: 5 })
 
-      // xaiVideoLocalPaths[i] = path if xAI succeeded, null if it failed
-      // fallbackImageLocalPaths[i] = path if image fallback was needed
+      // xaiVideoLocalPaths[i]     = local path to animated clip (null if xAI failed)
+      // fallbackImageLocalPaths[i] = local path to static image  (always saved as fallback)
       const xaiVideoLocalPaths: (string | null)[] = new Array(scenes.length).fill(null)
       const fallbackImageLocalPaths: (string | null)[] = new Array(scenes.length).fill(null)
 
       for (let i = 0; i < scenes.length; i++) {
         const scene = scenes[i]
         const videoDuration = Math.min(Math.max(scene.estimatedDuration ?? 8, 1), 10)
-        const videoPrompt =
-          `Children's animated storybook scene: ${scene.imagePrompt}. ` +
-          `Style: Bright happy colors, round friendly character shapes, gentle and subtle animation, ` +
-          `cozy warm atmosphere, picture-book aesthetic. No text or words in the video.`
 
+        // Step 1a — Gemini generates the scene illustration (with character references)
+        let geminiBase64: string | null = null
+        let geminiMimeType = 'image/jpeg'
         try {
-          console.log(`[Pipeline] xAI video clip ${i} — generating (${videoDuration}s) …`)
-          const videoBuffer = await generateSceneVideoClipWithXai(videoPrompt, {
-            duration: videoDuration,
-            aspectRatio,
-            resolution: xaiResolution,
-          })
-          const relPath = `${base}/scene-${i}-xai.mp4`
-          await saveFile(videoBuffer, relPath)
-          xaiVideoLocalPaths[i] = getLocalPath(relPath)
-          console.log(`[Pipeline] xAI video clip ${i} saved`)
-        } catch (err) {
-          console.warn(`[Pipeline] xAI video clip ${i} failed — falling back to static image:`, err)
-          // Fall back to Banana/Gemini image generation for this scene
+          const imgResult = await generateSceneIllustration(scene.imagePrompt, charImagesBase64, [])
+          const relPath = `${base}/scene-${i}.jpg`
+          await saveFile(Buffer.from(imgResult.data, 'base64'), relPath)
+          fallbackImageLocalPaths[i] = getLocalPath(relPath)
+          geminiBase64 = imgResult.data
+          geminiMimeType = imgResult.mimeType
+        } catch (imgErr) {
+          console.warn(`[Pipeline] Gemini image ${i} failed:`, imgErr)
+        }
+
+        // Step 1b — xAI animates the Gemini image (image-to-video)
+        if (geminiBase64) {
+          const motionPrompt =
+            `Gently animate this children's storybook scene with subtle, soothing movement: ` +
+            `characters breathe softly and blink naturally, background elements like leaves, ` +
+            `water, or light shimmer gently. Smooth, loop-friendly animation, warm picture-book atmosphere.`
           try {
-            const imgResult = await generateSceneIllustration(scene.imagePrompt, charImagesBase64, [])
-            const relPath = `${base}/scene-${i}.jpg`
-            await saveFile(Buffer.from(imgResult.data, 'base64'), relPath)
-            fallbackImageLocalPaths[i] = getLocalPath(relPath)
-          } catch (imgErr) {
-            console.warn(`[Pipeline] Fallback image ${i} also failed:`, imgErr)
+            console.log(`[Pipeline] xAI image-to-video ${i} — animating (${videoDuration}s) …`)
+            const videoBuffer = await generateSceneVideoClipWithXai(motionPrompt, {
+              imageBase64: geminiBase64,
+              imageMimeType: geminiMimeType,
+              duration: videoDuration,
+              aspectRatio,
+              resolution: xaiResolution,
+            })
+            const relPath = `${base}/scene-${i}-xai.mp4`
+            await saveFile(videoBuffer, relPath)
+            xaiVideoLocalPaths[i] = getLocalPath(relPath)
+            console.log(`[Pipeline] xAI clip ${i} saved`)
+          } catch (err) {
+            console.warn(`[Pipeline] xAI animation ${i} failed — using static image fallback:`, err)
+            // fallbackImageLocalPaths[i] already set from step 1a
           }
         }
 
