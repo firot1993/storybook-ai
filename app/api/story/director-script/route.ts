@@ -16,6 +16,8 @@ import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybo
  *   supportingName  — (optional) overrides auto-resolved supporting name
  *   ageRange        — (optional) overrides storybook ageRange
  *   styleDesc       — (optional) overrides storybook style description
+ *   minLength       — (optional) minimum number of scenes, default 15
+ *   maxLength       — (optional) maximum number of scenes, default 18
  *
  * Character names, ageRange, and styleDesc are auto-resolved from the storybook when omitted.
  */
@@ -27,10 +29,49 @@ export async function POST(request: NextRequest) {
       supportingName: supportingOverride,
       ageRange: ageRangeOverride,
       styleDesc: styleDescOverride,
+      minLength,
+      maxLength,
+      minlength,
+      maxlength,
     } = await request.json()
 
     if (!storyId) {
       return NextResponse.json({ error: 'storyId is required' }, { status: 400 })
+    }
+
+    const minSceneCountRaw = minLength ?? minlength
+    const maxSceneCountRaw = maxLength ?? maxlength
+
+    const minSceneCount =
+      minSceneCountRaw === undefined
+        ? 15
+        : Number.isFinite(minSceneCountRaw)
+          ? Math.trunc(minSceneCountRaw)
+          : NaN
+    const maxSceneCount =
+      maxSceneCountRaw === undefined
+        ? 18
+        : Number.isFinite(maxSceneCountRaw)
+          ? Math.trunc(maxSceneCountRaw)
+          : NaN
+
+    if (!Number.isFinite(minSceneCount) || !Number.isFinite(maxSceneCount)) {
+      return NextResponse.json(
+        { error: 'minLength and maxLength must be numbers' },
+        { status: 400 }
+      )
+    }
+    if (minSceneCount < 1 || maxSceneCount < 1) {
+      return NextResponse.json(
+        { error: 'minLength and maxLength must be >= 1' },
+        { status: 400 }
+      )
+    }
+    if (minSceneCount > maxSceneCount) {
+      return NextResponse.json(
+        { error: 'minLength cannot be greater than maxLength' },
+        { status: 400 }
+      )
     }
 
     const story = await getStory(storyId)
@@ -67,6 +108,8 @@ export async function POST(request: NextRequest) {
         storyContent: story.content,
         ageRange,
         styleDesc,
+        minSceneCount,
+        maxSceneCount,
       })
     } catch (error) {
       const { status, message } = getGeminiErrorResponse(error)

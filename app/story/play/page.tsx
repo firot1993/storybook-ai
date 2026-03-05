@@ -32,6 +32,13 @@ function sceneStorageKey(storyId: string): string {
 
 type StoryLine = { type: 'narration' | 'character'; speaker?: string; text: string }
 
+const VIDEO_SCENE_RANGE_OPTIONS = [
+  { id: '3-4', min: 3, max: 4, eta: '预计制作 3-5 分钟' },
+  { id: '7-10', min: 7, max: 10, eta: '预计制作 6-10 分钟' },
+  { id: '15-18', min: 15, max: 18, eta: '预计制作 12-18 分钟' },
+] as const
+type VideoSceneRangeOptionId = (typeof VIDEO_SCENE_RANGE_OPTIONS)[number]['id']
+
 function splitNarrationIntoReadableLines(text: string): StoryLine[] {
   const normalized = text.replace(/\s+/g, ' ').trim()
   if (!normalized) return []
@@ -127,15 +134,26 @@ function VideoStartButton({
   label?: string
 }) {
   const [loading, setLoading] = useState(false)
+  const [videoSceneRange, setVideoSceneRange] = useState<VideoSceneRangeOptionId>('15-18')
 
   const handleStart = useCallback(async () => {
     if (loading) return
+    const selectedRange =
+      VIDEO_SCENE_RANGE_OPTIONS.find((option) => option.id === videoSceneRange) ??
+      VIDEO_SCENE_RANGE_OPTIONS[2]
+    const minLength = selectedRange.min
+    const maxLength = selectedRange.max
+
     setLoading(true)
     try {
       const scriptRes = await fetch('/api/story/director-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyId }),
+        body: JSON.stringify({
+          storyId,
+          minLength,
+          maxLength,
+        }),
       })
       if (!scriptRes.ok) throw new Error('Script generation failed')
       const { script } = await scriptRes.json() as { script: { id: string } }
@@ -152,26 +170,56 @@ function VideoStartButton({
       showToast('视频启动失败，请重试', 'error')
       setLoading(false)
     }
-  }, [loading, storyId, onStarted])
+  }, [loading, onStarted, storyId, videoSceneRange])
 
   return (
-    <button
-      onClick={handleStart}
-      disabled={loading}
-      className="mt-3 w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-forest-500 hover:bg-forest-600 active:scale-95 text-white font-extrabold text-sm transition-all shadow-lg shadow-forest-500/25 disabled:opacity-70 disabled:cursor-not-allowed"
-    >
-      {loading ? (
-        <>
-          <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-          </svg>
-          脚本生成中，请稍候…
-        </>
-      ) : (
-        <>{label}</>
-      )}
-    </button>
+    <div className="mt-3 space-y-2.5">
+      <div className="rounded-xl border border-forest-100 bg-forest-50/70 p-3">
+        <p className="text-[11px] font-bold text-forest-700 mb-2">视频场景数范围</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {VIDEO_SCENE_RANGE_OPTIONS.map((option) => {
+            const active = videoSceneRange === option.id
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setVideoSceneRange(option.id)}
+                className={`rounded-xl border px-2.5 py-2 text-left transition-all ${
+                  active
+                    ? 'bg-forest-500 border-forest-500 text-white shadow-md'
+                    : 'bg-white border-forest-100 text-gray-700 hover:border-forest-300'
+                }`}
+              >
+                <p className="text-xs font-extrabold">{option.id} 场景</p>
+                <p className={`text-[10px] mt-0.5 ${active ? 'text-white/80' : 'text-gray-500'}`}>
+                  {option.eta}
+                </p>
+              </button>
+            )
+          })}
+        </div>
+        <p className="text-[10px] text-forest-700 mt-2">
+          当前选择：{videoSceneRange} 场景
+        </p>
+      </div>
+      <button
+        onClick={handleStart}
+        disabled={loading}
+        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-forest-500 hover:bg-forest-600 active:scale-95 text-white font-extrabold text-sm transition-all shadow-lg shadow-forest-500/25 disabled:opacity-70 disabled:cursor-not-allowed"
+      >
+        {loading ? (
+          <>
+            <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
+            脚本生成中，请稍候…
+          </>
+        ) : (
+          <>{label}</>
+        )}
+      </button>
+    </div>
   )
 }
 
@@ -209,6 +257,8 @@ function PlayStoryContent() {
   const touchStartX = useRef<number | null>(null)
   const storyId = story?.id ?? ''
   const storyImageCount = story?.images.length ?? 0
+  const contentScenes = useMemo(() => (story ? splitStoryIntoScenes(story.content) : []), [story])
+  const scenePageCount = story ? Math.max(storyImageCount, contentScenes.length, 1) : 0
   const sceneAudioUrls = (story?.sceneAudioUrls ?? []).filter(Boolean)
   const hasSceneAudio = sceneAudioUrls.length > 0
   const sceneAudioSource =
@@ -315,16 +365,16 @@ function PlayStoryContent() {
     const storedScene = Number(localStorage.getItem(key))
     if (!Number.isFinite(storedScene)) return
 
-    const clamped = Math.min(Math.max(Math.trunc(storedScene), 0), storyImageCount)
+    const clamped = Math.min(Math.max(Math.trunc(storedScene), 0), scenePageCount)
     setCurrentScene(clamped)
-  }, [storyId, storyImageCount])
+  }, [scenePageCount, storyId])
 
   useEffect(() => {
     if (!storyId) return
     localStorage.setItem(sceneStorageKey(storyId), String(currentScene))
   }, [currentScene, storyId])
 
-  const totalScenes = story?.images.length ?? 0
+  const totalScenes = scenePageCount
 
   const goToScene = useCallback((index: number) => {
     if (index >= 0 && index <= totalScenes) { // Allow going to totalScenes for "The End"
@@ -604,21 +654,23 @@ function PlayStoryContent() {
   const sceneLines = useMemo(() => {
     if (!story) return []
 
-    const parts = splitStoryIntoScenes(story.content)
+    const parts = contentScenes
     let rawText = ''
 
     if (parts.length > 0 && currentScene < parts.length) {
       rawText = parts[currentScene]
+    } else if (parts.length > 0) {
+      rawText = parts[parts.length - 1] ?? ''
     } else {
       const sentences = story.content.split(/(?<=[.!?])\s+/)
-      const scenesCount = story.images.length || 1
+      const scenesCount = Math.max(totalScenes, 1)
       const perScene = Math.ceil(sentences.length / scenesCount)
       const start = currentScene * perScene
       rawText = sentences.slice(start, start + perScene).join(' ')
     }
 
     return parseSceneLines(rawText)
-  }, [currentScene, story])
+  }, [contentScenes, currentScene, story, totalScenes])
   const narrationTextClass = readerTextSize === 'sm'
     ? 'text-sm sm:text-base leading-6 sm:leading-7'
     : readerTextSize === 'lg'
@@ -780,12 +832,12 @@ function PlayStoryContent() {
               </div>
             )}
 
-            {/* Start / retry video CTA */}
-            {urlStoryId && !isInProgress && !videoProject?.finalVideoUrl && (
+            {/* Start / retry / regenerate video CTA */}
+            {urlStoryId && !isInProgress && (
               <VideoStartButton
                 storyId={urlStoryId}
                 onStarted={(vp) => setVideoProject(vp)}
-                label={isFailed ? '🔄 重新制作视频' : '🎬 开始制作视频'}
+                label={isFailed || Boolean(videoProject?.finalVideoUrl) ? '🔄 重新制作视频' : '🎬 开始制作视频'}
               />
             )}
           </div>
@@ -970,7 +1022,7 @@ function PlayStoryContent() {
               <>
                 {/* Page dots */}
                 <div className="flex gap-2 items-center flex-wrap justify-center">
-                  {story.images.map((_, index) => (
+                  {Array.from({ length: totalScenes }).map((_, index) => (
                     <button
                       key={index}
                       onClick={() => goToScene(index)}
@@ -1116,7 +1168,7 @@ function PlayStoryContent() {
             )}
 
             <p className="text-sm font-bold text-grape-400">
-              {isTheEnd ? 'The End' : `Page ${currentScene + 1} of ${story.images.length}`}
+              {isTheEnd ? 'The End' : `Page ${currentScene + 1} of ${totalScenes}`}
             </p>
             {!isTheEnd && (
               <p className="text-xs font-semibold text-grape-300 text-center">

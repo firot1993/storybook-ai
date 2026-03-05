@@ -20,6 +20,13 @@ const SYNOPSIS_STYLE = {
   C: { label: '勇气冒险型', gradient: 'from-emerald-400 to-teal-400', bg: 'bg-emerald-50', border: 'border-emerald-200', ring: 'ring-emerald-300' },
 }
 
+const VIDEO_SCENE_RANGE_OPTIONS = [
+  { id: '3-4', min: 3, max: 4, eta: '预计制作 3-5 分钟' },
+  { id: '7-10', min: 7, max: 10, eta: '预计制作 6-10 分钟' },
+  { id: '15-18', min: 15, max: 18, eta: '预计制作 12-18 分钟' },
+] as const
+type VideoSceneRangeOptionId = (typeof VIDEO_SCENE_RANGE_OPTIONS)[number]['id']
+
 
 export default function CreateStoryPage() {
   return (
@@ -75,6 +82,7 @@ function CreateStoryWizard() {
   const [generatedStoryContent, setGeneratedStoryContent] = useState('')
   const [selectedSynopsisOpt, setSelectedSynopsisOpt] = useState<SynopsisOption | null>(null)
   const [startingVideo, setStartingVideo] = useState(false)
+  const [videoSceneRange, setVideoSceneRange] = useState<VideoSceneRangeOptionId>('15-18')
 
   // ── Initial data load ────────────────────────────────────
   useEffect(() => {
@@ -302,13 +310,23 @@ function CreateStoryWizard() {
   // ── Start video production pipeline ──────────────────────
   const handleStartVideo = useCallback(async () => {
     if (!generatedStoryId || startingVideo) return
+    const selectedRange =
+      VIDEO_SCENE_RANGE_OPTIONS.find((option) => option.id === videoSceneRange) ??
+      VIDEO_SCENE_RANGE_OPTIONS[2]
+    const minLength = selectedRange.min
+    const maxLength = selectedRange.max
+
     setStartingVideo(true)
     try {
-      // Step 1: generate director storyboard script from story (15-18 scenes × 3 keyframes)
+      // Step 1: generate director storyboard script from story
       const scriptRes = await fetch('/api/story/director-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyId: generatedStoryId }),
+        body: JSON.stringify({
+          storyId: generatedStoryId,
+          minLength,
+          maxLength,
+        }),
       })
       if (!scriptRes.ok) throw new Error('Script generation failed')
       const { script } = await scriptRes.json()
@@ -327,7 +345,7 @@ function CreateStoryWizard() {
       showToast('视频启动失败，请重试', 'error')
       setStartingVideo(false)
     }
-  }, [generatedStoryId, router, startingVideo])
+  }, [generatedStoryId, router, startingVideo, videoSceneRange])
 
   // ── Render ────────────────────────────────────────────────
 
@@ -664,6 +682,34 @@ function CreateStoryWizard() {
 
                 {/* Actions */}
                 <div className="space-y-3">
+                  <div className="rounded-2xl border border-forest-100 bg-forest-50/60 p-3">
+                    <p className="text-[11px] font-bold text-forest-700 mb-2">视频场景数范围</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {VIDEO_SCENE_RANGE_OPTIONS.map((option) => {
+                        const active = videoSceneRange === option.id
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => setVideoSceneRange(option.id)}
+                            className={`rounded-xl border px-2.5 py-2 text-left transition-all ${
+                              active
+                                ? 'bg-forest-500 border-forest-500 text-white shadow-md'
+                                : 'bg-white border-forest-100 text-gray-700 hover:border-forest-300'
+                            }`}
+                          >
+                            <p className="text-xs font-extrabold">{option.id} 场景</p>
+                            <p className={`text-[10px] mt-0.5 ${active ? 'text-white/80' : 'text-gray-500'}`}>
+                              {option.eta}
+                            </p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="text-[10px] text-forest-700 mt-2">
+                      当前选择：{videoSceneRange} 场景
+                    </p>
+                  </div>
                   <button
                     onClick={handleStartVideo}
                     disabled={startingVideo}

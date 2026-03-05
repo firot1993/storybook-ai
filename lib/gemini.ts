@@ -599,7 +599,7 @@ export async function generateStoryCoverImage(params: {
 // ── Storybook v2: 动漫导演分镜脚本生成 ──────────────────────
 
 /**
- * 生成完整的动漫导演分镜脚本（15-18个分镜），每个分镜包含：
+ * 生成完整的动漫导演分镜脚本（可配置分镜数量范围），每个分镜包含：
  * - 场景描述、镜头设计、动画动作(8s)、旁白VO、对话
  * - 三帧图片 prompt（开头帧/中间帧/结尾帧，16:9，英文）
  *
@@ -612,14 +612,28 @@ export async function generateStorybookDirectorScript(params: {
   storyContent: string
   ageRange: string
   styleDesc: string
+  minSceneCount?: number
+  maxSceneCount?: number
 }): Promise<import('@/types').DirectorStoryboardScene[]> {
-  const { storyName, protagonistName, supportingName, storyContent, ageRange, styleDesc } = params
+  const {
+    storyName,
+    protagonistName,
+    supportingName,
+    storyContent,
+    ageRange,
+    styleDesc,
+    minSceneCount = 15,
+    maxSceneCount = 18,
+  } = params
+
+  const minScenes = Math.max(1, Math.trunc(minSceneCount))
+  const maxScenes = Math.max(minScenes, Math.trunc(maxSceneCount))
 
   const prompt = `[系统设定]
 你是一位享誉全球的儿童动漫导演与金牌分镜设计师，擅长将温馨的童话转化为极具视觉冲击力且节奏感极强的动漫画面。你的风格融合了新海诚的光影美学与吉卜力工作室的纯真叙事。
 
 [创作指令]
-请根据提供的【创作参数】，设计一套共 15-18 个分镜的故事书动漫化脚本。
+请根据提供的【创作参数】，设计一套共 ${minScenes}-${maxScenes} 个分镜的故事书动漫化脚本。
 
 [脚本核心规范]
 - 时长掌控：每个分镜需要有支撑 8-12 秒的动画内容，避免画面停滞。

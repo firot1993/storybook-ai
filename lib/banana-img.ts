@@ -1,5 +1,5 @@
 import sharp from 'sharp'
-import { generateCharacterImageWithDiagnostics, generateStoryImage } from './gemini'
+import { generateStoryImage } from './gemini'
 
 const BANANA_API_URL = process.env.BANANA_API_URL || 'https://api.banana.dev'
 const BANANA_API_KEY = process.env.BANANA_API_KEY || ''
@@ -135,11 +135,9 @@ export async function generateImageFromPrompt(
     )
     if (result) return { data: result.data, mimeType: 'image/jpeg' }
   } else {
-    // Character generation from description only — use minimal prompt
-    const result = await generateCharacterImageWithDiagnostics('', prompt)
-    if (result.imageData) {
-      return { data: result.imageData, mimeType: 'image/jpeg' }
-    }
+    // Text-only fallback when no reference image is available.
+    const result = await generateStoryImage(prompt, '')
+    if (result) return { data: result.data, mimeType: 'image/jpeg' }
   }
 
   throw new BananaImageError(502, 'Image generation failed (both Banana and Gemini returned no image).')
