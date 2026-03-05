@@ -78,7 +78,7 @@ export async function listStorybooks() {
     orderBy: { createdAt: 'desc' },
     include: { chapters: { select: { id: true, title: true, synopsis: true, status: true, createdAt: true }, orderBy: { createdAt: 'asc' } } },
   })
-  return books.map((b) => ({
+  return books.map((b: (typeof books)[number]) => ({
     ...b,
     characters: JSON.parse(b.characters) as import('@/types').StorybookCharacter[],
   }))
@@ -93,7 +93,7 @@ export async function getStorybook(id: string) {
   return {
     ...b,
     characters: JSON.parse(b.characters) as import('@/types').StorybookCharacter[],
-    chapters: b.chapters.map((s) => ({
+    chapters: b.chapters.map((s: (typeof b.chapters)[number]) => ({
       ...s,
       characterIds: JSON.parse(s.characterIds) as string[],
       images: JSON.parse(s.images) as string[],
@@ -202,28 +202,6 @@ export async function updateStoryAudio(
   })
 }
 
-export async function listStoriesByCharacter(characterId: string) {
-  const stories = await prisma.story.findMany({
-    where: { characterIds: { contains: characterId } },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true, title: true, images: true, createdAt: true },
-  })
-  return stories.map((s) => ({
-    ...s,
-    images: JSON.parse(s.images) as string[],
-  }))
-}
-
-export async function listAllStories() {
-  const stories = await prisma.story.findMany({ orderBy: { createdAt: 'desc' } })
-  return stories.map((s) => ({
-    ...s,
-    characterIds: JSON.parse(s.characterIds) as string[],
-    images: JSON.parse(s.images) as string[],
-    ...decodeStoryAudioPayload(s.audioUrl),
-  }))
-}
-
 export async function deleteStory(id: string) {
   return prisma.story.delete({ where: { id } })
 }
@@ -268,32 +246,6 @@ export async function deleteScenesByStory(storyId: string) {
   return prisma.scene.deleteMany({ where: { storyId } })
 }
 
-// ── Synopsis ────────────────────────────────────────────────
-
-export async function createSynopsis(data: {
-  characterIds: string[]
-  theme: string
-  keywords: string
-  ageGroup: string
-  content: string
-}) {
-  return prisma.synopsis.create({
-    data: {
-      characterIds: JSON.stringify(data.characterIds),
-      theme: data.theme,
-      keywords: data.keywords,
-      ageGroup: data.ageGroup,
-      content: data.content,
-    },
-  })
-}
-
-export async function getSynopsis(id: string) {
-  const s = await prisma.synopsis.findUnique({ where: { id } })
-  if (!s) return null
-  return { ...s, characterIds: JSON.parse(s.characterIds) as string[] }
-}
-
 // ── Script ──────────────────────────────────────────────────
 
 export async function createScript(data: {
@@ -316,15 +268,6 @@ export async function getScript(id: string) {
   return { ...s, scenes: JSON.parse(s.scenesJson) as import('@/types').ScriptScene[] }
 }
 
-export async function getScriptByStory(storyId: string) {
-  const s = await prisma.script.findFirst({
-    where: { storyId },
-    orderBy: { createdAt: 'desc' },
-  })
-  if (!s) return null
-  return { ...s, scenes: JSON.parse(s.scenesJson) as import('@/types').ScriptScene[] }
-}
-
 // ── VideoProject ────────────────────────────────────────────
 
 export async function createVideoProject(data: {
@@ -339,17 +282,6 @@ export async function createVideoProject(data: {
       videoSettings: JSON.stringify(data.videoSettings ?? {}),
     },
   })
-}
-
-export async function getVideoProject(id: string) {
-  const vp = await prisma.videoProject.findUnique({ where: { id } })
-  if (!vp) return null
-  return {
-    ...vp,
-    sceneVideoUrls: JSON.parse(vp.sceneVideoUrls) as string[],
-    subtitles: JSON.parse(vp.subtitlesJson) as import('@/types').SubtitleCue[],
-    videoSettings: JSON.parse(vp.videoSettings) as Record<string, unknown>,
-  }
 }
 
 export async function updateVideoProject(
@@ -376,22 +308,6 @@ export async function updateVideoProject(
       ...(data.errorMessage !== undefined ? { errorMessage: data.errorMessage } : {}),
     },
   })
-}
-
-export async function listVideoProjects() {
-  const projects = await prisma.videoProject.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: { story: { select: { title: true } } },
-  })
-  return projects.map((vp) => ({
-    ...vp,
-    sceneVideoUrls: JSON.parse(vp.sceneVideoUrls) as string[],
-    subtitles: JSON.parse(vp.subtitlesJson) as import('@/types').SubtitleCue[],
-  }))
-}
-
-export async function deleteVideoProject(id: string) {
-  return prisma.videoProject.delete({ where: { id } })
 }
 
 export async function getVideoProjectByStoryId(storyId: string) {

@@ -1,115 +1,109 @@
 # Storybook AI
 
-Storybook AI is a Next.js app that turns user photos into cartoon characters, generates illustrated bedtime stories, and narrates each scene with Gemini TTS.
+Storybook AI is a Next.js application for creating AI-powered children's storybooks and narrated videos.
 
-## Stack
+Current product flow is **v2 storybook-first**:
+1. Create/select characters
+2. Create/select a storybook
+3. Generate A/B/C synopsis options
+4. Generate a chapter from selected synopsis
+5. Generate director-style script and produce video via FFmpeg pipeline
 
-- Framework: Next.js 15, React 19, TypeScript
+## Tech Stack
+
+- Framework: Next.js (App Router), React, TypeScript
 - Styling: Tailwind CSS
+- Data: Prisma + SQLite (local)
 - AI:
-  - `gemini-2.5-flash-image` for character and scene images
-  - `gemini-3-flash-preview` for story text and story options
-  - `gemini-2.5-flash-preview-tts` for narration audio
-- Data: Prisma + SQLite (`prisma/dev.db`)
-- Deployment target: Vercel (with external persistent DB recommended)
+  - Text/Image generation via Gemini models
+  - TTS via Gemini (`gemini-2.5-flash-preview-tts`)
+  - STT via Gemini (`gemini-2.0-flash`)
+- Video composition: FFmpeg (`fluent-ffmpeg`)
 
-## Current Features
+## Main Routes
 
-- Generate cartoon character(s) from uploaded photos
-- Generate 3 story options from keywords + age group
-- Generate full story text and scene images
-- Scene-based audio generation
-- Narration vs character speech separation in TTS script
-- Auto page progression while scene audio plays
-- Regenerate audio for stories missing narration
+- `/` Landing page
+- `/character` Character library
+- `/character/create` Character generation (multi-style)
+- `/character/name` Character metadata editing
+- `/storybook` Storybook library
+- `/story/create` Storybook creation wizard
+- `/story/play?id=<storyId>` Story playback + video progress
 
-## Architecture Overview
+## Active API Routes
 
-### Frontend
+- `GET/POST /api/character`
+- `GET/PATCH/DELETE /api/character/[id]`
+- `POST /api/companions/suggest`
+- `GET /api/files/[...path]`
+- `GET /api/health`
+- `GET/DELETE /api/story/[id]`
+- `POST /api/story/audio`
+- `POST /api/story/director-script`
+- `GET/POST /api/storybook`
+- `GET/PATCH/DELETE /api/storybook/[id]`
+- `POST /api/storybook/[id]/companions`
+- `POST /api/storybook/[id]/synopsis`
+- `POST /api/storybook/[id]/story`
+- `POST /api/styles/generate-examples`
+- `POST /api/video/start`
+- `POST /api/voice/preview`
+- `POST /api/voice/transcribe`
 
-- App Router pages under `app/`
-- Client state persisted with localStorage / IndexedDB helpers (`lib/client-story-store.ts`)
+## Environment Variables
 
-### Backend
+Required:
+- `GEMINI_API_KEY`
 
-- Next.js route handlers under `app/api/`
-- Prisma access layer in `lib/db.ts`
-- Gemini wrappers in `lib/gemini.ts` and `lib/gemini-tts.ts`
-- Story scene parsing shared in `lib/story-scenes.ts`
-
-### Audio Storage Compatibility
-
-`Story.audioUrl` in DB stores either:
-
-- Legacy plain single audio URL string, or
-- Encoded JSON payload containing `audioUrl` + `sceneAudioUrls`
-
-Encoding/decoding helpers live in `lib/story-audio.ts` to keep old stories compatible.
-
-## API Routes
-
-- `GET /api/health` readiness check
-- `GET /api/character` list characters
-- `POST /api/character` generate/save character
-- `GET|PATCH|DELETE /api/character/[id]` character CRUD
-- `GET /api/character/[id]/stories` list a character's stories
-- `GET /api/story` list all stories
-- `POST /api/story/options` generate story options
-- `POST /api/story/generate` generate story + images + scene audio
-- `POST /api/story/audio` regenerate scene audio
-- `GET|DELETE /api/story/[id]` story fetch/delete
+Optional:
+- `GEMINI_TTS_VOICE`
+- `BANANA_API_URL`
+- `BANANA_API_KEY`
+- `BANANA_MODEL_KEY`
+- `FFMPEG_PATH`
+- `STORAGE_LOCAL_PATH` (default: `/tmp/storybook`)
+- `NEXT_PUBLIC_BASE_URL` (default: `http://localhost:3000`)
 
 ## Local Development
 
-### 1. Install
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-### 2. Configure environment
-
-```bash
-cp .env.local.example .env.local
-```
-
-Required:
-
-- `GEMINI_API_KEY`
-
-Optional (TTS voices):
-
-- `GEMINI_TTS_VOICE` (single-speaker narration voice, default `Kore`)
-
-### 3. Run
+Run development server:
 
 ```bash
 npm run dev
 ```
 
-Open `http://localhost:3000`.
-
-### 4. Build and lint
+Run checks:
 
 ```bash
 npm run lint
-npm run build
+npx tsc --noEmit
+npm run test --if-present
 ```
 
-## Database Notes
+Production build:
 
-- Local development uses SQLite file `prisma/dev.db`.
-- Prisma schema is in `prisma/schema.prisma`.
-- For Vercel production, SQLite file storage is not durable across deployments/invocations.
-- Use a persistent hosted DB adapter for production if you need durable story/character data.
+```bash
+npm run build
+npm run start
+```
 
-## Deployment Notes (Vercel)
+## CI
 
-- Set environment variables in Vercel project settings.
-- Ensure `GEMINI_API_KEY` is configured.
-- If you keep SQLite, treat it as ephemeral (demo-only).
-- For production persistence, migrate Prisma datasource to a hosted database.
+GitHub Actions workflow: `.github/workflows/basic-check.yml`
 
-## License
+Checks on `push` and `pull_request`:
+- `npm ci`
+- `npm run lint`
+- `npx tsc --noEmit`
+- `npm run test --if-present`
 
-MIT
+## Notes
+
+- Legacy v1 story/video pages and routes have been removed.
+- Keep new changes aligned with the v2 storybook + director-script pipeline.

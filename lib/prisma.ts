@@ -1,13 +1,25 @@
-import { PrismaClient } from '@prisma/client'
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
+import type { PrismaClient as PrismaClientType } from '@prisma/client'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
+const require = createRequire(import.meta.url)
 
-function createClient() {
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClientType }
+
+function createClient(): PrismaClientType {
+  const { PrismaClient } = require('@prisma/client') as {
+    PrismaClient?: new (options?: { adapter?: unknown }) => PrismaClientType
+  }
+
+  if (!PrismaClient) {
+    throw new Error('PrismaClient export not found in @prisma/client')
+  }
+
   const adapter = new PrismaBetterSqlite3({
     url: `file:${path.join(process.cwd(), 'prisma/dev.db')}`,
   })
+
   return new PrismaClient({ adapter })
 }
 
