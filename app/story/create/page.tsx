@@ -81,6 +81,7 @@ function CreateStoryWizard() {
   const [generatedCoverImage, setGeneratedCoverImage] = useState('')
   const [generatedStoryContent, setGeneratedStoryContent] = useState('')
   const [selectedSynopsisOpt, setSelectedSynopsisOpt] = useState<SynopsisOption | null>(null)
+  const [discoveredNpcs, setDiscoveredNpcs] = useState<Array<{ name: string; description?: string; image?: string }>>([])
   const [startingVideo, setStartingVideo] = useState(false)
   const [videoSceneRange, setVideoSceneRange] = useState<VideoSceneRangeOptionId>('15-18')
 
@@ -318,6 +319,7 @@ function CreateStoryWizard() {
     const title = synopsis.title || currentBook?.name || '我的故事'
     setGeneratedTitle(title)
     setGeneratedCoverImage('')
+    setDiscoveredNpcs([])
     try {
       const res = await fetch(`/api/storybook/${selectedStorybookId}/story`, {
         method: 'POST',
@@ -337,6 +339,7 @@ function CreateStoryWizard() {
       setGeneratedStoryContent(
         (data.story.content as string ?? '').replace(/<!--CHOICES:[\s\S]*?-->/g, '').trim()
       )
+      setDiscoveredNpcs(data.discoveredNpcs ?? [])
       // Append new chapter to storybooks so the chapter list in step 2 is up-to-date
       setStorybooks((prev) =>
         prev.map((b) =>
@@ -726,6 +729,34 @@ function CreateStoryWizard() {
                   </div>
                 </div>
 
+                {/* Discovered NPCs */}
+                {discoveredNpcs.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2">本集新角色</p>
+                    <div className="flex gap-3 overflow-x-auto pb-1">
+                      {discoveredNpcs.map((npc, i) => (
+                        <div key={i} className="flex flex-col items-center gap-1.5 min-w-[80px] max-w-[96px]">
+                          {npc.image ? (
+                            <img
+                              src={npc.image}
+                              alt={npc.name}
+                              className="w-16 h-16 rounded-2xl object-cover border-2 border-forest-200 shadow-sm"
+                            />
+                          ) : (
+                            <div className="w-16 h-16 rounded-2xl bg-forest-100 border-2 border-forest-200 flex items-center justify-center text-forest-400 text-lg font-bold">
+                              {npc.name.charAt(0)}
+                            </div>
+                          )}
+                          <p className="text-[11px] font-bold text-gray-800 text-center leading-tight">{npc.name}</p>
+                          {npc.description && (
+                            <p className="text-[9px] text-gray-500 text-center leading-snug line-clamp-2">{npc.description}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-forest-100 bg-forest-50/60 p-3">
@@ -783,6 +814,7 @@ function CreateStoryWizard() {
                       setGeneratedCoverImage('')
                       setGeneratedStoryContent('')
                       setSelectedSynopsisOpt(null)
+                      setDiscoveredNpcs([])
                     }}
                     className="btn-secondary w-full text-sm"
                   >

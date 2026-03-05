@@ -621,6 +621,248 @@ export async function generateStoryCoverImage(params: {
   return { data: compressed.data, mimeType: compressed.mimeType }
 }
 
+// ── Storybook v2: 单次交错生成（故事 + 封面 + NPC立绘） ──────
+
+/**
+ * Single interleaved Gemini call that generates story text, cover image,
+ * and NPC character portrait images all at once using
+ * `responseModalities: ['TEXT', 'IMAGE']`.
+ */
+export async function generateStoryWithAssets(params: {
+  storyName: string
+  protagonistName: string
+  supportingName: string
+  synopsis: string
+  ageRange: string
+  styleDesc: string
+  theme?: string
+  characterImageBase64?: string
+}): Promise<{
+  story: string
+  choices: string[]
+  npcs: Array<{ name: string; description: string }>
+  coverImage?: { data: string; mimeType: string }
+  npcImages: Map<string, { data: string; mimeType: string }>
+}> {
+  const {
+    storyName,
+    protagonistName,
+    supportingName,
+    synopsis,
+    ageRange,
+    styleDesc,
+    theme,
+    characterImageBase64,
+  } = params
+
+  const debugTag = '[generateStoryWithAssets]'
+  const styleLabel = styleDesc || '梦幻水彩，马卡龙色调，温暖柔光'
+  const hasCharacterImageRef = Boolean(characterImageBase64)
+
+  const prompt = `[系统设定]
+你是一位享誉全球的儿童绘本创作者，擅长用最纯真、富有想象力的笔触为孩子们编织梦幻故事与插画。
+
+[创作参数]
+故事名称：${storyName}
+主角：${protagonistName}
+配角：${supportingName}
+故事梗概：${synopsis}
+目标读者年龄：${ageRange}岁
+视觉风格：${styleLabel}
+故事核心主题：${theme || '探索与友谊'}
+
+[创作任务]
+请按照以下格式，依次输出所有内容：
+
+【故事正文】
+根据上面的参数创作一篇短童话。要求：
+1. 感官写作：不要说"很美丽"——要描述"星星像糖粉洒满草地"。
+2. 简短对话：用"角色名：对话"的格式加入温馨互动。
+3. 情感内核：传递关于${theme || '探索与友谊'}的小道理。
+4. 节奏：安静开场 → 奇幻转折 → 温暖治愈结尾。
+5. 开放钩子：以引发小读者想象的互动问题或为下一集埋伏笔的悬念结尾。
+6. 场景标记：用 [Scene 1]、[Scene 2] 等标记，共3-4个场景。
+7. 用主角名字和梗概暗示的语言写作（如果是中文名字则用中文写）。
+8. 如果故事引入了新的命名角色（不是主角/配角），在故事文本之后列出NPC。
+
+故事正文写完后，紧接着输出如下两个标记（各占一行）：
+<!--NPCS:[{"name":"<新角色名>","description":"<简短特征，≤20字>"}]-->
+<!--CHOICES:["<下集选项1，≤15字>","<选项2，≤15字>","<选项3，≤15字>"]-->
+（如果没有新NPC，NPCS填空数组 []）
+
+然后，对于NPCS中列出的每个新角色，请依次输出：
+【角色 - <角色名>】
+名字：<角色名>
+性格：<简要性格描述>
+外貌描述：<简要外貌>
+然后生成这个角色的全身立绘，${styleLabel}风格，白色背景
+
+最后输出：
+【封面】
+生成这个绘本的封面图，竖版构图（宽:高约3:4），${styleLabel}风格，展现故事核心场景，不包含任何文字
+${hasCharacterImageRef ? `
+
+[主角形象一致性约束]
+你会收到一张参考图片。该图片就是主角「${protagonistName}」的形象参考。
+所有涉及主角的画面（封面与正文相关画面）都必须保持主角的外观一致：
+- 脸型、发型、发色、服饰主色、整体气质保持一致
+- 不要把这张参考图当作NPC
+- 不要改变主角的物种/性别设定（除非故事文本明确要求）` : ''}`
+
+  console.log(`${debugTag} Start`, {
+    storyName,
+    protagonistName,
+    supportingName,
+    ageRange,
+    styleLabel,
+    hasCharacterImageRef,
+    synopsisChars: synopsis.length,
+    promptChars: prompt.length,
+  })
+
+  // Build content parts: text prompt + optional protagonist reference image
+  const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
+    { text: prompt },
+  ]
+
+  if (characterImageBase64) {
+    const isJpeg = characterImageBase64.startsWith('/9j/')
+    parts.push({
+      text:
+        `Reference image below is the protagonist "${protagonistName}". ` +
+        `Use it to keep protagonist appearance consistent in cover and scene-related outputs. ` +
+        `Do not use it as an NPC reference.`,
+    })
+    parts.push({
+      inlineData: {
+        data: characterImageBase64,
+        mimeType: isJpeg ? 'image/jpeg' : 'image/png',
+      },
+    })
+  }
+
+  const response = (await genAI.models.generateContent({
+    model: IMAGE_MODEL,
+    contents: [{ role: 'user', parts }],
+    config: { responseModalities: ['TEXT', 'IMAGE'] },
+  })) as GeminiImageResponse
+
+  // Walk response parts sequentially to extract text + images
+  const responseParts = response.candidates?.[0]?.content?.parts ?? []
+  const textPartCount = responseParts.filter((part) => Boolean(part.text)).length
+  const imagePartCount = responseParts.filter((part) => Boolean(part.inlineData?.data)).length
+  console.log(`${debugTag} Response`, {
+    candidateCount: response.candidates?.length ?? 0,
+    totalParts: responseParts.length,
+    textPartCount,
+    imagePartCount,
+  })
+
+  let allText = ''
+  const images: Array<{ data: string; mimeType: string }> = []
+  // Track which section each image belongs to based on preceding text
+  const imageSectionLabels: string[] = []
+  let lastTextChunk = ''
+
+  for (const part of responseParts) {
+    if (part.text) {
+      allText += part.text
+      lastTextChunk = part.text
+    } else if (part.inlineData?.data) {
+      const rawData = part.inlineData.data
+      const compressed = await compressImage(rawData, 768, 80)
+      images.push({ data: compressed.data, mimeType: compressed.mimeType })
+      imageSectionLabels.push(lastTextChunk)
+    }
+  }
+
+  // Parse story text, choices, and NPCs from collected text
+  const rawText = allText.trim()
+
+  const choicesMatch = rawText.match(/<!--CHOICES:(.*?)-->/)
+  let choices: string[] = []
+  if (choicesMatch) {
+    try { choices = JSON.parse(choicesMatch[1]) as string[] } catch { /* ignore */ }
+  }
+
+  const npcsMatch = rawText.match(/<!--NPCS:(.*?)-->/)
+  let npcs: Array<{ name: string; description: string }> = []
+  if (npcsMatch) {
+    try {
+      const parsed = JSON.parse(npcsMatch[1]) as Array<{ name?: string; description?: string }>
+      npcs = (Array.isArray(parsed) ? parsed : [])
+        .map((npc) => ({
+          name: (npc?.name ?? '').trim(),
+          description: (npc?.description ?? '').trim(),
+        }))
+        .filter((npc) => npc.name.length > 0)
+    } catch {
+      // ignore malformed NPC payload
+    }
+  }
+
+  let story = rawText
+    .replace(/<!--CHOICES:.*?-->/g, '')
+    .replace(/<!--NPCS:.*?-->/g, '')
+
+  // Keep only main story body when wrapper sections are present.
+  // Drop any preface before 【故事正文】.
+  story = story.replace(/^[\s\S]*?【故事正文】\s*/m, '')
+  // Strip wrapper labels and generation-only sections.
+  story = story
+    .replace(/【故事正文】/g, '')
+    .replace(/【角色\s*[-—]\s*[\s\S]*$/g, '')
+    .replace(/【封面】[\s\S]*$/g, '')
+    .trim()
+  console.log(`${debugTag} ParsedText`, {
+    rawTextChars: rawText.length,
+    storyChars: story.length,
+    choicesCount: choices.length,
+    npcCount: npcs.length,
+    imageCount: images.length,
+  })
+
+  // Map images to NPC portraits vs cover based on preceding text labels
+  const npcImages = new Map<string, { data: string; mimeType: string }>()
+  let coverImage: { data: string; mimeType: string } | undefined
+
+  for (let i = 0; i < images.length; i++) {
+    const label = imageSectionLabels[i] || ''
+    // Check if this image follows a 【封面】 section
+    if (label.includes('【封面】')) {
+      coverImage = images[i]
+    } else {
+      // Try to match NPC name from 【角色 - <name>】 pattern in preceding text
+      const npcMatch = label.match(/【角色\s*-\s*(.+?)】/)
+      if (npcMatch) {
+        const npcName = npcMatch[1].trim()
+        npcImages.set(npcName, images[i])
+      } else if (i === images.length - 1 && !coverImage) {
+        // Last image is likely the cover if not yet assigned
+        coverImage = images[i]
+      }
+    }
+  }
+
+  const npcImageNames = Array.from(npcImages.keys())
+  const mappedImageCount = npcImages.size + (coverImage ? 1 : 0)
+  console.log(`${debugTag} ImageMapping`, {
+    coverAssigned: Boolean(coverImage),
+    npcImageCount: npcImages.size,
+    npcImageNames,
+    totalImageCount: images.length,
+    unmappedImageCount: Math.max(0, images.length - mappedImageCount),
+  })
+
+  if (npcs.length > 0 && npcImages.size === 0) {
+    console.warn(`${debugTag} NPCs parsed but no NPC images mapped`, {
+      npcNames: npcs.map((npc) => npc.name),
+    })
+  }
+
+  return { story, choices, npcs, coverImage, npcImages }
+}
+
 // ── Storybook v2: 动漫导演分镜脚本生成 ──────────────────────
 
 /**
