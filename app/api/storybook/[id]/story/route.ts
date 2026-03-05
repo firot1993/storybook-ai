@@ -63,8 +63,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // 保存章节到数据库
     const characterIds = storybook.characters
-      .filter((c) => c.id)
-      .map((c) => c.id)
+      .filter((c: { id: string }) => c.id)
+      .map((c: { id: string }) => c.id)
     const dbStory = await createStory({
       storybookId: id,
       characterIds,

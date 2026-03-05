@@ -78,7 +78,7 @@ export async function listStorybooks() {
     orderBy: { createdAt: 'desc' },
     include: { chapters: { select: { id: true, title: true, synopsis: true, status: true, createdAt: true }, orderBy: { createdAt: 'asc' } } },
   })
-  return books.map((b) => ({
+  return books.map((b: (typeof books)[number]) => ({
     ...b,
     characters: JSON.parse(b.characters) as import('@/types').StorybookCharacter[],
   }))
@@ -93,7 +93,7 @@ export async function getStorybook(id: string) {
   return {
     ...b,
     characters: JSON.parse(b.characters) as import('@/types').StorybookCharacter[],
-    chapters: b.chapters.map((s) => ({
+    chapters: b.chapters.map((s: (typeof b.chapters)[number]) => ({
       ...s,
       characterIds: JSON.parse(s.characterIds) as string[],
       images: JSON.parse(s.images) as string[],
