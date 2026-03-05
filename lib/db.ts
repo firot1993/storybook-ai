@@ -74,6 +74,7 @@ export async function listCharacters(options?: { includeNpc?: boolean }) {
       id: true,
       name: true,
       cartoonImage: true,
+      styleImages: true,
       style: true,
       age: true,
       voiceName: true,
