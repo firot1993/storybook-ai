@@ -30,7 +30,7 @@ RUN npm run build
 # ── Stage 3: runner ──────────────────────────────────────────
 FROM node:20-slim AS runner
 RUN apt-get update \
-  && apt-get install -y ffmpeg openssl \
+  && apt-get install -y ffmpeg openssl fonts-noto-cjk fonts-noto-cjk-extra \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
