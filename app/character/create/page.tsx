@@ -66,7 +66,7 @@ export default function CharacterCreatePage() {
 
   useEffect(() => () => { audioRef.current?.pause() }, [])
 
-  const loadFile = async (file: File) => {
+  const loadFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) { showToast('请上传 JPG 或 PNG 图片', 'error'); return }
     if (file.size > 5 * 1024 * 1024) { showToast('图片太大，最多 5 MB', 'error'); return }
     const dataUrl = await new Promise<string>((res, rej) => {
@@ -78,7 +78,7 @@ export default function CharacterCreatePage() {
     setPhotoPreview(dataUrl)
     setPhotoBase64(dataUrl.split(',')[1])
     setCharacter(null); setVoiceName(''); setVoiceReason('')
-  }
+  }, [])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (file) loadFile(file)
@@ -88,8 +88,7 @@ export default function CharacterCreatePage() {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setIsDragging(false)
     const file = e.dataTransfer.files[0]; if (file) loadFile(file)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [loadFile])
 
   const handleGenerate = async () => {
     if (!photoBase64) { showToast('请先上传一张照片！', 'error'); return }
