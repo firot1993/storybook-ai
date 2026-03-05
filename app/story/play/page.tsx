@@ -83,8 +83,11 @@ function mergeNearbyNarrationLines(lines: StoryLine[]): StoryLine[] {
 
 function parseSceneLines(rawText: string): StoryLine[] {
   const normalized = rawText
+    .replace(/\[[^\]]*]/g, ' ')
+    .replace(/【[^】]*】/g, ' ')
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim()
 
   if (!normalized) return []

@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCharacter, createStory, getCharacter, getStorybook, updateStorybook } from '@/lib/db'
-import { generateCompanionCharacterCartoon } from '@/lib/banana-img'
-import { generateStoryFromSynopsis, generateStoryCoverImage } from '@/lib/gemini'
+import { generateStoryWithAssets } from '@/lib/gemini'
 import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
 import type { Story, StorybookCharacter } from '@/types'
+
+type NpcWithImage = StorybookCharacter & { image?: string }
 
 async function buildNpcCharactersWithAssets(
   npcs: Array<{ name: string; description: string }>,
   existingNameSet: Set<string>,
   styleId: string,
-  styleDesc: string
-): Promise<StorybookCharacter[]> {
-  const additions: StorybookCharacter[] = []
+  styleDesc: string,
+  preGeneratedImages: Map<string, { data: string; mimeType: string }>
+): Promise<NpcWithImage[]> {
+  const additions: NpcWithImage[] = []
   const seen = new Set(existingNameSet)
 
   for (const npc of npcs) {
@@ -23,22 +25,28 @@ async function buildNpcCharactersWithAssets(
 
     const description = (npc.description ?? '').trim().slice(0, 120)
     let npcCharacterId = ''
-    try {
-      const image = await generateCompanionCharacterCartoon(
-        name,
-        description || `${name}，故事中的小伙伴`,
-        styleDesc
-      )
-      const dataUrl = `data:${image.mimeType};base64,${image.data}`
-      const created = await createCharacter({
-        name,
-        cartoonImage: dataUrl,
-        styleImages: { [styleId]: dataUrl },
-        style: styleDesc,
-      })
-      npcCharacterId = created.id
-    } catch (error) {
-      console.warn(`[Story NPC] Failed to generate image for ${name}:`, error)
+    let npcImage: string | undefined
+
+    // Look up pre-generated image by NPC name (try exact match, then case-insensitive)
+    const preGenImage = preGeneratedImages.get(name)
+      ?? Array.from(preGeneratedImages.entries()).find(
+        ([k]) => k.toLowerCase() === key
+      )?.[1]
+
+    if (preGenImage) {
+      const dataUrl = `data:${preGenImage.mimeType};base64,${preGenImage.data}`
+      npcImage = dataUrl
+      try {
+        const created = await createCharacter({
+          name,
+          cartoonImage: dataUrl,
+          styleImages: { [styleId]: dataUrl },
+          style: styleDesc,
+        })
+        npcCharacterId = created.id
+      } catch (error) {
+        console.warn(`[Story NPC] Failed to save character for ${name}:`, error)
+      }
     }
 
     additions.push({
@@ -47,6 +55,7 @@ async function buildNpcCharactersWithAssets(
       role: 'supporting',
       description,
       isNpc: true,
+      image: npcImage,
     })
   }
 
@@ -72,7 +81,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const title = storyName?.trim() || storybook.name
 
-    // 并行生成故事文本 + 封面图
+    // Single interleaved call: story text + cover image + NPC portraits
     const protagonistStyleImages = (protagonistChar?.styleImages ?? {}) as Record<string, string>
     const protagonistImageUrl =
       protagonistStyleImages[storybook.styleId] || protagonistChar?.cartoonImage || ''
@@ -80,27 +89,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ? protagonistImageUrl.replace(/^data:[^;]+;base64,/, '')
       : undefined
 
-    const [storyResult, coverResult] = await Promise.all([
-      generateStoryFromSynopsis({
-        storyName: title,
-        protagonistName,
-        supportingName,
-        synopsis: selectedSynopsis.trim(),
-        ageRange: ageRange || storybook.ageRange,
-        styleDesc,
-        theme: theme ?? '探索与友谊',
-      }),
-      generateStoryCoverImage({
-        synopsis: selectedSynopsis.trim(),
-        protagonistName,
-        styleDesc,
-        characterImageBase64: protagonistImageBase64,
-      }).catch(() => undefined),
-    ])
+    const {
+      story: storyText,
+      choices,
+      npcs,
+      coverImage,
+      npcImages,
+    } = await generateStoryWithAssets({
+      storyName: title,
+      protagonistName,
+      supportingName,
+      synopsis: selectedSynopsis.trim(),
+      ageRange: ageRange || storybook.ageRange,
+      styleDesc,
+      theme: theme ?? '探索与友谊',
+      characterImageBase64: protagonistImageBase64,
+    })
 
-    const { story: storyText, choices, npcs } = storyResult
-    const mainImage = coverResult
-      ? `data:${coverResult.mimeType};base64,${coverResult.data}`
+    const mainImage = coverImage
+      ? `data:${coverImage.mimeType};base64,${coverImage.data}`
       : ''
 
     const existingNames = new Set<string>()
@@ -125,7 +132,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       npcs,
       existingNames,
       storybook.styleId,
-      styleDesc
+      styleDesc,
+      npcImages
     )
     if (npcCharacterAdditions.length > 0) {
       await updateStorybook(id, {
