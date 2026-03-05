@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   basic-check:
     runs-on: ubuntu-latest
@@ -30,5 +34,11 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit --incremental false
 
-      - name: Unit tests
-        run: npm run test --if-present
+      - name: Unit tests with coverage
+        run: npm run test:coverage
+
+      - name: Coverage report to PR
+        if: github.event_name == 'pull_request'
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: coverage/coverage-summary.json

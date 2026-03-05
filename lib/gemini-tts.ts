@@ -50,13 +50,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function clampPositiveInt(value: number, fallback: number): number {
+export function clampPositiveInt(value: number, fallback: number): number {
   if (!Number.isFinite(value)) return fallback
   const parsed = Math.trunc(value)
   return parsed > 0 ? parsed : fallback
 }
 
-function parseRetryDelayMs(message: string): number | null {
+export function parseRetryDelayMs(message: string): number | null {
   const messageText = typeof message === 'string' ? message : ''
   if (!messageText) return null
 
@@ -90,11 +90,11 @@ async function acquireTtsRequestSlot(additionalDelayMs = 0): Promise<void> {
   await ttsGate
 }
 
-function toDataUrl(base64: string, mimeType: string): string {
+export function toDataUrl(base64: string, mimeType: string): string {
   return `data:${mimeType};base64,${base64}`
 }
 
-function looksLikeWav(buffer: Buffer): boolean {
+export function looksLikeWav(buffer: Buffer): boolean {
   if (buffer.length < 12) return false
   return (
     buffer.toString('ascii', 0, 4) === 'RIFF' &&
@@ -103,7 +103,7 @@ function looksLikeWav(buffer: Buffer): boolean {
 }
 
 // Gemini TTS typically returns PCM16 mono @ 24kHz. Wrap raw PCM in a WAV header for browser playback.
-function wrapPcm16ToWav(pcmData: Buffer): Buffer {
+export function wrapPcm16ToWav(pcmData: Buffer): Buffer {
   const blockAlign = (WAV_CHANNELS * WAV_BITS_PER_SAMPLE) / 8
   const byteRate = WAV_SAMPLE_RATE * blockAlign
   const dataSize = pcmData.length
@@ -126,7 +126,7 @@ function wrapPcm16ToWav(pcmData: Buffer): Buffer {
   return Buffer.concat([wavHeader, pcmData])
 }
 
-function normalizeToPlayableWav(audioBuffer: Buffer, mimeType?: string): Buffer {
+export function normalizeToPlayableWav(audioBuffer: Buffer, mimeType?: string): Buffer {
   if (mimeType?.toLowerCase().includes('wav') && looksLikeWav(audioBuffer)) {
     return audioBuffer
   }
@@ -232,7 +232,7 @@ async function requestGeminiAudio(
   })
 }
 
-function toSingleSpeakerNarrationScript(sceneText: string): string {
+export function toSingleSpeakerNarrationScript(sceneText: string): string {
   const lines = sceneText
     .split('\n')
     .map((line) => line.trim())
