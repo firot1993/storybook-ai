@@ -73,9 +73,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const title = storyName?.trim() || storybook.name
 
     // 并行生成故事文本 + 封面图
-    const protagonistStyleImages = protagonistChar?.styleImages
-      ? JSON.parse(protagonistChar.styleImages as unknown as string) as Record<string, string>
-      : {}
+    const protagonistStyleImages = (protagonistChar?.styleImages ?? {}) as Record<string, string>
     const protagonistImageUrl =
       protagonistStyleImages[storybook.styleId] || protagonistChar?.cartoonImage || ''
     const protagonistImageBase64 = protagonistImageUrl
