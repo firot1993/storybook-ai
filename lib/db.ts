@@ -67,7 +67,7 @@ export async function listCharacters(options?: { includeNpc?: boolean }) {
   const includeNpc = options?.includeNpc ?? false
   const supportingIds = includeNpc ? [] : await listSupportingCharacterIds()
 
-  return prisma.character.findMany({
+  const rows = await prisma.character.findMany({
     ...(supportingIds.length > 0 ? { where: { id: { notIn: supportingIds } } } : {}),
     orderBy: { createdAt: 'desc' },
     select: {
@@ -81,10 +81,24 @@ export async function listCharacters(options?: { includeNpc?: boolean }) {
       createdAt: true,
     },
   })
+
+  return rows.map((r) => ({
+    ...r,
+    styleImages: typeof r.styleImages === 'string'
+      ? JSON.parse(r.styleImages) as Record<string, string>
+      : r.styleImages,
+  }))
 }
 
 export async function getCharacter(id: string) {
-  return prisma.character.findUnique({ where: { id } })
+  const row = await prisma.character.findUnique({ where: { id } })
+  if (!row) return null
+  return {
+    ...row,
+    styleImages: typeof row.styleImages === 'string'
+      ? JSON.parse(row.styleImages) as Record<string, string>
+      : row.styleImages,
+  }
 }
 
 export async function deleteCharacter(id: string) {
