@@ -36,17 +36,18 @@ async function buildNpcCharactersWithAssets(
     if (preGenImage) {
       const dataUrl = `data:${preGenImage.mimeType};base64,${preGenImage.data}`
       npcImage = dataUrl
-      try {
-        const created = await createCharacter({
-          name,
-          cartoonImage: dataUrl,
-          styleImages: { [styleId]: dataUrl },
-          style: styleDesc,
-        })
-        npcCharacterId = created.id
-      } catch (error) {
-        console.warn(`[Story NPC] Failed to save character for ${name}:`, error)
-      }
+    }
+
+    try {
+      const created = await createCharacter({
+        name,
+        style: styleDesc,
+        cartoonImage: npcImage ?? '',
+        ...(npcImage ? { styleImages: { [styleId]: npcImage } } : {}),
+      })
+      npcCharacterId = created.id
+    } catch (error) {
+      console.warn(`[Story NPC] Failed to save character for ${name}:`, error)
     }
 
     additions.push({

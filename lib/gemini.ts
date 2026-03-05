@@ -833,7 +833,7 @@ ${hasCharacterImageRef ? `
       coverImage = images[i]
     } else {
       // Try to match NPC name from 【角色 - <name>】 pattern in preceding text
-      const npcMatch = label.match(/【角色\s*-\s*(.+?)】/)
+      const npcMatch = label.match(/【角色\s*[-—–]\s*(.+?)】/)
       if (npcMatch) {
         const npcName = npcMatch[1].trim()
         npcImages.set(npcName, images[i])
