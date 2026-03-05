@@ -957,9 +957,9 @@ function NewBookSubFlow({
                       : 'border-gray-200 hover:border-forest-200'
                   }`}
                 >
-                  <div className="w-full aspect-square bg-gray-100">
+                  <div className="w-full aspect-square bg-gray-100 relative">
                     {styleImg ? (
-                      <Image src={styleImg} alt={s.label} width={120} height={120} className="object-cover w-full h-full" />
+                      <Image src={styleImg} alt={s.label} fill className="object-cover" sizes="(max-width: 768px) 33vw, 120px" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-2xl opacity-30">{s.emoji}</div>
                     )}
