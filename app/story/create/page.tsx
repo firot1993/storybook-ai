@@ -953,20 +953,28 @@ function NewBookSubFlow({
                   onClick={() => setNewBookStyleId(s.id)}
                   className={`flex flex-col items-center rounded-2xl border-2 overflow-hidden transition-all ${
                     isSelected
-                      ? 'border-forest-500 shadow-md shadow-forest-100'
-                      : 'border-gray-200 hover:border-forest-200'
+                      ? 'border-forest-500 shadow-md ring-2 ring-forest-200 scale-105'
+                      : 'border-transparent hover:border-forest-200'
                   }`}
                 >
-                  <div className="w-full aspect-square bg-gray-100">
+                  <div className="w-full aspect-square bg-gray-100 relative">
                     {styleImg ? (
-                      <Image src={styleImg} alt={s.label} width={120} height={120} className="object-cover w-full h-full" />
+                      <Image src={styleImg} alt={s.label} fill className="object-cover" sizes="(max-width: 768px) 33vw, 120px" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-2xl opacity-30">{s.emoji}</div>
                     )}
+                    {isSelected && (
+                      <div className="absolute inset-0 bg-forest-500/20 flex items-center justify-center">
+                        <div className="w-6 h-6 rounded-full bg-forest-500 flex items-center justify-center shadow">
+                          <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className={`w-full py-1.5 px-2 text-center ${isSelected ? 'bg-forest-50' : 'bg-white'}`}>
-                    <p className="text-xs font-extrabold text-gray-700 truncate">{s.emoji} {s.label}</p>
-                    {isSelected && <p className="text-[10px] text-forest-600 font-bold">已选✓</p>}
+                  <div className={`w-full py-1.5 px-2 text-center ${isSelected ? 'bg-forest-500 text-white' : 'bg-white'}`}>
+                    <p className={`text-xs font-extrabold truncate ${isSelected ? '' : 'text-gray-700'}`}>{s.emoji} {s.label}</p>
                   </div>
                 </button>
               )
