@@ -40,14 +40,6 @@ export function getLocalPath(relativePath: string): string {
 }
 
 /**
- * Delete all files for a project directory.
- */
-export async function deleteProjectFiles(projectId: string): Promise<void> {
-  const dir = path.join(LOCAL_BASE, 'videos', projectId)
-  await fs.rm(dir, { recursive: true, force: true })
-}
-
-/**
  * Check if a local file exists.
  */
 export async function fileExists(relativePath: string): Promise<boolean> {

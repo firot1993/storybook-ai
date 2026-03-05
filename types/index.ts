@@ -60,21 +60,6 @@ export interface Character {
   createdAt: Date
 }
 
-export interface StoryOption {
-  title: string
-  description: string
-}
-
-export interface Synopsis {
-  id: string
-  characterIds: string[]
-  theme: string
-  keywords: string
-  ageGroup: '2-4' | '4-6' | '6-8'
-  content: string
-  createdAt: Date
-}
-
 export interface Story {
   id: string
   storybookId?: string
@@ -199,50 +184,6 @@ export interface GenerateCharacterRequest {
 
 export interface GenerateCharacterResponse {
   character: Character
-}
-
-export interface GenerateSynopsisRequest {
-  characterIds: string[]
-  characterNames: string[]
-  theme: string
-  keywords: string
-  ageGroup: '2-4' | '4-6' | '6-8'
-  relationship?: string
-}
-
-export interface GenerateStoryOptionsRequest {
-  synopsisId?: string
-  characterIds?: string[]
-  characterNames: string[]
-  keywords: string
-  ageGroup: '2-4' | '4-6' | '6-8'
-  relationship?: string
-}
-
-export interface GenerateStoryOptionsResponse {
-  options: StoryOption[]
-}
-
-export interface GenerateStoryRequest {
-  synopsisId?: string
-  characterIds?: string[]
-  characterNames: string[]
-  characterImages?: string[]
-  optionIndex: number
-  optionTitle?: string
-  optionDescription?: string
-  keywords?: string
-  ageGroup?: '2-4' | '4-6' | '6-8'
-  relationship?: string
-}
-
-export interface GenerateStoryResponse {
-  story: Story
-}
-
-export interface GenerateScriptRequest {
-  storyId: string
-  characterNames: string[]
 }
 
 export interface StartVideoRequest {

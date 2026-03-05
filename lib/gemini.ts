@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
-import type { CompanionSuggestion, StoryOption } from '@/types'
+import type { CompanionSuggestion } from '@/types'
 
 const genAI = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
@@ -113,13 +113,6 @@ export type GeminiImageDiagnostics = {
   textPreview: string;
 };
 
-export type StoryOptionsDiagnostics = {
-  strategy: 'strict' | 'loose' | 'fallback' | 'none';
-  parsedCount: number;
-  lineCount: number;
-  rawTextPreview: string;
-};
-
 export function getGeminiErrorResponse(error: unknown): { status: number; message: string } {
   const geminiError = error as GeminiErrorShape;
   const status = geminiError?.status;
@@ -207,214 +200,6 @@ function buildImageDiagnostics(response: GeminiImageResponse): GeminiImageDiagno
   };
 }
 
-function parseStoryOptionLine(line: string): StoryOption | null {
-  const strictMatch = line.match(/^\d[\.\)]\s*\[(.+?)\]\s*-\s*(.+)$/);
-  if (strictMatch) {
-    return {
-      title: strictMatch[1].trim(),
-      description: strictMatch[2].trim(),
-    };
-  }
-
-  const cleaned = line
-    .replace(/^\s*\d+\s*[\.\)\-:]\s*/, '')
-    .replace(/^\s*[-*•]\s*/, '')
-    .trim();
-
-  if (!cleaned) return null;
-
-  const withSeparator = cleaned.match(/^["“]?(.+?)["”]?\s*[-:]\s*(.+)$/);
-  if (withSeparator) {
-    return {
-      title: withSeparator[1].trim(),
-      description: withSeparator[2].trim(),
-    };
-  }
-
-  const words = cleaned.split(/\s+/).filter(Boolean);
-  if (words.length < 3) return null;
-
-  const title = words.slice(0, Math.min(6, words.length)).join(' ');
-  return {
-    title,
-    description: cleaned,
-  };
-}
-
-function parseStoryOptionsFromText(text: string): { options: StoryOption[]; strategy: StoryOptionsDiagnostics['strategy'] } {
-  const lines = text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  const strictOptions = lines
-    .filter((line) => /^\d[\.\)]\s*\[.+\]\s*-\s*.+$/.test(line))
-    .map((line) => parseStoryOptionLine(line))
-    .filter(Boolean) as StoryOption[];
-
-  if (strictOptions.length > 0) {
-    return { options: strictOptions.slice(0, 3), strategy: 'strict' };
-  }
-
-  const looseCandidates = lines.filter((line) => /^\d+\s*[\.\)\-:]/.test(line) || /^[-*•]\s+/.test(line));
-  const looseOptions = looseCandidates
-    .map((line) => parseStoryOptionLine(line))
-    .filter(Boolean) as StoryOption[];
-
-  if (looseOptions.length > 0) {
-    return { options: looseOptions.slice(0, 3), strategy: 'loose' };
-  }
-
-  const fallbackChunks = text
-    .split(/\n{2,}/)
-    .map((chunk) => chunk.trim())
-    .filter((chunk) => chunk.length > 0)
-    .slice(0, 3);
-
-  const fallbackOptions = fallbackChunks
-    .map((chunk, index) => {
-      const sentence = chunk.replace(/\s+/g, ' ').trim();
-      if (!sentence) return null;
-      const titleWords = sentence.replace(/^[\d\.\)\-:\s]+/, '').split(/\s+/).slice(0, 6);
-      const title = titleWords.join(' ') || `Story Option ${index + 1}`;
-      return {
-        title,
-        description: sentence,
-      };
-    })
-    .filter(Boolean) as StoryOption[];
-
-  if (fallbackOptions.length > 0) {
-    return { options: fallbackOptions, strategy: 'fallback' };
-  }
-
-  return { options: [], strategy: 'none' };
-}
-
-export async function generateStoryOptionsWithDiagnostics(
-  characterNames: string[],
-  keywords: string,
-  ageGroup: string,
-  characterDescriptions?: string[],
-  relationship?: string
-): Promise<{ options: StoryOption[]; diagnostics: StoryOptionsDiagnostics }> {
-  const namesLabel = characterNames.length === 1
-    ? `a character named ${characterNames[0]}`
-    : `characters named ${characterNames.join(', ')}`;
-
-  let characterContext = '';
-  if (characterDescriptions && characterDescriptions.length > 0) {
-    characterContext = '\nCharacter details:\n' + characterNames.map((name, i) => 
-      `- ${name}: ${characterDescriptions[i] || 'A friendly character'}`
-    ).join('\n');
-  }
-  const relationshipContext =
-    typeof relationship === 'string' && relationship.trim().length > 0
-      ? `\nRelationship between characters: ${relationship.trim()}`
-      : '';
-
-  const prompt = `Create 3 simple children's story ideas for ${namesLabel}.
-Keywords: ${keywords}
-Target age: ${ageGroup} years old
-${characterContext}
-${relationshipContext}
-
-IMPORTANT rules for age ${ageGroup}:
-- Use only simple, everyday words a ${ageGroup}-year-old would understand
-- Story titles should be short (2-5 words) and exciting for little kids
-- Descriptions should be one simple sentence using easy words
-- Think like a bedtime story for a very young child
-- No scary or complex themes — keep it happy, silly, or magical
-${characterNames.length > 1 ? '- The story should involve ALL the characters together\n' : ''}
-${relationshipContext ? '- The relationship must be reflected in how characters interact\n' : ''}
-Format:
-1. [Title] - [One sentence description]
-2. [Title] - [One sentence description]
-3. [Title] - [One sentence description]`;
-
-  const response = await genAI.models.generateContent({
-    model: TEXT_MODEL,
-    contents: prompt,
-  });
-  const text = response.text ?? '';
-  const parsed = parseStoryOptionsFromText(text);
-  const diagnostics: StoryOptionsDiagnostics = {
-    strategy: parsed.strategy,
-    parsedCount: parsed.options.length,
-    lineCount: text.split('\n').length,
-    rawTextPreview: text.slice(0, 300),
-  };
-
-  return {
-    options: parsed.options,
-    diagnostics,
-  };
-}
-
-export async function generateStory(
-  characterNames: string[],
-  setting: string,
-  ageGroup: string,
-  characterDescriptions?: string[],
-  relationship?: string
-) {
-  const ageNum = parseInt(ageGroup.split('-')[0], 10) || 4;
-  const wordRange = ageNum <= 3 ? '150-250' : ageNum <= 5 ? '200-350' : '300-450';
-  const sceneCount = ageNum <= 4 ? '3' : '4';
-  const vocabNote = ageNum <= 4
-    ? 'Use only very simple words (1-2 syllables). Very short sentences (5-8 words each). Lots of repetition and sound words (whoosh, splish, boom).'
-    : ageNum <= 6
-    ? 'Use simple words (mostly 1-2 syllables). Short sentences (6-10 words). Include fun sound effects and repetition.'
-    : 'Use easy-to-read words. Keep sentences short and clear (8-12 words). Include some fun descriptions.';
-
-  const charactersLine = characterNames.length === 1
-    ? `Main character: ${characterNames[0]}`
-    : `Main characters: ${characterNames.join(', ')}`;
-
-  let characterContext = '';
-  if (characterDescriptions && characterDescriptions.length > 0) {
-    characterContext = '\nCharacter details:\n' + characterNames.map((name, i) => 
-      `- ${name}: ${characterDescriptions[i] || 'A friendly character'}`
-    ).join('\n');
-  }
-  const relationshipContext =
-    typeof relationship === 'string' && relationship.trim().length > 0
-      ? `\nRelationship between characters: ${relationship.trim()}`
-      : '';
-
-  const multiCharNote = characterNames.length > 1
-    ? '- All characters should appear together and interact throughout the story\n'
-    : '';
-
-  const prompt = `Write a bedtime story for a ${ageGroup}-year-old child:
-${charactersLine}
-Setting: ${setting}
-${characterContext}
-${relationshipContext}
-
-VERY IMPORTANT — this story is for a ${ageGroup}-year-old child:
-- ${vocabNote}
-- Keep it happy, warm, and gentle — no scary parts
-- Use a simple plot: one small problem, one fun solution
-- End with the characters feeling happy and safe
-- Length: ${wordRange} words (keep it SHORT)
-- Structure: Beginning → one small adventure → happy ending
-- Divide into exactly ${sceneCount} scenes using [Scene 1], [Scene 2], etc. markers
-- Each scene should be 2-4 short paragraphs
-- Inside each scene, separate lines by speaker:
-  - Narration lines must start with "Narrator:"
-  - Spoken lines must start with "Character:"
-  - Keep "Character:" lines short and playful
-${multiCharNote}
-${relationshipContext ? '- Keep all interactions consistent with the stated relationship\n' : ''}
-Please divide the story into ${sceneCount} scenes, with [Scene X] markers.`;
-
-  const response = await genAI.models.generateContent({
-    model: TEXT_MODEL,
-    contents: prompt,
-  });
-  return response.text ?? '';
-}
 
 export async function generateCharacterImageWithDiagnostics(
   imageBase64: string,
@@ -578,42 +363,6 @@ export async function generateStyleExampleCharacter(
 
   const compressed = await compressImage(rawImage, 512, 80)
   return { imageData: compressed.data, mimeType: compressed.mimeType }
-}
-
-// ── Synopsis generation ──────────────────────────────────────
-
-export async function generateSynopsis(
-  characterNames: string[],
-  characterDescriptions: string[],
-  theme: string,
-  keywords: string,
-  ageGroup: string,
-  relationship?: string
-): Promise<string> {
-  const charCtx = characterNames
-    .map((n, i) => `- ${n}: ${characterDescriptions[i] || 'A friendly character'}`)
-    .join('\n')
-
-  const relCtx = relationship ? `\nRelationship: ${relationship}` : ''
-
-  const prompt = `Create a short story outline (~200 words) for children aged ${ageGroup}.
-
-Characters:
-${charCtx}
-${relCtx}
-Theme: ${theme}
-Keywords: ${keywords}
-
-Include these labeled sections:
-[Opening] - Setting and character introduction
-[Problem] - The main challenge or adventure
-[Adventure] - How characters work together
-[Resolution] - The happy ending
-
-Write in simple, warm language. Return only the outline text.`
-
-  const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
-  return response.text?.trim() ?? ''
 }
 
 // ── JSON parsing helpers ──────────────────────────────────────
@@ -937,54 +686,6 @@ export async function generateStorybookDirectorScript(params: {
     }))
   } catch (e) {
     console.error('[generateStorybookDirectorScript] Parse error:', e, '\nRaw:', response.text?.slice(0, 500))
-    return []
-  }
-}
-
-// ── Script generation ────────────────────────────────────────
-
-export async function generateScript(
-  storyContent: string,
-  characterNames: string[],
-  characterDescriptions: string[]
-): Promise<import('@/types').ScriptScene[]> {
-  const charCtx = characterNames
-    .map((n, i) => `- ${n}: ${characterDescriptions[i] || 'A friendly character'}`)
-    .join('\n')
-
-  const prompt = `Convert this children's story into a structured video script.
-
-Characters:
-${charCtx}
-
-Story:
-${storyContent}
-
-For each [Scene X] section, output a JSON object. Return a JSON array only, no markdown.
-
-Schema per scene:
-{
-  "index": 0,
-  "title": "short scene title (max 5 words)",
-  "narration": "narrator text combined into one paragraph",
-  "dialogue": [{"speaker": "character name or Narrator", "text": "spoken line"}],
-  "imagePrompt": "detailed children's book illustration prompt describing the visual scene, mood, colors, character actions",
-  "estimatedDuration": 20
-}
-
-Rules:
-- estimatedDuration is seconds (~2.5 words/second for TTS)
-- imagePrompt must mention character appearance and scene mood
-- Keep dialogue short and playful
-- index is 0-based
-
-Return valid JSON array only.`
-
-  const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
-  try {
-    return safeParseJsonArray(response.text ?? '') as import('@/types').ScriptScene[]
-  } catch (e) {
-    console.error('Failed to parse script JSON:', e)
     return []
   }
 }
