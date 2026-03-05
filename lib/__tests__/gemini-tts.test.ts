@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 // Mock @google/genai before importing the module under test
 vi.mock('@google/genai', () => ({
