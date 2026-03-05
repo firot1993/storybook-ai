@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai'
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' })
 // Gemini 2.0 Flash supports inline audio for transcription
-const STT_MODEL = 'gemini-2.0-flash'
+const STT_MODEL = process.env.GEMINI_STT_MODEL?.trim() || 'gemini-2.0-flash'
 
 type SttError = { status?: number; message?: string }
 

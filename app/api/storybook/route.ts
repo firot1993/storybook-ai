@@ -1,5 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createStorybook, listStorybooks } from '@/lib/db'
+import { createCharacter, createStorybook, listStorybooks } from '@/lib/db'
+import { generateCompanionCharacterCartoon } from '@/lib/banana-img'
+import { getStyleById } from '@/lib/styles'
+import type { StorybookCharacter } from '@/types'
+
+async function ensureSupportingCharacterAssets(params: {
+  characters: StorybookCharacter[]
+  styleId: string
+}): Promise<StorybookCharacter[]> {
+  const { characters, styleId } = params
+  const styleConfig = getStyleById(styleId)
+  const stylePrompt = styleConfig?.characterPrompt || styleConfig?.description || 'cute cartoon character'
+  const nextCharacters: StorybookCharacter[] = []
+
+  for (const c of characters) {
+    if (c.role !== 'supporting' || c.id || !c.name?.trim()) {
+      nextCharacters.push(c)
+      continue
+    }
+
+    const name = c.name.trim().slice(0, 30)
+    try {
+      const image = await generateCompanionCharacterCartoon(
+        name,
+        `Friendly supporting companion in a children's story.`,
+        stylePrompt
+      )
+      const dataUrl = `data:${image.mimeType};base64,${image.data}`
+      const created = await createCharacter({
+        name,
+        cartoonImage: dataUrl,
+        styleImages: styleId ? { [styleId]: dataUrl } : undefined,
+        style: styleConfig?.description || stylePrompt,
+      })
+      nextCharacters.push({
+        ...c,
+        id: created.id,
+        name,
+      })
+    } catch (error) {
+      console.warn(`[POST /api/storybook] Supporting character image generation failed for "${name}":`, error)
+      nextCharacters.push({
+        ...c,
+        name,
+      })
+    }
+  }
+
+  return nextCharacters
+}
 
 // GET /api/storybook — 列出所有故事书（含章节数）
 export async function GET() {
@@ -16,11 +65,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '请输入故事书名称' }, { status: 400 })
     }
 
+    const requestedCharacters = Array.isArray(characters) ? characters as StorybookCharacter[] : []
+    const enrichedCharacters = await ensureSupportingCharacterAssets({
+      characters: requestedCharacters,
+      styleId: styleId ?? '',
+    })
+
     const storybook = await createStorybook({
       name: name.trim(),
       ageRange: ageRange ?? '4-6',
       styleId: styleId ?? '',
-      characters: characters ?? [],
+      characters: enrichedCharacters,
     })
 
     return NextResponse.json({

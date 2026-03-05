@@ -18,7 +18,11 @@ export async function resolveStorybookCharacters(storybook: StorybookLike) {
   const protagonistChar = protagonistEntry?.id ? await getCharacter(protagonistEntry.id) : null
   const protagonistName = protagonistChar?.name || '小主角'
 
-  const supportingEntries = storybook.characters.filter((c) => c.role === 'supporting')
+  // Exclude dynamically discovered NPCs from the default supporting cast
+  // used in story creation/synopsis prompts.
+  const supportingEntries = storybook.characters.filter(
+    (c) => c.role === 'supporting' && !c.isNpc
+  )
   const supportingNames = await Promise.all(
     supportingEntries.map(async (c) => {
       if (c.name) return c.name

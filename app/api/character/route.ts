@@ -7,8 +7,10 @@ import { STYLES } from '@/lib/styles'
 import type { Character } from '@/types'
 
 // GET /api/character — List all saved characters
-export async function GET() {
-  const characters = await listCharacters()
+export async function GET(request: NextRequest) {
+  const includeNpcRaw = request.nextUrl.searchParams.get('includeNpc')?.toLowerCase()
+  const includeNpc = includeNpcRaw === '1' || includeNpcRaw === 'true' || includeNpcRaw === 'yes'
+  const characters = await listCharacters({ includeNpc })
   return NextResponse.json({ characters })
 }
 

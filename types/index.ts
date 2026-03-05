@@ -5,6 +5,10 @@ export interface StorybookCharacter {
   /** Direct name for AI-suggested companions that have no Character record (id will be '') */
   name?: string
   role: 'protagonist' | 'supporting'
+  /** Optional short traits/description for AI-generated NPC entries */
+  description?: string
+  /** Marks dynamically discovered story NPCs persisted on the storybook */
+  isNpc?: boolean
 }
 
 export interface Storybook {
@@ -90,6 +94,8 @@ export interface ScriptScene {
   narration: string
   dialogue: ScriptDialogueLine[]
   imagePrompt: string
+  /** Names of characters that should appear in this scene. */
+  charactersUsed?: string[]
   /** Director-mode: 3 image prompts [opening, midAction, ending] per storyboard scene */
   imagePrompts?: string[]
   estimatedDuration: number  // seconds

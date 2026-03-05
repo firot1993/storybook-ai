@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
+import { Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -128,7 +128,20 @@ function CreateStoryWizard() {
 
   // ── Derived ──────────────────────────────────────────────
   const currentBook = storybooks.find((b) => b.id === selectedStorybookId)
-  const newProtagonist = allCharacters.find((c) => c.id === newProtagonistId)
+  const npcCharacterIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const book of storybooks) {
+      for (const c of book.characters) {
+        if (c.isNpc && c.id) ids.add(c.id)
+      }
+    }
+    return ids
+  }, [storybooks])
+  const protagonistCandidates = useMemo(
+    () => allCharacters.filter((c) => !npcCharacterIds.has(c.id)),
+    [allCharacters, npcCharacterIds]
+  )
+  const newProtagonist = protagonistCandidates.find((c) => c.id === newProtagonistId)
 
   // Book's protagonist (for existing books)
   const bookProtagonistId = currentBook?.characters.find((c) => c.role === 'protagonist')?.id
@@ -136,6 +149,13 @@ function CreateStoryWizard() {
   const bookProtagonistImage = bookProtagonist
     ? (bookProtagonist.styleImages?.[currentBook?.styleId ?? ''] ?? bookProtagonist.cartoonImage)
     : null
+
+  useEffect(() => {
+    if (!newProtagonistId) return
+    if (!protagonistCandidates.some((c) => c.id === newProtagonistId)) {
+      setNewProtagonistId(null)
+    }
+  }, [newProtagonistId, protagonistCandidates])
 
   // ── Step 0: New book creation helpers ────────────────────
 
@@ -170,12 +190,38 @@ function CreateStoryWizard() {
     if (!newProtagonistId) { showToast('请选择主角', 'error'); return }
     setSavingBook(true)
     try {
-      const allCompanions = [...selectedCompanionNames]
-      if (customCompanion.trim()) allCompanions.push(customCompanion.trim())
+      const companionSuggestionByName = new Map(
+        companionSuggestions.map((c) => [c.name.trim().toLowerCase(), c])
+      )
+      const supportingCharacters: StorybookCharacter[] = []
+      const seenSupportingName = new Set<string>()
+      const pushSupporting = (nameRaw: string, descriptionRaw?: string) => {
+        const name = nameRaw.trim()
+        if (!name) return
+        const key = name.toLowerCase()
+        if (seenSupportingName.has(key)) return
+        seenSupportingName.add(key)
+        const description = (descriptionRaw ?? '').trim()
+        supportingCharacters.push({
+          id: '',
+          name,
+          role: 'supporting',
+          isNpc: true,
+          ...(description ? { description } : {}),
+        })
+      }
+
+      for (const companionName of selectedCompanionNames) {
+        const suggestion = companionSuggestionByName.get(companionName.trim().toLowerCase())
+        pushSupporting(companionName, suggestion?.description)
+      }
+      if (customCompanion.trim()) {
+        pushSupporting(customCompanion.trim())
+      }
 
       const characters: StorybookCharacter[] = [
         { id: newProtagonistId, role: 'protagonist' },
-        ...allCompanions.map((name) => ({ id: '', name, role: 'supporting' as const })),
+        ...supportingCharacters,
       ]
       const res = await fetch('/api/storybook', {
         method: 'POST',
@@ -405,7 +451,7 @@ function CreateStoryWizard() {
               <NewBookSubFlow
                 bookSubStep={bookSubStep}
                 setBookSubStep={setBookSubStep}
-                allCharacters={allCharacters}
+                allCharacters={protagonistCandidates}
                 newProtagonistId={newProtagonistId}
                 setNewProtagonistId={setNewProtagonistId}
                 newProtagonist={newProtagonist}
