@@ -162,6 +162,41 @@ export async function concatenateVideos(
 }
 
 /**
+ * V2: Concatenate multiple WAV audio clips into one WAV file.
+ * Uses concat demuxer with stream copy (no re-encode).
+ */
+export async function concatenateAudiosV2(
+  audioPaths: string[],
+  outputPath: string
+): Promise<void> {
+  if (audioPaths.length === 0) throw new Error('No audio paths provided')
+  if (audioPaths.length === 1) {
+    await fs.copyFile(audioPaths[0], outputPath)
+    return
+  }
+
+  const concatFile = outputPath + '.audio.concat.txt'
+  await fs.writeFile(concatFile, audioPaths.map((p) => `file '${p}'`).join('\n'), 'utf-8')
+
+  return new Promise((resolve, reject) => {
+    ffmpeg()
+      .input(concatFile)
+      .inputOptions(['-f concat', '-safe 0'])
+      .outputOptions(['-c copy'])
+      .output(outputPath)
+      .on('end', async () => {
+        await fs.unlink(concatFile).catch(() => {})
+        resolve()
+      })
+      .on('error', async (err) => {
+        await fs.unlink(concatFile).catch(() => {})
+        reject(new Error(`FFmpeg audio concat error: ${err.message}`))
+      })
+      .run()
+  })
+}
+
+/**
  * Burn SRT subtitles into a video (re-encodes video stream).
  */
 export function burnSubtitles(
@@ -261,5 +296,65 @@ export function buildSubtitleCues(
       timeMs += msPerLine
     }
   }
+  return cues
+}
+
+/**
+ * V2: Build subtitle cues from actual line-level audio durations.
+ * sceneLineDurationsMs[i][j] matches line j in scene i:
+ *   [scene.narration, ...scene.dialogue.map(d => `${d.speaker}: ${d.text}`)]
+ */
+export function buildSubtitleCuesV2(
+  scenes: ScriptScene[],
+  sceneLineDurationsMs: number[][],
+  sceneDurationsMsFallback: number[] = []
+): SubtitleCue[] {
+  let timeMs = 0
+  const cues: SubtitleCue[] = []
+  let idx = 1
+
+  for (let i = 0; i < scenes.length; i++) {
+    const scene = scenes[i]
+    const lines = [
+      scene.narration,
+      ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
+    ].filter(Boolean)
+
+    if (lines.length === 0) {
+      timeMs += sceneDurationsMsFallback[i] ?? scene.estimatedDuration * 1000
+      continue
+    }
+
+    const providedDurations = sceneLineDurationsMs[i] ?? []
+    const fallbackSceneMs = sceneDurationsMsFallback[i] ?? scene.estimatedDuration * 1000
+    const knownMs = providedDurations.reduce((sum, d) => sum + (d > 0 ? d : 0), 0)
+    const unknownCount = lines.reduce(
+      (count, _line, lineIdx) => count + ((providedDurations[lineIdx] ?? 0) > 0 ? 0 : 1),
+      0
+    )
+    const avgUnknownMs = unknownCount > 0
+      ? Math.max(1, Math.floor(Math.max(fallbackSceneMs - knownMs, 0) / unknownCount))
+      : 0
+    const hardFallbackMs = Math.max(1, Math.floor(fallbackSceneMs / lines.length))
+
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const text = lines[lineIdx]
+      const candidateMs = providedDurations[lineIdx] ?? 0
+      const durationMs = candidateMs > 0
+        ? candidateMs
+        : avgUnknownMs > 0
+          ? avgUnknownMs
+          : hardFallbackMs
+
+      cues.push({
+        index: idx++,
+        startTime: timeMs,
+        endTime: timeMs + durationMs,
+        text,
+      })
+      timeMs += durationMs
+    }
+  }
+
   return cues
 }

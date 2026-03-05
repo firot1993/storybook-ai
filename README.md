@@ -16,8 +16,8 @@ Current product flow is **v2 storybook-first**:
 - Data: Prisma + SQLite (local)
 - AI:
   - Text/Image generation via Gemini models
-  - TTS via Gemini (`gemini-2.5-flash-preview-tts`)
-  - STT via Gemini (`gemini-2.0-flash`)
+  - TTS via Gemini (configurable via `GEMINI_TTS_MODEL`)
+  - STT via Gemini (configurable via `GEMINI_STT_MODEL`)
 - Video composition: FFmpeg (`fluent-ffmpeg`)
 
 ## Main Routes
@@ -56,6 +56,10 @@ Required:
 - `GEMINI_API_KEY`
 
 Optional:
+- `GEMINI_TEXT_MODEL` (default: `gemini-3-flash-preview`)
+- `GEMINI_IMAGE_MODEL` (default: `gemini-3.1-flash-image-preview`)
+- `GEMINI_TTS_MODEL` (default: `gemini-2.5-flash-preview-tts`)
+- `GEMINI_STT_MODEL` (default: `gemini-2.0-flash`)
 - `GEMINI_TTS_VOICE`
 - `BANANA_API_URL`
 - `BANANA_API_KEY`

@@ -1,8 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStorybook, createStory } from '@/lib/db'
+import { createCharacter, createStory, getCharacter, getStorybook, updateStorybook } from '@/lib/db'
+import { generateCompanionCharacterCartoon } from '@/lib/banana-img'
 import { generateStoryFromSynopsis, generateStoryCoverImage } from '@/lib/gemini'
 import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
-import type { Story } from '@/types'
+import type { Story, StorybookCharacter } from '@/types'
+
+async function buildNpcCharactersWithAssets(
+  npcs: Array<{ name: string; description: string }>,
+  existingNameSet: Set<string>,
+  styleId: string,
+  styleDesc: string
+): Promise<StorybookCharacter[]> {
+  const additions: StorybookCharacter[] = []
+  const seen = new Set(existingNameSet)
+
+  for (const npc of npcs) {
+    const name = (npc.name ?? '').trim().slice(0, 30)
+    if (!name) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    const description = (npc.description ?? '').trim().slice(0, 120)
+    let npcCharacterId = ''
+    try {
+      const image = await generateCompanionCharacterCartoon(
+        name,
+        description || `${name}，故事中的小伙伴`,
+        styleDesc
+      )
+      const dataUrl = `data:${image.mimeType};base64,${image.data}`
+      const created = await createCharacter({
+        name,
+        cartoonImage: dataUrl,
+        styleImages: { [styleId]: dataUrl },
+        style: styleDesc,
+      })
+      npcCharacterId = created.id
+    } catch (error) {
+      console.warn(`[Story NPC] Failed to generate image for ${name}:`, error)
+    }
+
+    additions.push({
+      id: npcCharacterId,
+      name,
+      role: 'supporting',
+      description,
+      isNpc: true,
+    })
+  }
+
+  return additions
+}
 
 // POST /api/storybook/[id]/story
 // 从选定梗概生成完整童话 + 封面插画，保存为故事书的一个章节
@@ -51,10 +100,40 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }).catch(() => undefined),
     ])
 
-    const { story: storyText, choices } = storyResult
+    const { story: storyText, choices, npcs } = storyResult
     const mainImage = coverResult
       ? `data:${coverResult.mimeType};base64,${coverResult.data}`
       : ''
+
+    const existingNames = new Set<string>()
+    for (const entry of storybook.characters) {
+      if (entry.name?.trim()) {
+        existingNames.add(entry.name.trim().toLowerCase())
+        continue
+      }
+      if (entry.id) {
+        const char = await getCharacter(entry.id)
+        if (char?.name?.trim()) existingNames.add(char.name.trim().toLowerCase())
+      }
+    }
+    existingNames.add(protagonistName.trim().toLowerCase())
+    supportingName
+      .split(/[、,，/]/)
+      .map((n) => n.trim().toLowerCase())
+      .filter(Boolean)
+      .forEach((n) => existingNames.add(n))
+
+    const npcCharacterAdditions = await buildNpcCharactersWithAssets(
+      npcs,
+      existingNames,
+      storybook.styleId,
+      styleDesc
+    )
+    if (npcCharacterAdditions.length > 0) {
+      await updateStorybook(id, {
+        characters: [...storybook.characters, ...npcCharacterAdditions],
+      })
+    }
 
     // Embed choices in content so the play page can display interactive options
     const contentWithChoices = choices.length > 0
@@ -91,7 +170,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       updatedAt: dbStory.updatedAt,
     }
 
-    return NextResponse.json({ story, synopsisVersion: synopsisVersion ?? 'A' })
+    return NextResponse.json({
+      story,
+      synopsisVersion: synopsisVersion ?? 'A',
+      discoveredNpcs: npcCharacterAdditions,
+    })
   } catch (error) {
     console.error('[POST /api/storybook/[id]/story]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

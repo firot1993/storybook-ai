@@ -81,6 +81,67 @@ export async function compressImage(
   }
 }
 
+function stripDataUrlPrefix(raw: string): string {
+  const marker = 'base64,'
+  const idx = raw.indexOf(marker)
+  return idx >= 0 ? raw.slice(idx + marker.length).trim() : raw.trim()
+}
+
+async function normalizeReferenceImages(characterImagesBase64: string[]): Promise<string[]> {
+  const seen = new Set<string>()
+  const refs: string[] = []
+  for (const raw of characterImagesBase64) {
+    const cleaned = stripDataUrlPrefix(raw || '')
+    if (!cleaned || seen.has(cleaned)) continue
+    seen.add(cleaned)
+    const compressed = await compressImage(cleaned, 512, 72)
+    refs.push(compressed.data)
+  }
+  return refs
+}
+
+async function buildReferenceSheetForBanana(referenceImagesBase64: string[]): Promise<string | undefined> {
+  const limited = referenceImagesBase64.slice(0, 4)
+  if (limited.length === 0) return undefined
+  if (limited.length === 1) return limited[0]
+
+  const cellSize = 384
+  const cols = limited.length <= 2 ? limited.length : 2
+  const rows = Math.ceil(limited.length / cols)
+  const width = cols * cellSize
+  const height = rows * cellSize
+
+  try {
+    const composites = await Promise.all(
+      limited.map(async (base64, idx) => {
+        const left = (idx % cols) * cellSize
+        const top = Math.floor(idx / cols) * cellSize
+        const tile = await sharp(Buffer.from(base64, 'base64'))
+          .resize(cellSize, cellSize, { fit: 'cover' })
+          .jpeg({ quality: 78 })
+          .toBuffer()
+        return { input: tile, left, top }
+      })
+    )
+
+    const sheet = await sharp({
+      create: {
+        width,
+        height,
+        channels: 3,
+        background: { r: 247, g: 247, b: 242 },
+      },
+    })
+      .composite(composites)
+      .jpeg({ quality: 78 })
+      .toBuffer()
+
+    return sheet.toString('base64')
+  } catch {
+    return limited[0]
+  }
+}
+
 /**
  * Generate an image from a text prompt.
  * Falls back to Gemini Image if Banana is not configured.
@@ -94,6 +155,7 @@ export async function generateImageFromPrompt(
     steps?: number
     guidanceScale?: number
     referenceImageBase64?: string
+    referenceImagesBase64?: string[]
     characterNames?: string[]
   } = {}
 ): Promise<{ data: string; mimeType: 'image/jpeg' }> {
@@ -104,6 +166,7 @@ export async function generateImageFromPrompt(
     steps = 20,
     guidanceScale = 7.5,
     referenceImageBase64,
+    referenceImagesBase64,
     characterNames,
   } = options
 
@@ -125,12 +188,13 @@ export async function generateImageFromPrompt(
   }
 
   // Fallback: Gemini Image
-  if (referenceImageBase64) {
-    // Story scene image with character reference
+  const geminiRefs = (referenceImagesBase64 ?? []).filter(Boolean)
+  if (geminiRefs.length > 0 || referenceImageBase64) {
+    const refs = geminiRefs.length > 0 ? geminiRefs : [referenceImageBase64 as string]
     const result = await generateStoryImage(
       prompt,
       characterNames ? `Characters: ${characterNames.join(', ')}` : '',
-      [referenceImageBase64],
+      refs,
       characterNames
     )
     if (result) return { data: result.data, mimeType: 'image/jpeg' }
@@ -176,6 +240,41 @@ export async function generateCharacterCartoon(
 }
 
 /**
+ * Generate a supporting/NPC companion image.
+ * Character form should follow the companion name/description semantics:
+ * - human-like name/description -> can be a human child character
+ * - creature/object/fantasy-like name -> non-human companion
+ * Used for storybook supporting characters and discovered NPCs.
+ */
+export async function generateCompanionCharacterCartoon(
+  name: string,
+  description: string,
+  style = 'cute cartoon character'
+): Promise<{ data: string; mimeType: 'image/jpeg' }> {
+  const safeName = (name || '').trim().slice(0, 40) || 'Companion'
+  const safeDescription = (description || '').trim().slice(0, 200) || 'friendly magical companion'
+
+  const prompt =
+    `Children's picture-book companion character design. ` +
+    `Character name: ${safeName}. Character traits: ${safeDescription}. ` +
+    `Style: ${style}. ` +
+    `Character type should match the name semantics: if the name/description suggests a child/person, draw a human child; ` +
+    `if it suggests animal/spirit/object/fantasy creature, draw a non-human companion. ` +
+    `Do not force a fixed species when the name already implies one. ` +
+    `Cute, warm, friendly, storybook look. ` +
+    `Centered portrait, clean simple background, clear silhouette, no text.`
+
+  const neg =
+    'photo, realistic photography, live action, scary, dark, horror, text, watermark'
+
+  return generateImageFromPrompt(prompt, {
+    width: 768,
+    height: 768,
+    negativePrompt: neg,
+  })
+}
+
+/**
  * Generate a scene illustration for a story script scene.
  */
 export async function generateSceneIllustration(
@@ -184,12 +283,15 @@ export async function generateSceneIllustration(
   characterNames: string[]
 ): Promise<{ data: string; mimeType: 'image/jpeg' }> {
   const fullPrompt = `Children's picture book illustration, ages 4-8: ${imagePrompt}. Style: Bright happy colors, round friendly shapes, simple background, cozy and warm. No text in image.`
+  const referenceImages = await normalizeReferenceImages(characterImagesBase64)
+  const bananaReferenceSheet = await buildReferenceSheetForBanana(referenceImages)
 
   return generateImageFromPrompt(fullPrompt, {
     width: 1280,
     height: 720,
     negativePrompt: 'text, letters, words, watermark, scary, realistic, photo',
-    referenceImageBase64: characterImagesBase64[0],
+    referenceImageBase64: bananaReferenceSheet,
+    referenceImagesBase64: referenceImages,
     characterNames,
   })
 }

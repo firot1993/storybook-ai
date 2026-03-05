@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStory, getStorybook, createScript } from '@/lib/db'
+import { getStory, getStorybook, createScript, getCharacter } from '@/lib/db'
 import { generateStorybookDirectorScript, getGeminiErrorResponse } from '@/lib/gemini'
 import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
 
@@ -84,6 +84,41 @@ export async function POST(request: NextRequest) {
     let supportingName = supportingOverride ?? '配角'
     let ageRange = ageRangeOverride ?? '4-6'
     let styleDesc = styleDescOverride ?? '温馨2D动漫风格，马卡龙色调'
+    const characterPool: string[] = []
+    const characterProfiles: Array<{ name: string; description?: string }> = []
+    const seenCharacterName = new Set<string>()
+    const pushCharacterName = (name: string | null | undefined) => {
+      const trimmed = name?.trim() || ''
+      if (!trimmed) return
+      const key = trimmed.toLowerCase()
+      if (seenCharacterName.has(key)) return
+      seenCharacterName.add(key)
+      characterPool.push(trimmed)
+    }
+    const seenCharacterProfile = new Set<string>()
+    const pushCharacterProfile = (
+      name: string | null | undefined,
+      description: string | null | undefined
+    ) => {
+      const trimmedName = name?.trim() || ''
+      if (!trimmedName) return
+      const key = trimmedName.toLowerCase()
+      const trimmedDescription = description?.trim() || ''
+      if (seenCharacterProfile.has(key)) {
+        if (trimmedDescription) {
+          const index = characterProfiles.findIndex((profile) => profile.name.toLowerCase() === key)
+          if (index >= 0 && !characterProfiles[index].description) {
+            characterProfiles[index].description = trimmedDescription
+          }
+        }
+        return
+      }
+      seenCharacterProfile.add(key)
+      characterProfiles.push({
+        name: trimmedName,
+        ...(trimmedDescription ? { description: trimmedDescription } : {}),
+      })
+    }
 
     if (story.storybookId) {
       const storybook = await getStorybook(story.storybookId)
@@ -96,8 +131,27 @@ export async function POST(request: NextRequest) {
           if (!protagonistOverride) protagonistName = resolved.protagonistName
           if (!supportingOverride) supportingName = resolved.supportingName
         }
+
+        const records = await Promise.all(
+          storybook.characters.map((entry) => (entry.id ? getCharacter(entry.id) : Promise.resolve(null)))
+        )
+        storybook.characters.forEach((entry, i) => {
+          const character = records[i]
+          const resolvedName = character?.name || entry.name
+          pushCharacterName(resolvedName)
+          pushCharacterProfile(resolvedName, entry.description)
+        })
       }
     }
+    pushCharacterName(protagonistName)
+    pushCharacterProfile(protagonistName, undefined)
+    supportingName
+      .split(/[、,，/|]/)
+      .map((name: string) => name.trim())
+      .forEach((name: string) => {
+        pushCharacterName(name)
+        pushCharacterProfile(name, undefined)
+      })
 
     let scenes: import('@/types').DirectorStoryboardScene[]
     try {
@@ -108,6 +162,8 @@ export async function POST(request: NextRequest) {
         storyContent: story.content,
         ageRange,
         styleDesc,
+        characterPool,
+        characterProfiles,
         minSceneCount,
         maxSceneCount,
       })
