@@ -760,19 +760,23 @@ ${hasCharacterImageRef ? `
 
   let allText = ''
   const images: Array<{ data: string; mimeType: string }> = []
-  // Track which section each image belongs to based on preceding text
+  // Track which section each image belongs to based on preceding text.
+  // Each image consumes (and clears) the accumulated text since the last image,
+  // so that a single text chunk containing multiple section headers is only
+  // matched against the first image that follows it.
   const imageSectionLabels: string[] = []
-  let lastTextChunk = ''
+  let pendingTextSinceLastImage = ''
 
   for (const part of responseParts) {
     if (part.text) {
       allText += part.text
-      lastTextChunk = part.text
+      pendingTextSinceLastImage += part.text
     } else if (part.inlineData?.data) {
       const rawData = part.inlineData.data
       const compressed = await compressImage(rawData, 768, 80)
       images.push({ data: compressed.data, mimeType: compressed.mimeType })
-      imageSectionLabels.push(lastTextChunk)
+      imageSectionLabels.push(pendingTextSinceLastImage)
+      pendingTextSinceLastImage = ''
     }
   }
 
@@ -828,16 +832,15 @@ ${hasCharacterImageRef ? `
 
   for (let i = 0; i < images.length; i++) {
     const label = imageSectionLabels[i] || ''
-    // Check if this image follows a 【封面】 section
-    if (label.includes('【封面】')) {
+    // Try NPC match first — more specific than cover
+    const npcMatch = label.match(/【角色\s*[-—–]\s*(.+?)】/)
+    if (npcMatch) {
+      const npcName = npcMatch[1].trim()
+      npcImages.set(npcName, images[i])
+    } else if (label.includes('【封面】')) {
       coverImage = images[i]
     } else {
-      // Try to match NPC name from 【角色 - <name>】 pattern in preceding text
-      const npcMatch = label.match(/【角色\s*[-—–]\s*(.+?)】/)
-      if (npcMatch) {
-        const npcName = npcMatch[1].trim()
-        npcImages.set(npcName, images[i])
-      } else if (i === images.length - 1 && !coverImage) {
+      if (i === images.length - 1 && !coverImage) {
         // Last image is likely the cover if not yet assigned
         coverImage = images[i]
       }
