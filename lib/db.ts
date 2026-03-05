@@ -32,8 +32,43 @@ export async function updateCharacter(
   return prisma.character.update({ where: { id }, data })
 }
 
-export async function listCharacters() {
+type StorybookCharacterLite = {
+  id?: string
+  role?: string
+  isNpc?: boolean
+}
+
+async function listSupportingCharacterIds(): Promise<string[]> {
+  const books = await prisma.storybook.findMany({
+    select: { characters: true },
+  })
+  const ids = new Set<string>()
+
+  for (const book of books) {
+    try {
+      const parsed = JSON.parse(book.characters) as unknown
+      if (!Array.isArray(parsed)) continue
+      for (const entry of parsed) {
+        if (!entry || typeof entry !== 'object') continue
+        const character = entry as StorybookCharacterLite
+        if (character.role !== 'supporting') continue
+        const id = typeof character.id === 'string' ? character.id.trim() : ''
+        if (id) ids.add(id)
+      }
+    } catch {
+      // ignore malformed storybook characters payload
+    }
+  }
+
+  return Array.from(ids)
+}
+
+export async function listCharacters(options?: { includeNpc?: boolean }) {
+  const includeNpc = options?.includeNpc ?? false
+  const supportingIds = includeNpc ? [] : await listSupportingCharacterIds()
+
   return prisma.character.findMany({
+    ...(supportingIds.length > 0 ? { where: { id: { notIn: supportingIds } } } : {}),
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,

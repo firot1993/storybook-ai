@@ -4,11 +4,17 @@ const genAI = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
 })
 
-const TTS_MODEL = 'gemini-2.5-flash-preview-tts'
+const TTS_MODEL = process.env.GEMINI_TTS_MODEL?.trim() || 'gemini-2.5-flash-preview-tts'
 const DEFAULT_VOICE_NAME = 'Kore'
 const WAV_SAMPLE_RATE = 24000
 const WAV_CHANNELS = 1
 const WAV_BITS_PER_SAMPLE = 16
+const TTS_MIN_INTERVAL_MS = Number(process.env.GEMINI_TTS_MIN_INTERVAL_MS ?? 6500)
+const TTS_MAX_RETRIES = Number(process.env.GEMINI_TTS_MAX_RETRIES ?? 4)
+const TTS_RETRY_BASE_MS = Number(process.env.GEMINI_TTS_RETRY_BASE_MS ?? 5000)
+
+let ttsNextAvailableAt = 0
+let ttsGate: Promise<void> = Promise.resolve()
 
 type GeminiTtsErrorDetails = {
   status: number
@@ -37,6 +43,51 @@ export class GeminiTtsError extends Error {
     super(message)
     this.status = status
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve()
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function clampPositiveInt(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback
+  const parsed = Math.trunc(value)
+  return parsed > 0 ? parsed : fallback
+}
+
+function parseRetryDelayMs(message: string): number | null {
+  const messageText = typeof message === 'string' ? message : ''
+  if (!messageText) return null
+
+  const retryInMatch = messageText.match(/Please retry in\s+([0-9.]+)s/i)
+  if (retryInMatch) {
+    const seconds = Number.parseFloat(retryInMatch[1])
+    if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds * 1000)
+  }
+
+  const retryDelayMatch = messageText.match(/"retryDelay"\s*:\s*"([0-9.]+)s"/i)
+  if (retryDelayMatch) {
+    const seconds = Number.parseFloat(retryDelayMatch[1])
+    if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds * 1000)
+  }
+
+  return null
+}
+
+async function acquireTtsRequestSlot(additionalDelayMs = 0): Promise<void> {
+  const minInterval = clampPositiveInt(TTS_MIN_INTERVAL_MS, 6500)
+  const extraDelay = Math.max(0, Math.trunc(additionalDelayMs))
+
+  const reserve = async () => {
+    const now = Date.now()
+    const waitMs = Math.max(0, ttsNextAvailableAt - now) + extraDelay
+    if (waitMs > 0) await sleep(waitMs)
+    ttsNextAvailableAt = Date.now() + minInterval
+  }
+
+  ttsGate = ttsGate.then(reserve, reserve)
+  await ttsGate
 }
 
 function toDataUrl(base64: string, mimeType: string): string {
@@ -126,37 +177,59 @@ async function requestGeminiAudio(
   speechConfig: Record<string, unknown>
 ): Promise<string> {
   const normalizedText = normalizeText(text)
+  const maxAttempts = clampPositiveInt(TTS_MAX_RETRIES, 4)
+  const retryBaseMs = clampPositiveInt(TTS_RETRY_BASE_MS, 5000)
+  let retryDelayMs = 0
 
-  let response: GeminiTtsResponse
-  try {
-    response = (await genAI.models.generateContent({
-      model: TTS_MODEL,
-      contents: [{ parts: [{ text: normalizedText }] }],
-      config: {
-        responseModalities: ['AUDIO'],
-        speechConfig,
-      },
-    })) as GeminiTtsResponse
-  } catch (error) {
-    const apiError = error as { status?: number; message?: string }
-    throw new GeminiTtsError({
-      status: typeof apiError?.status === 'number' ? apiError.status : 502,
-      message: apiError?.message || 'Gemini TTS request failed.',
-    })
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await acquireTtsRequestSlot(retryDelayMs)
+    retryDelayMs = 0
+
+    let response: GeminiTtsResponse
+    try {
+      response = (await genAI.models.generateContent({
+        model: TTS_MODEL,
+        contents: [{ parts: [{ text: normalizedText }] }],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig,
+        },
+      })) as GeminiTtsResponse
+    } catch (error) {
+      const apiError = error as { status?: number; message?: string }
+      const geminiError = new GeminiTtsError({
+        status: typeof apiError?.status === 'number' ? apiError.status : 502,
+        message: apiError?.message || 'Gemini TTS request failed.',
+      })
+      const shouldRetry = geminiError.status === 429 || geminiError.status === 503
+      if (!shouldRetry || attempt === maxAttempts) throw geminiError
+
+      const serverSuggestedDelay = parseRetryDelayMs(geminiError.message)
+      retryDelayMs = serverSuggestedDelay ?? retryBaseMs * attempt
+      continue
+    }
+
+    const { data, mimeType } = extractAudioDataPart(response)
+    const decodedAudio = Buffer.from(data, 'base64')
+    if (decodedAudio.byteLength === 0) {
+      if (attempt === maxAttempts) {
+        throw new GeminiTtsError({
+          status: 502,
+          message: 'Gemini TTS returned empty audio data.',
+        })
+      }
+      retryDelayMs = retryBaseMs * attempt
+      continue
+    }
+
+    const wavBuffer = normalizeToPlayableWav(decodedAudio, mimeType)
+    return toDataUrl(wavBuffer.toString('base64'), 'audio/wav')
   }
 
-  const { data, mimeType } = extractAudioDataPart(response)
-
-  const decodedAudio = Buffer.from(data, 'base64')
-  if (decodedAudio.byteLength === 0) {
-    throw new GeminiTtsError({
-      status: 502,
-      message: 'Gemini TTS returned empty audio data.',
-    })
-  }
-
-  const wavBuffer = normalizeToPlayableWav(decodedAudio, mimeType)
-  return toDataUrl(wavBuffer.toString('base64'), 'audio/wav')
+  throw new GeminiTtsError({
+    status: 502,
+    message: 'Gemini TTS failed after retries.',
+  })
 }
 
 function toSingleSpeakerNarrationScript(sceneText: string): string {
@@ -226,6 +299,37 @@ export async function generateSceneNarrationAudioUrl(sceneText: string): Promise
       prebuiltVoiceConfig: { voiceName },
     },
   })
+}
+
+/**
+ * V2: Generate audio for a single subtitle line.
+ * Keeps line granularity so downstream subtitle timing can align with real audio durations.
+ */
+export async function generateSceneLineNarrationAudioUrlV2(lineText: string): Promise<string> {
+  const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
+  const scriptedLine = toSingleSpeakerNarrationScript(lineText)
+  return requestGeminiAudio(scriptedLine, {
+    voiceConfig: {
+      prebuiltVoiceConfig: { voiceName },
+    },
+  })
+}
+
+/**
+ * V2: Generate per-line scene narration audio URLs.
+ */
+export async function generateSceneLineNarrationAudioUrlsV2(lines: string[]): Promise<string[]> {
+  const results: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    try {
+      results.push(await generateSceneLineNarrationAudioUrlV2(line))
+    } catch (error) {
+      console.warn(`[Gemini TTS V2] Line ${i} audio generation failed:`, error)
+      throw error
+    }
+  }
+  return results
 }
 
 export async function generateSceneNarrationAudioUrls(scenes: string[]): Promise<string[]> {

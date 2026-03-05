@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStory, getStorybook, createScript } from '@/lib/db'
+import { getStory, getStorybook, createScript, getCharacter } from '@/lib/db'
 import { generateStorybookDirectorScript, getGeminiErrorResponse } from '@/lib/gemini'
 import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
 
@@ -16,6 +16,8 @@ import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybo
  *   supportingName  — (optional) overrides auto-resolved supporting name
  *   ageRange        — (optional) overrides storybook ageRange
  *   styleDesc       — (optional) overrides storybook style description
+ *   minLength       — (optional) minimum number of scenes, default 15
+ *   maxLength       — (optional) maximum number of scenes, default 18
  *
  * Character names, ageRange, and styleDesc are auto-resolved from the storybook when omitted.
  */
@@ -27,10 +29,49 @@ export async function POST(request: NextRequest) {
       supportingName: supportingOverride,
       ageRange: ageRangeOverride,
       styleDesc: styleDescOverride,
+      minLength,
+      maxLength,
+      minlength,
+      maxlength,
     } = await request.json()
 
     if (!storyId) {
       return NextResponse.json({ error: 'storyId is required' }, { status: 400 })
+    }
+
+    const minSceneCountRaw = minLength ?? minlength
+    const maxSceneCountRaw = maxLength ?? maxlength
+
+    const minSceneCount =
+      minSceneCountRaw === undefined
+        ? 15
+        : Number.isFinite(minSceneCountRaw)
+          ? Math.trunc(minSceneCountRaw)
+          : NaN
+    const maxSceneCount =
+      maxSceneCountRaw === undefined
+        ? 18
+        : Number.isFinite(maxSceneCountRaw)
+          ? Math.trunc(maxSceneCountRaw)
+          : NaN
+
+    if (!Number.isFinite(minSceneCount) || !Number.isFinite(maxSceneCount)) {
+      return NextResponse.json(
+        { error: 'minLength and maxLength must be numbers' },
+        { status: 400 }
+      )
+    }
+    if (minSceneCount < 1 || maxSceneCount < 1) {
+      return NextResponse.json(
+        { error: 'minLength and maxLength must be >= 1' },
+        { status: 400 }
+      )
+    }
+    if (minSceneCount > maxSceneCount) {
+      return NextResponse.json(
+        { error: 'minLength cannot be greater than maxLength' },
+        { status: 400 }
+      )
     }
 
     const story = await getStory(storyId)
@@ -43,6 +84,41 @@ export async function POST(request: NextRequest) {
     let supportingName = supportingOverride ?? '配角'
     let ageRange = ageRangeOverride ?? '4-6'
     let styleDesc = styleDescOverride ?? '温馨2D动漫风格，马卡龙色调'
+    const characterPool: string[] = []
+    const characterProfiles: Array<{ name: string; description?: string }> = []
+    const seenCharacterName = new Set<string>()
+    const pushCharacterName = (name: string | null | undefined) => {
+      const trimmed = name?.trim() || ''
+      if (!trimmed) return
+      const key = trimmed.toLowerCase()
+      if (seenCharacterName.has(key)) return
+      seenCharacterName.add(key)
+      characterPool.push(trimmed)
+    }
+    const seenCharacterProfile = new Set<string>()
+    const pushCharacterProfile = (
+      name: string | null | undefined,
+      description: string | null | undefined
+    ) => {
+      const trimmedName = name?.trim() || ''
+      if (!trimmedName) return
+      const key = trimmedName.toLowerCase()
+      const trimmedDescription = description?.trim() || ''
+      if (seenCharacterProfile.has(key)) {
+        if (trimmedDescription) {
+          const index = characterProfiles.findIndex((profile) => profile.name.toLowerCase() === key)
+          if (index >= 0 && !characterProfiles[index].description) {
+            characterProfiles[index].description = trimmedDescription
+          }
+        }
+        return
+      }
+      seenCharacterProfile.add(key)
+      characterProfiles.push({
+        name: trimmedName,
+        ...(trimmedDescription ? { description: trimmedDescription } : {}),
+      })
+    }
 
     if (story.storybookId) {
       const storybook = await getStorybook(story.storybookId)
@@ -55,8 +131,27 @@ export async function POST(request: NextRequest) {
           if (!protagonistOverride) protagonistName = resolved.protagonistName
           if (!supportingOverride) supportingName = resolved.supportingName
         }
+
+        const records = await Promise.all(
+          storybook.characters.map((entry) => (entry.id ? getCharacter(entry.id) : Promise.resolve(null)))
+        )
+        storybook.characters.forEach((entry, i) => {
+          const character = records[i]
+          const resolvedName = character?.name || entry.name
+          pushCharacterName(resolvedName)
+          pushCharacterProfile(resolvedName, entry.description)
+        })
       }
     }
+    pushCharacterName(protagonistName)
+    pushCharacterProfile(protagonistName, undefined)
+    supportingName
+      .split(/[、,，/|]/)
+      .map((name: string) => name.trim())
+      .forEach((name: string) => {
+        pushCharacterName(name)
+        pushCharacterProfile(name, undefined)
+      })
 
     let scenes: import('@/types').DirectorStoryboardScene[]
     try {
@@ -67,6 +162,10 @@ export async function POST(request: NextRequest) {
         storyContent: story.content,
         ageRange,
         styleDesc,
+        characterPool,
+        characterProfiles,
+        minSceneCount,
+        maxSceneCount,
       })
     } catch (error) {
       const { status, message } = getGeminiErrorResponse(error)

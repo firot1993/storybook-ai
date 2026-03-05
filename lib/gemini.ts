@@ -6,8 +6,8 @@ const genAI = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
 });
 
-const TEXT_MODEL = 'gemini-3-flash-preview';
-const IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
+const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL?.trim() || 'gemini-3-flash-preview';
+const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL?.trim() || 'gemini-3.1-flash-image-preview';
 
 /**
  * Estimated pricing per 1 million tokens.
@@ -499,7 +499,7 @@ export async function generateStoryFromSynopsis(params: {
   ageRange: string
   styleDesc: string
   theme?: string
-}): Promise<{ story: string; choices: string[] }> {
+}): Promise<{ story: string; choices: string[]; npcs: Array<{ name: string; description: string }> }> {
   const { storyName, protagonistName, supportingName, synopsis, ageRange, styleDesc, theme } = params
 
   const prompt = `[System Role]
@@ -522,11 +522,16 @@ Generate a short fairy tale based on the above parameters. Requirements:
 5. Open-Ended Hook: End with an interactive question that sparks young readers' imagination, or a magical cliffhanger that plants seeds for the next episode.
 6. Scene Markers: Mark each natural scene with [Scene 1], [Scene 2], etc. — 3 to 4 scenes total.
 7. Write the story in the same language as the protagonist's name and background keywords suggest (Chinese if the names are Chinese).
+8. If the story introduces any NEW named character (not the protagonist/supporting character), list them as NPCs with concise traits.
 
-After the story text, on a new line output exactly this JSON block — nothing else after it:
+After the story text, on a new line output exactly these two JSON blocks in this order — nothing else after them:
+<!--NPCS:[{"name":"<new character name>","description":"<short traits, <=20 words>"}]-->
 <!--CHOICES:["<next-episode choice 1, ≤15 chars>","<choice 2, ≤15 chars>","<choice 3, ≤15 chars>"]-->
+Rules for NPCS:
+- Include only newly introduced named characters; do not repeat protagonist/supporting.
+- If none, return an empty array: []
 
-Output only the story text and the CHOICES block. No title, no extra explanation.`
+Output only the story text, NPCS block, and CHOICES block. No title, no extra explanation.`
 
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
   const raw = response.text?.trim() ?? ''
@@ -538,10 +543,30 @@ Output only the story text and the CHOICES block. No title, no extra explanation
     try { choices = JSON.parse(choicesMatch[1]) as string[] } catch { /* ignore */ }
   }
 
-  // Strip the choices marker from the story text
-  const story = raw.replace(/<!--CHOICES:.*?-->/, '').trim()
+  // Extract and parse the NPC block
+  const npcsMatch = raw.match(/<!--NPCS:(.*?)-->/)
+  let npcs: Array<{ name: string; description: string }> = []
+  if (npcsMatch) {
+    try {
+      const parsed = JSON.parse(npcsMatch[1]) as Array<{ name?: string; description?: string }>
+      npcs = (Array.isArray(parsed) ? parsed : [])
+        .map((npc) => ({
+          name: (npc?.name ?? '').trim(),
+          description: (npc?.description ?? '').trim(),
+        }))
+        .filter((npc) => npc.name.length > 0)
+    } catch {
+      // ignore malformed NPC payload
+    }
+  }
 
-  return { story, choices }
+  // Strip machine-readable markers from story text
+  const story = raw
+    .replace(/<!--CHOICES:.*?-->/g, '')
+    .replace(/<!--NPCS:.*?-->/g, '')
+    .trim()
+
+  return { story, choices, npcs }
 }
 
 // ── Storybook v2: 故事封面插画生成 ───────────────────────────
@@ -599,7 +624,7 @@ export async function generateStoryCoverImage(params: {
 // ── Storybook v2: 动漫导演分镜脚本生成 ──────────────────────
 
 /**
- * 生成完整的动漫导演分镜脚本（15-18个分镜），每个分镜包含：
+ * 生成完整的动漫导演分镜脚本（可配置分镜数量范围），每个分镜包含：
  * - 场景描述、镜头设计、动画动作(8s)、旁白VO、对话
  * - 三帧图片 prompt（开头帧/中间帧/结尾帧，16:9，英文）
  *
@@ -612,14 +637,65 @@ export async function generateStorybookDirectorScript(params: {
   storyContent: string
   ageRange: string
   styleDesc: string
+  characterPool?: string[]
+  characterProfiles?: Array<{ name: string; description?: string }>
+  minSceneCount?: number
+  maxSceneCount?: number
 }): Promise<import('@/types').DirectorStoryboardScene[]> {
-  const { storyName, protagonistName, supportingName, storyContent, ageRange, styleDesc } = params
+  const {
+    storyName,
+    protagonistName,
+    supportingName,
+    storyContent,
+    ageRange,
+    styleDesc,
+    characterPool = [],
+    characterProfiles = [],
+    minSceneCount = 15,
+    maxSceneCount = 18,
+  } = params
+
+  const minScenes = Math.max(1, Math.trunc(minSceneCount))
+  const maxScenes = Math.max(minScenes, Math.trunc(maxSceneCount))
+  const normalizeName = (name: string) => name.replace(/\s+/g, '').toLowerCase()
+  const canonicalByKey = new Map<string, string>()
+  const detailsByKey = new Map<string, string>()
+  for (const rawName of characterPool) {
+    const trimmed = rawName.trim()
+    if (!trimmed) continue
+    const key = normalizeName(trimmed)
+    if (!canonicalByKey.has(key)) canonicalByKey.set(key, trimmed)
+  }
+  for (const profile of characterProfiles) {
+    const name = profile.name?.trim() || ''
+    if (!name) continue
+    const key = normalizeName(name)
+    if (!canonicalByKey.has(key)) canonicalByKey.set(key, name)
+    const description = profile.description?.trim() || ''
+    if (description && !detailsByKey.has(key)) {
+      detailsByKey.set(key, description.slice(0, 120))
+    }
+  }
+  if (!canonicalByKey.has(normalizeName(protagonistName))) {
+    canonicalByKey.set(normalizeName(protagonistName), protagonistName)
+  }
+  const roleList = [protagonistName, supportingName]
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join('、')
+  const characterPoolText = Array.from(canonicalByKey.values()).join('、')
+  const characterProfileText = Array.from(canonicalByKey.entries())
+    .map(([key, name]) => {
+      const detail = detailsByKey.get(key)
+      return detail ? `${name}：${detail}` : name
+    })
+    .join('\n')
 
   const prompt = `[系统设定]
 你是一位享誉全球的儿童动漫导演与金牌分镜设计师，擅长将温馨的童话转化为极具视觉冲击力且节奏感极强的动漫画面。你的风格融合了新海诚的光影美学与吉卜力工作室的纯真叙事。
 
 [创作指令]
-请根据提供的【创作参数】，设计一套共 15-18 个分镜的故事书动漫化脚本。
+请根据提供的【创作参数】，设计一套共 ${minScenes}-${maxScenes} 个分镜的故事书动漫化脚本。
 
 [脚本核心规范]
 - 时长掌控：每个分镜需要有支撑 8-12 秒的动画内容，避免画面停滞。
@@ -628,10 +704,14 @@ export async function generateStorybookDirectorScript(params: {
 - 童趣互动：对话需符合 ${ageRange} 岁心理，强调 ${protagonistName} 与 ${supportingName} 之间细微的体贴与好奇。
 - 画风统一：${styleDesc || '温馨2D动漫风格'}。
 - 三帧连贯性：每个分镜的【开头帧】必须与上一个分镜的【结尾帧】保持视觉衔接（位置、光影、角色姿态连贯）。
+- 角色一致性：若 charactersUsed 非空，则 opening/midAction/ending 三个 frame prompt 必须明确包含所有 charactersUsed 角色名（不可遗漏）。
 
 [创作参数]
 故事名称：${storyName}
-角色设定：${protagonistName}（主角）/ ${supportingName}（配角）
+角色设定：${roleList}
+可用角色池：${characterPoolText || roleList}
+角色补充设定（姓名：特征）：
+${characterProfileText || '无'}
 核心文本：${storyContent}
 受众年龄：${ageRange} 岁
 
@@ -645,6 +725,7 @@ export async function generateStorybookDirectorScript(params: {
     "animationAction": "详细描述角色动作与环境特效变化（8s内容）",
     "voiceOver": "富有韵律感的旁白讲述（适合大声朗读）",
     "dialogue": [{"speaker": "角色名", "text": "简洁温暖的对白（10字内）"}],
+    "charactersUsed": ["本分镜在画面里出现的角色名，必须来自可用角色池；无角色时填[]"],
     "estimatedDuration": 10,
     "openingFramePrompt": "16:9 children's anime illustration, ${styleDesc || 'warm 2D anime style'}: [opening frame — establishing shot with visual continuity from previous scene, character positions, lighting, atmosphere, NO text]",
     "midActionFramePrompt": "16:9 children's anime illustration, ${styleDesc || 'warm 2D anime style'}: [peak action or emotional climax moment of the scene, highest energy, NO text]",
@@ -662,28 +743,75 @@ export async function generateStorybookDirectorScript(params: {
       animationAction: string
       voiceOver: string
       dialogue: { speaker: string; text: string }[]
+      charactersUsed?: unknown
       estimatedDuration: number
       openingFramePrompt: string
       midActionFramePrompt: string
       endingFramePrompt: string
     }>
 
-    return rawScenes.map((s) => ({
-      index: s.index - 1,  // convert to 0-based
-      title: s.sceneDescription?.slice(0, 40) ?? `分镜 ${s.index}`,
-      narration: s.voiceOver ?? '',
-      dialogue: s.dialogue ?? [],
-      imagePrompt: s.openingFramePrompt ?? '',
-      imagePrompts: [
-        s.openingFramePrompt ?? '',
-        s.midActionFramePrompt ?? '',
-        s.endingFramePrompt ?? '',
-      ],
-      estimatedDuration: s.estimatedDuration ?? 10,
-      sceneDescription: s.sceneDescription ?? '',
-      cameraDesign: s.cameraDesign ?? '',
-      animationAction: s.animationAction ?? '',
-    }))
+    return rawScenes.map((s) => {
+      const usedList: string[] = []
+      const seen = new Set<string>()
+      const rawList = Array.isArray(s.charactersUsed)
+        ? s.charactersUsed
+        : typeof s.charactersUsed === 'string'
+          ? s.charactersUsed.split(/[、,，/|]/)
+          : []
+
+      const pushName = (raw: unknown) => {
+        if (typeof raw !== 'string') return
+        const trimmed = raw.trim()
+        if (!trimmed) return
+        const key = normalizeName(trimmed)
+        const canonical = canonicalByKey.get(key) ?? trimmed
+        const canonicalKey = normalizeName(canonical)
+        if (seen.has(canonicalKey)) return
+        seen.add(canonicalKey)
+        usedList.push(canonical)
+      }
+
+      rawList.forEach(pushName)
+      s.dialogue?.forEach((line) => pushName(line?.speaker))
+
+      const withCharacters = (promptText: string | undefined) => {
+        const base = (promptText ?? '').trim()
+        if (usedList.length === 0) return base
+        const label = usedList
+          .map((name) => {
+            const detail = detailsByKey.get(normalizeName(name))
+            return detail ? `${name}(${detail})` : name
+          })
+          .join(', ')
+        const lc = base.toLowerCase()
+        if (lc.includes('must include all characters') || lc.includes('characters in this frame')) {
+          return base
+        }
+        return `${base} Characters in this frame: ${label}. Must include all characters, keep each one clearly visible, consistent, and recognizable.`
+      }
+
+      const openingFramePrompt = withCharacters(s.openingFramePrompt)
+      const midActionFramePrompt = withCharacters(s.midActionFramePrompt)
+      const endingFramePrompt = withCharacters(s.endingFramePrompt)
+
+      return {
+        charactersUsed: usedList,
+        index: s.index - 1,  // convert to 0-based
+        title: s.sceneDescription?.slice(0, 40) ?? `分镜 ${s.index}`,
+        narration: s.voiceOver ?? '',
+        dialogue: s.dialogue ?? [],
+        imagePrompt: openingFramePrompt,
+        imagePrompts: [
+          openingFramePrompt,
+          midActionFramePrompt,
+          endingFramePrompt,
+        ],
+        estimatedDuration: s.estimatedDuration ?? 10,
+        sceneDescription: s.sceneDescription ?? '',
+        cameraDesign: s.cameraDesign ?? '',
+        animationAction: s.animationAction ?? '',
+      }
+    })
   } catch (e) {
     console.error('[generateStorybookDirectorScript] Parse error:', e, '\nRaw:', response.text?.slice(0, 500))
     return []
