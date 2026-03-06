@@ -7,28 +7,15 @@ import Image from 'next/image'
 import type { Character } from '@/types'
 import StepProgress from '@/components/step-progress'
 import { showToast } from '@/components/toast'
+import { useLanguage } from '@/lib/i18n'
 
 const RANDOM_NAMES = [
   'Sparkle', 'Max', 'Luna', 'Binkie', 'Oliver', 'Daisy',
   'Ziggy', 'Pip', 'Bubbles', 'Leo', 'Ginger', 'Toby', 'Mochi', 'Finn',
 ]
 
-const VOICE_DESCRIPTIONS: Record<string, string> = {
-  Puck: 'Upbeat & playful',
-  Leda: 'Youthful & bright',
-  Zephyr: 'Bright & energetic',
-  Fenrir: 'Excitable & lively',
-  Aoede: 'Breezy & warm',
-  Sulafat: 'Warm & nurturing',
-  Achird: 'Friendly & casual',
-  Kore: 'Confident & firm',
-  Charon: 'Calm & informative',
-  Achernar: 'Soft & gentle',
-  Orus: 'Steady & reliable',
-  Gacrux: 'Mature & measured',
-}
-
 export default function NameCharacterPage() {
+  const { t } = useLanguage()
   const [name, setName] = useState('')
   const [age, setAge] = useState<string>('')
   const [character, setCharacter] = useState<Character | null>(null)
@@ -61,7 +48,6 @@ export default function NameCharacterPage() {
     if (!character) return
     setAssigningVoice(true)
     try {
-      // Save name & age first so voice assignment has context
       const ageNum = age ? parseInt(age, 10) : null
       await fetch(`/api/character/${character.id}`, {
         method: 'PATCH',
@@ -78,16 +64,15 @@ export default function NameCharacterPage() {
         body: JSON.stringify({ action: 'assignVoice' }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Voice assignment failed')
+      if (!res.ok) throw new Error(data.error || t('characterName.voiceAssignFailed'))
       setVoiceName(data.voiceName)
       setVoiceReason(data.reason || '')
 
-      // Update local state
       const updated = { ...character, voiceName: data.voiceName }
       setCharacter(updated)
       localStorage.setItem('currentCharacter', JSON.stringify(updated))
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to assign voice', 'error')
+      showToast(err instanceof Error ? err.message : t('characterName.voiceAssignFailed'), 'error')
     } finally {
       setAssigningVoice(false)
     }
@@ -118,10 +103,10 @@ export default function NameCharacterPage() {
         }),
       })
 
-      showToast(`Welcome, ${name}! ✨`, 'success')
+      showToast(t('characterName.welcome', { name }), 'success')
       router.push('/')
     } catch {
-      showToast("Couldn't save. Please try again!", 'error')
+      showToast(t('characterName.saveFailed'), 'error')
     } finally {
       setSaving(false)
     }
@@ -152,17 +137,17 @@ export default function NameCharacterPage() {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
-          Back
+          {t('characterName.back')}
         </Link>
 
         <StepProgress currentStep={1} type="character" />
 
         <div className="card">
           <h1 className="text-3xl font-extrabold text-center mb-2 text-grape-700">
-            Meet Your Character! ⭐
+            {t('characterName.title')}
           </h1>
           <p className="text-gray-500 text-center mb-7">
-            Give them a name, age, and a matching voice
+            {t('characterName.subtitle')}
           </p>
 
           {/* Portrait display */}
@@ -173,7 +158,7 @@ export default function NameCharacterPage() {
                   <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-gray-200 shadow opacity-60">
                     <Image src={character.originalImage} alt="Original" width={80} height={80} className="w-full h-full object-cover" />
                   </div>
-                  <span className="text-[10px] text-gray-400 mt-1.5 font-medium">Photo</span>
+                  <span className="text-[10px] text-gray-400 mt-1.5 font-medium">{t('characterName.photo')}</span>
                 </div>
                 <div className="text-gray-300 -mt-4 text-lg font-bold">→</div>
               </>
@@ -188,7 +173,7 @@ export default function NameCharacterPage() {
                   className="w-36 h-36 rounded-full object-cover bg-white"
                 />
               </div>
-              <span className="text-[10px] text-grape-500 mt-1.5 font-bold">Character</span>
+              <span className="text-[10px] text-grape-500 mt-1.5 font-bold">{t('characterName.character')}</span>
             </div>
           </div>
 
@@ -196,16 +181,16 @@ export default function NameCharacterPage() {
             {/* Name */}
             <div>
               <div className="flex justify-between items-end mb-2">
-                <label className="text-sm font-bold text-gray-700">Character Name *</label>
+                <label className="text-sm font-bold text-gray-700">{t('characterName.nameLabel')}</label>
                 <button type="button" onClick={handleRandomName} className="text-xs font-bold text-grape-500 hover:text-grape-700">
-                  🎲 Random
+                  {t('characterName.randomBtn')}
                 </button>
               </div>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Luna, Max, Sparkle"
+                placeholder={t('characterName.namePlaceholder')}
                 className="input"
                 required
                 autoFocus
@@ -214,7 +199,7 @@ export default function NameCharacterPage() {
 
             {/* Age */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">Age (optional)</label>
+              <label className="block text-sm font-bold text-gray-700 mb-2">{t('characterName.ageLabel')}</label>
               <div className="flex gap-2 flex-wrap">
                 {[3, 4, 5, 6, 7, 8, 9, 10].map((a) => (
                   <button
@@ -236,7 +221,7 @@ export default function NameCharacterPage() {
                   max={99}
                   value={age}
                   onChange={(e) => setAge(e.target.value)}
-                  placeholder="Other"
+                  placeholder={t('characterName.ageOther')}
                   className="input w-20 text-sm py-1.5"
                 />
               </div>
@@ -246,8 +231,8 @@ export default function NameCharacterPage() {
             <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="text-sm font-bold text-gray-700">Character Voice</p>
-                  <p className="text-xs text-gray-400">Let AI pick a voice that matches this character</p>
+                  <p className="text-sm font-bold text-gray-700">{t('characterName.voiceTitle')}</p>
+                  <p className="text-xs text-gray-400">{t('characterName.voiceSubtitle')}</p>
                 </div>
                 <button
                   type="button"
@@ -255,7 +240,7 @@ export default function NameCharacterPage() {
                   disabled={assigningVoice}
                   className="text-sm font-bold px-4 py-2 bg-grape-500 text-white rounded-full hover:bg-grape-600 disabled:opacity-60 transition-colors shrink-0"
                 >
-                  {assigningVoice ? '...' : voiceName ? '↺ Re-assign' : '🎙️ Assign Voice'}
+                  {assigningVoice ? '...' : voiceName ? t('characterName.reassign') : t('characterName.assignVoice')}
                 </button>
               </div>
 
@@ -264,12 +249,12 @@ export default function NameCharacterPage() {
                   <span className="text-2xl">🎙️</span>
                   <div>
                     <p className="font-bold text-grape-700">{voiceName}</p>
-                    <p className="text-xs text-gray-400">{VOICE_DESCRIPTIONS[voiceName] || 'Matched voice'}</p>
+                    <p className="text-xs text-gray-400">{t(`voices.${voiceName}`) || t('characterName.matchedVoice')}</p>
                     {voiceReason && <p className="text-xs text-gray-500 mt-0.5 italic">{voiceReason}</p>}
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-gray-400 text-center py-2">No voice assigned yet</p>
+                <p className="text-xs text-gray-400 text-center py-2">{t('characterName.noVoice')}</p>
               )}
             </div>
 
@@ -278,7 +263,7 @@ export default function NameCharacterPage() {
               disabled={saving || !name.trim()}
               className="btn-primary w-full text-lg disabled:opacity-50 py-4"
             >
-              {saving ? 'Saving...' : 'Save Character Profile ✨'}
+              {saving ? t('characterName.saving') : t('characterName.saveBtn')}
             </button>
 
             <p className="text-center">
@@ -287,7 +272,7 @@ export default function NameCharacterPage() {
                 onClick={() => router.push('/story/create')}
                 className="text-sm text-gray-400 hover:text-gray-600 underline underline-offset-2"
               >
-                Skip to story creation
+                {t('characterName.skipStory')}
               </button>
             </p>
           </form>

@@ -1,10 +1,13 @@
 'use client'
 
+import { useLanguage } from '@/lib/i18n'
+
 interface ConfirmDialogProps {
   open: boolean
   title: string
   message: string
   confirmLabel?: string
+  cancelLabel?: string
   onConfirm: () => void
   onCancel: () => void
 }
@@ -14,9 +17,11 @@ export default function ConfirmDialog({
   title,
   message,
   confirmLabel = 'Delete',
+  cancelLabel,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useLanguage()
   if (!open) return null
 
   return (
@@ -30,7 +35,7 @@ export default function ConfirmDialog({
             onClick={onCancel}
             className="btn-secondary flex-1 py-3 text-base"
           >
-            Keep it!
+            {cancelLabel ?? t('common.keepIt')}
           </button>
           <button
             onClick={onConfirm}
