@@ -2,17 +2,13 @@ import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
 import type { CompanionSuggestion } from '@/types'
 import {
-  buildCharacterImagePrompt,
   buildCharacterWithStyleRefPrompt,
   buildCompanionSuggestionsPrompt,
   buildReferenceImageLabel,
   buildDirectorScriptPrompt,
   buildProtagonistReferencePrompt,
-  buildStoryCoverImagePrompt,
-  buildStoryFromSynopsisPrompt,
   buildStoryImagePrompt,
   buildStoryWithAssetsPrompt,
-  buildStyleExampleCharacterPrompt,
   buildSynopsisVersionsPrompt,
   buildVoiceAssignmentPrompt,
   DEFAULT_STORY_IMAGE_REFERENCE_HINT,
@@ -25,43 +21,6 @@ const genAI = new GoogleGenAI({
 
 const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL?.trim() || 'gemini-3-flash-preview';
 const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL?.trim() || 'gemini-3.1-flash-image-preview';
-
-/**
- * Estimated pricing per 1 million tokens.
- * Values are based on Gemini 1.5 Flash rates as a baseline.
- */
-const PRICING: Record<string, { input: number; output: number }> = {
-  [TEXT_MODEL]: { input: 0.075, output: 0.30 },
-  [IMAGE_MODEL]: { input: 0.075, output: 0.30 },
-  default: { input: 0.075, output: 0.30 },
-};
-
-/**
- * Predicts the cost of a request based on input tokens.
- * Note: This only estimates the input cost. Total cost includes generated output.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function estimatePrice(model: string, prompt: string | any[]) {
-  try {
-    const contents = typeof prompt === 'string' ? [{ role: 'user', parts: [{ text: prompt }] }] : prompt;
-    const { totalTokens } = await genAI.models.countTokens({
-      model,
-      contents,
-    });
-
-    const rates = PRICING[model] || PRICING.default;
-    const estimatedInputCost = ((totalTokens ?? 0) / 1_000_000) * rates.input;
-
-    return {
-      totalTokens,
-      estimatedInputCost,
-      formattedCost: `$${estimatedInputCost.toFixed(6)}`,
-    };
-  } catch (error) {
-    console.warn('Cost estimation failed:', error);
-    return null;
-  }
-}
 
 /**
  * Compress a base64 PNG image: resize to fit within maxDim and convert to JPEG.
@@ -120,14 +79,6 @@ type GeminiCandidate = {
 type GeminiImageResponse = {
   candidates?: GeminiCandidate[];
   text?: string;
-};
-
-export type GeminiImageDiagnostics = {
-  candidateCount: number;
-  finishReasons: string[];
-  partKinds: string[];
-  blockedBySafety: boolean;
-  textPreview: string;
 };
 
 export function getGeminiErrorResponse(error: unknown): { status: number; message: string } {
@@ -190,33 +141,6 @@ function extractImageData(response: GeminiImageResponse): string | undefined {
   return undefined;
 }
 
-function buildImageDiagnostics(response: GeminiImageResponse): GeminiImageDiagnostics {
-  const candidates = response.candidates ?? [];
-  const partKinds = candidates.flatMap((candidate) =>
-    (candidate.content?.parts ?? []).map((part) => {
-      if (part.inlineData?.data) return `inlineData:${part.inlineData.mimeType ?? 'unknown'}`;
-      if (part.text) return 'text';
-      return 'unknown';
-    })
-  );
-  const textPreview = candidates
-    .flatMap((candidate) => (candidate.content?.parts ?? []).map((part) => part.text ?? ''))
-    .find((text) => text.trim().length > 0)
-    ?.slice(0, 200) ?? '';
-
-  const blockedBySafety = candidates.some((candidate) =>
-    (candidate.safetyRatings ?? []).some((rating) => Boolean(rating.blocked))
-  );
-
-  return {
-    candidateCount: candidates.length,
-    finishReasons: candidates.map((candidate) => candidate.finishReason ?? 'unknown'),
-    partKinds,
-    blockedBySafety,
-    textPreview,
-  };
-}
-
 function extractInterleavedCharacterSectionName(label: string): string | undefined {
   const npcMatch = label.match(/(?:【角色\s*[-—–]\s*(.+?)】)|(?:\[CHARACTER\s*-\s*(.+?)\])/)
   const name = npcMatch?.[1] ?? npcMatch?.[2]
@@ -234,56 +158,6 @@ function stripInterleavedStorySections(text: string): string {
     .replace(/(?:【角色\s*[-—]\s*[\s\S]*$)|(?:\[CHARACTER\s*-\s*[\s\S]*$)/g, '')
     .replace(/(?:【封面】|\[COVER\])[\s\S]*$/g, '')
     .trim()
-}
-
-
-export async function generateCharacterImageWithDiagnostics(
-  imageBase64: string,
-  style: string = 'cute cartoon character'
-): Promise<{
-  imageData?: string;
-  mimeType: string;
-  diagnostics: GeminiImageDiagnostics;
-}> {
-  const prompt = buildCharacterImagePrompt(style)
-
-  const response = (await genAI.models.generateContent({
-    model: IMAGE_MODEL,
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { text: prompt },
-          {
-            inlineData: {
-              data: imageBase64,
-              mimeType: 'image/jpeg',
-            },
-          },
-        ],
-      },
-    ],
-  })) as GeminiImageResponse;
-
-  const rawImage = extractImageData(response);
-  let imageData = rawImage;
-  let mimeType = 'image/png';
-  if (rawImage) {
-    const compressed = await compressImage(rawImage, 512, 75);
-    imageData = compressed.data;
-    mimeType = compressed.mimeType;
-  }
-
-  return {
-    imageData,
-    mimeType,
-    diagnostics: buildImageDiagnostics(response),
-  };
-}
-
-export async function generateCharacterImage(imageBase64: string, style?: string) {
-  const result = await generateCharacterImageWithDiagnostics(imageBase64, style);
-  return result.imageData;
 }
 
 /**
@@ -324,37 +198,6 @@ export async function generateCharacterWithStyleRef(
   if (!rawImage) return { mimeType: 'image/jpeg' }
 
   const compressed = await compressImage(rawImage, 768, 80)
-  return { imageData: compressed.data, mimeType: compressed.mimeType }
-}
-
-/**
- * Generate a standalone example character in a given art style
- * (no user photo — used to create style preview thumbnails).
- */
-export async function generateStyleExampleCharacter(
-  stylePrompt: string,
-  styleRefBase64: string,
-  label: string
-): Promise<{ imageData?: string; mimeType: string }> {
-  const prompt = buildStyleExampleCharacterPrompt(stylePrompt, label)
-
-  const response = (await genAI.models.generateContent({
-    model: IMAGE_MODEL,
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { text: prompt },
-          { inlineData: { data: styleRefBase64, mimeType: 'image/jpeg' } },
-        ],
-      },
-    ],
-  })) as GeminiImageResponse
-
-  const rawImage = extractImageData(response)
-  if (!rawImage) return { mimeType: 'image/jpeg' }
-
-  const compressed = await compressImage(rawImage, 512, 80)
   return { imageData: compressed.data, mimeType: compressed.mimeType }
 }
 
@@ -464,125 +307,6 @@ export async function generateCompanionSuggestions(params: {
     console.error('[generateCompanionSuggestions] Failed to parse JSON:', e)
     return []
   }
-}
-
-// ── Storybook v2: 完整童话生成 ───────────────────────────────
-
-/**
- * 从选定的梗概生成完整童话故事文本。
- */
-export async function generateStoryFromSynopsis(params: {
-  storyName: string
-  protagonistName: string
-  supportingName: string
-  synopsis: string
-  ageRange: string
-  styleDesc: string
-  locale?: Locale
-  theme?: string
-}): Promise<{ story: string; choices: string[]; npcs: Array<{ name: string; description: string }> }> {
-  const {
-    storyName,
-    protagonistName,
-    supportingName,
-    synopsis,
-    ageRange,
-    styleDesc,
-    locale = 'zh',
-    theme,
-  } = params
-
-  const prompt = buildStoryFromSynopsisPrompt({
-    storyName,
-    protagonistName,
-    supportingName,
-    synopsis,
-    ageRange,
-    styleDesc,
-    locale,
-    theme,
-  })
-
-  const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
-  const raw = response.text?.trim() ?? ''
-
-  // Extract and parse the choices block
-  const choicesMatch = raw.match(/<!--CHOICES:(.*?)-->/)
-  let choices: string[] = []
-  if (choicesMatch) {
-    try { choices = JSON.parse(choicesMatch[1]) as string[] } catch { /* ignore */ }
-  }
-
-  // Extract and parse the NPC block
-  const npcsMatch = raw.match(/<!--NPCS:(.*?)-->/)
-  let npcs: Array<{ name: string; description: string }> = []
-  if (npcsMatch) {
-    try {
-      const parsed = JSON.parse(npcsMatch[1]) as Array<{ name?: string; description?: string }>
-      npcs = (Array.isArray(parsed) ? parsed : [])
-        .map((npc) => ({
-          name: (npc?.name ?? '').trim(),
-          description: (npc?.description ?? '').trim(),
-        }))
-        .filter((npc) => npc.name.length > 0)
-    } catch {
-      // ignore malformed NPC payload
-    }
-  }
-
-  // Strip machine-readable markers from story text
-  const story = raw
-    .replace(/<!--CHOICES:.*?-->/g, '')
-    .replace(/<!--NPCS:.*?-->/g, '')
-    .trim()
-
-  return { story, choices, npcs }
-}
-
-// ── Storybook v2: 故事封面插画生成 ───────────────────────────
-
-/**
- * 根据故事梗概和主角形象，生成一张封面主图。
- * characterImageBase64: raw base64 (无 data: 前缀)
- */
-export async function generateStoryCoverImage(params: {
-  synopsis: string
-  protagonistName: string
-  styleDesc: string
-  characterImageBase64?: string
-}): Promise<{ data: string; mimeType: string } | undefined> {
-  const { synopsis, protagonistName, styleDesc, characterImageBase64 } = params
-
-  const prompt = buildStoryCoverImagePrompt({
-    synopsis,
-    protagonistName,
-    styleDesc,
-  })
-
-  const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
-    { text: prompt },
-  ]
-
-  if (characterImageBase64) {
-    const isJpeg = characterImageBase64.startsWith('/9j/')
-    parts.push({
-      inlineData: {
-        data: characterImageBase64,
-        mimeType: isJpeg ? 'image/jpeg' : 'image/png',
-      },
-    })
-  }
-
-  const response = (await genAI.models.generateContent({
-    model: IMAGE_MODEL,
-    contents: [{ role: 'user', parts }],
-  })) as GeminiImageResponse
-
-  const rawImage = extractImageData(response)
-  if (!rawImage) return undefined
-
-  const compressed = await compressImage(rawImage, 768, 80)
-  return { data: compressed.data, mimeType: compressed.mimeType }
 }
 
 // ── Storybook v2: 单次交错生成（故事 + 封面 + NPC立绘） ──────
