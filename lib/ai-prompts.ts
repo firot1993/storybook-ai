@@ -1,6 +1,6 @@
 import { getLocaleLanguageName, type Locale } from './i18n/shared'
 
-export interface SynopsisVersionsPromptParams {
+interface SynopsisVersionsPromptParams {
   storyName: string
   protagonistName: string
   supportingName: string
@@ -9,31 +9,14 @@ export interface SynopsisVersionsPromptParams {
   locale: Locale
 }
 
-export interface CompanionSuggestionsPromptParams {
+interface CompanionSuggestionsPromptParams {
   protagonistName: string
   backgroundKeywords: string
   ageRange: string
   locale: Locale
 }
 
-export interface StoryFromSynopsisPromptParams {
-  storyName: string
-  protagonistName: string
-  supportingName: string
-  synopsis: string
-  ageRange: string
-  styleDesc: string
-  locale: Locale
-  theme?: string
-}
-
-export interface StoryCoverImagePromptParams {
-  synopsis: string
-  protagonistName: string
-  styleDesc: string
-}
-
-export interface StoryWithAssetsPromptParams {
+interface StoryWithAssetsPromptParams {
   storyName: string
   protagonistName: string
   supportingName: string
@@ -45,7 +28,7 @@ export interface StoryWithAssetsPromptParams {
   hasCharacterImageRef: boolean
 }
 
-export interface DirectorScriptPromptParams {
+interface DirectorScriptPromptParams {
   storyName: string
   protagonistName: string
   supportingName: string
@@ -59,21 +42,21 @@ export interface DirectorScriptPromptParams {
   maxSceneCount: number
 }
 
-export interface StoryImagePromptParams {
+interface StoryImagePromptParams {
   sceneDescription: string
   hasMultipleReferences: boolean
   multiRefLabel?: string
   textHint: string
 }
 
-export interface VoiceCastingOption {
+interface VoiceCastingOption {
   name: string
   tone: string
   gender: string
   ageRange?: string
 }
 
-export interface VoiceAssignmentPromptParams {
+interface VoiceAssignmentPromptParams {
   name: string
   age: number | null | undefined
   style: string
@@ -101,9 +84,8 @@ export const DEFAULT_STORY_IMAGE_REFERENCE_HINT =
 
 const DEFAULT_STORY_STYLE_LABEL = 'dreamlike watercolor, macaron palette, warm soft light'
 const DEFAULT_DIRECTOR_STYLE_LABEL = 'warm 2D anime style'
-const DEFAULT_STORYBOOK_STYLE_LABEL = 'dreamlike watercolor, macaron palette, starlit atmosphere'
 
-export function dedentPrompt(text: string): string {
+function dedentPrompt(text: string): string {
   const normalized = text.replace(/\r\n/g, '\n').replace(/^\n+|\n+$/g, '')
   const lines = normalized.split('\n')
   const indents = lines
@@ -136,7 +118,7 @@ function getOutputLanguageRequirement(locale: Locale, scope: string): string {
   return `${scope} must be written in ${getLocaleLanguageName(locale)}.`
 }
 
-export function buildAgeInstruction(ageDesc = ''): string {
+function buildAgeInstruction(ageDesc = ''): string {
   const ageNum = ageDesc ? parseInt(ageDesc, 10) : Number.NaN
 
   if (Number.isNaN(ageNum) || ageNum <= 0) return ''
@@ -167,10 +149,6 @@ export function buildAgeInstruction(ageDesc = ''): string {
   )
 }
 
-export function buildCharacterImagePrompt(style: string): string {
-  return `Transform this photo into a ${style}, children's book illustration style, vibrant colors, friendly expression, simple background`
-}
-
 export function buildCharacterWithStyleRefPrompt(stylePrompt: string, ageDesc = ''): string {
   const ageInstruction = buildAgeInstruction(ageDesc)
   const ageBlock = ageInstruction ? `${ageInstruction}\n` : ''
@@ -189,17 +167,6 @@ export function buildCharacterWithStyleRefPrompt(stylePrompt: string, ageDesc = 
 
     Output: upper-body front-facing portrait, centered composition, clean simple background, friendly smile.
   `)
-}
-
-export function buildStyleExampleCharacterPrompt(stylePrompt: string, label: string): string {
-  return (
-    `Generate a children's storybook character portrait of a cute, friendly child character ` +
-    `in exactly the same art style shown in the reference image. ` +
-    `Style emphasis: ${stylePrompt}. ` +
-    `The character (named "${label}") should have a round friendly face, big expressive eyes, ` +
-    `an upper-body centered portrait, a clean simple background, and a warm friendly expression. ` +
-    `Match the art style of the reference image precisely.`
-  )
 }
 
 export function buildSynopsisVersionsPrompt(params: SynopsisVersionsPromptParams): string {
@@ -269,78 +236,6 @@ export function buildCompanionSuggestionsPrompt(params: CompanionSuggestionsProm
       {"emoji": "🦋", "name": "Companion name", "description": "Short description"},
       {"emoji": "🐉", "name": "Companion name", "description": "Short description"}
     ]
-  `)
-}
-
-export function buildStoryFromSynopsisPrompt(params: StoryFromSynopsisPromptParams): string {
-  const {
-    storyName,
-    protagonistName,
-    supportingName,
-    synopsis,
-    ageRange,
-    styleDesc,
-    locale,
-    theme,
-  } = params
-
-  return dedentPrompt(`
-    [System Role]
-    You are a world-renowned children's picture-book author. With a gentle and imaginative voice, you turn ordinary moments into dreamlike adventures for young readers.
-
-    [Story Parameters]
-    Story title: ${storyName}
-    Protagonist: ${protagonistName}
-    Supporting character: ${supportingName}
-    Synopsis seed: ${synopsis}
-    Target audience: ${ageRange} years old
-    Visual style reference: ${styleDesc || DEFAULT_STORYBOOK_STYLE_LABEL}
-    Core theme: ${theme || 'exploration and friendship'}
-
-    [Creative Task]
-    Write a short fairy tale based on the parameters above.
-
-    Requirements:
-    1. Use strong sensory writing instead of generic adjectives.
-    2. Include simple, warm interactions between the protagonist and supporting character in "Name: dialogue" format.
-    3. Keep the emotional core centered on ${theme || 'exploration and friendship'}.
-    4. Structure the story as a quiet beginning, magical turning point, and warm healing ending.
-    5. End with an open hook that invites imagination or sets up the next episode.
-    6. Mark natural scene breaks with [Scene 1], [Scene 2], and so on. Use 3 to 4 scenes total.
-    7. ${getOutputLanguageRequirement(locale, 'All story prose, dialogue, NPC descriptions, and choice text')}
-    8. If the story introduces any NEW named character other than the protagonist or supporting character, list them as NPCs with concise traits.
-
-    After the story text, output exactly these two JSON markers in this order on separate lines. Keep the markers exactly as written:
-    <!--NPCS:[{"name":"<new character name>","description":"<short traits, ${getNpcDescriptionInstruction(locale)}>"}]-->
-    <!--CHOICES:["<next-episode choice 1, ${getChoiceLengthInstruction(locale)}>","<choice 2, ${getChoiceLengthInstruction(locale)}>","<choice 3, ${getChoiceLengthInstruction(locale)}>"]-->
-
-    Rules for NPCS:
-    - Include only newly introduced named characters.
-    - Do not repeat the protagonist or supporting character.
-    - If there are no new named NPCs, return [].
-
-    Output only the story text, the NPCS marker, and the CHOICES marker. No title and no extra explanation.
-  `)
-}
-
-export function buildStoryCoverImagePrompt(params: StoryCoverImagePromptParams): string {
-  const { synopsis, protagonistName, styleDesc } = params
-
-  return dedentPrompt(`
-    You are a world-class storybook cover illustrator known for warm, dreamy, emotionally resonant children's fantasy art.
-
-    Create a storybook cover image based on the synopsis below and deeply respect the hand-drawn style of the provided character reference image.
-
-    Requirements:
-    - Leave roughly one quarter of the composition as clear breathing room near the top or bottom for a future title area.
-    - Capture a warm, dreamy, innocent, healing atmosphere.
-    - Style: ${styleDesc || DEFAULT_STORY_STYLE_LABEL}
-    - Main character: ${protagonistName}
-    - Vertical composition with an approximate 3:4 aspect ratio.
-    - Suitable for a children's picture-book cover.
-    - Do not include any text or letters in the image.
-
-    Story synopsis: ${synopsis}
   `)
 }
 
