@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCharacter, createStory, getCharacter, getStorybook, updateStorybook } from '@/lib/db'
 import { generateStoryWithAssets } from '@/lib/gemini'
+import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
 import type { Story, StorybookCharacter } from '@/types'
 
@@ -67,7 +68,15 @@ async function buildNpcCharactersWithAssets(
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   try {
-    const { storyName, selectedSynopsis, synopsisVersion, theme, ageRange } = await request.json()
+    const {
+      storyName,
+      selectedSynopsis,
+      synopsisVersion,
+      theme,
+      ageRange,
+      locale: localeRaw,
+    } = await request.json()
+    const locale = normalizeLocale(localeRaw)
 
     if (!selectedSynopsis?.trim()) {
       return NextResponse.json({ error: '请先选择一版梗概' }, { status: 400 })
@@ -76,7 +85,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const storybook = await getStorybook(id)
     if (!storybook) return NextResponse.json({ error: 'Storybook not found' }, { status: 404 })
 
-    const { protagonistName, supportingName, protagonistChar } = await resolveStorybookCharacters(storybook)
+    const { protagonistName, supportingName, protagonistChar } = await resolveStorybookCharacters(storybook, locale)
     const styleDesc = resolveStorybookStyle(storybook)
 
     const title = storyName?.trim() || storybook.name
@@ -102,7 +111,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       synopsis: selectedSynopsis.trim(),
       ageRange: ageRange || storybook.ageRange,
       styleDesc,
-      theme: theme ?? '探索与友谊',
+      locale,
+      theme: theme ?? (locale === 'zh' ? '探索与友谊' : 'exploration and friendship'),
       characterImageBase64: protagonistImageBase64,
     })
 

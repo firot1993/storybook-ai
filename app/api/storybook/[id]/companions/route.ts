@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStorybook } from '@/lib/db'
 import { generateCompanionSuggestions } from '@/lib/gemini'
+import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters } from '@/lib/storybook-helpers'
 
 // POST /api/storybook/[id]/companions
@@ -8,17 +9,19 @@ import { resolveStorybookCharacters } from '@/lib/storybook-helpers'
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   try {
-    const { backgroundKeywords } = await request.json()
+    const { backgroundKeywords, locale: localeRaw } = await request.json()
+    const locale = normalizeLocale(localeRaw)
 
     const storybook = await getStorybook(id)
     if (!storybook) return NextResponse.json({ error: 'Storybook not found' }, { status: 404 })
 
-    const { protagonistName } = await resolveStorybookCharacters(storybook)
+    const { protagonistName } = await resolveStorybookCharacters(storybook, locale)
 
     const companions = await generateCompanionSuggestions({
       protagonistName,
-      backgroundKeywords: backgroundKeywords?.trim() || '奇幻冒险',
+      backgroundKeywords: backgroundKeywords?.trim() || (locale === 'zh' ? '奇幻冒险' : 'fantasy adventure'),
       ageRange: storybook.ageRange,
+      locale,
     })
 
     return NextResponse.json({ companions })

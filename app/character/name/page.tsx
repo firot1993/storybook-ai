@@ -15,7 +15,7 @@ const RANDOM_NAMES = [
 ]
 
 export default function NameCharacterPage() {
-  const { t } = useLanguage()
+  const { locale, t } = useLanguage()
   const [name, setName] = useState('')
   const [age, setAge] = useState<string>('')
   const [character, setCharacter] = useState<Character | null>(null)
@@ -61,7 +61,7 @@ export default function NameCharacterPage() {
       const res = await fetch(`/api/character/${character.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'assignVoice' }),
+        body: JSON.stringify({ action: 'assignVoice', locale }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || t('characterName.voiceAssignFailed'))

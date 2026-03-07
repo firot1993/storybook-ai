@@ -1,6 +1,23 @@
 import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
 import type { CompanionSuggestion } from '@/types'
+import {
+  buildCharacterImagePrompt,
+  buildCharacterWithStyleRefPrompt,
+  buildCompanionSuggestionsPrompt,
+  buildReferenceImageLabel,
+  buildDirectorScriptPrompt,
+  buildProtagonistReferencePrompt,
+  buildStoryCoverImagePrompt,
+  buildStoryFromSynopsisPrompt,
+  buildStoryImagePrompt,
+  buildStoryWithAssetsPrompt,
+  buildStyleExampleCharacterPrompt,
+  buildSynopsisVersionsPrompt,
+  buildVoiceAssignmentPrompt,
+  DEFAULT_STORY_IMAGE_REFERENCE_HINT,
+} from './ai-prompts'
+import type { Locale } from './i18n/shared'
 
 const genAI = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
@@ -200,6 +217,25 @@ function buildImageDiagnostics(response: GeminiImageResponse): GeminiImageDiagno
   };
 }
 
+function extractInterleavedCharacterSectionName(label: string): string | undefined {
+  const npcMatch = label.match(/(?:【角色\s*[-—–]\s*(.+?)】)|(?:\[CHARACTER\s*-\s*(.+?)\])/)
+  const name = npcMatch?.[1] ?? npcMatch?.[2]
+  return name?.trim() || undefined
+}
+
+function hasInterleavedCoverSection(label: string): boolean {
+  return label.includes('【封面】') || label.includes('[COVER]')
+}
+
+function stripInterleavedStorySections(text: string): string {
+  return text
+    .replace(/^[\s\S]*?(?:【故事正文】|\[STORY BODY\])\s*/m, '')
+    .replace(/(?:【故事正文】|\[STORY BODY\])/g, '')
+    .replace(/(?:【角色\s*[-—]\s*[\s\S]*$)|(?:\[CHARACTER\s*-\s*[\s\S]*$)/g, '')
+    .replace(/(?:【封面】|\[COVER\])[\s\S]*$/g, '')
+    .trim()
+}
+
 
 export async function generateCharacterImageWithDiagnostics(
   imageBase64: string,
@@ -209,7 +245,7 @@ export async function generateCharacterImageWithDiagnostics(
   mimeType: string;
   diagnostics: GeminiImageDiagnostics;
 }> {
-  const prompt = `Transform this photo into a ${style}, children's book illustration style, vibrant colors, friendly expression, simple background`;
+  const prompt = buildCharacterImagePrompt(style)
 
   const response = (await genAI.models.generateContent({
     model: IMAGE_MODEL,
@@ -266,44 +302,7 @@ export async function generateCharacterWithStyleRef(
   stylePrompt: string,
   ageDesc = ''
 ): Promise<{ imageData?: string; mimeType: string }> {
-  // Parse age from ageDesc like "2-year-old" → 2
-  const ageNum = ageDesc ? parseInt(ageDesc, 10) : NaN
-
-  let ageInstruction = ''
-  if (!isNaN(ageNum) && ageNum > 0) {
-    if (ageNum <= 3) {
-      ageInstruction =
-        `IMPORTANT — The character is ${ageNum} years old. ` +
-        `Faithfully extract the facial features (eye shape, eye size, face shape, face fat/thin ratio, nose shape) from the USER PHOTO and preserve them. ` +
-        `Only adjust the overall head-to-body proportion to match a toddler: larger head relative to body, shorter limbs. ` +
-        `Do NOT add generic "big eyes" or "chubby cheeks" that don't exist in the photo.\n`
-    } else if (ageNum <= 6) {
-      ageInstruction =
-        `IMPORTANT — The character is ${ageNum} years old. ` +
-        `Faithfully extract the facial features (eye shape, eye size, face shape, face fat/thin ratio, nose shape) from the USER PHOTO and preserve them. ` +
-        `Only adjust the overall proportion to match a young child: slightly larger head relative to body, soft skin texture. ` +
-        `Do NOT impose generic child features — keep the actual person's facial structure.\n`
-    } else {
-      ageInstruction =
-        `IMPORTANT — The character is ${ageNum} years old. ` +
-        `Faithfully extract the facial features (eye shape, eye size, face shape, face fat/thin ratio, nose shape) from the USER PHOTO and preserve them. ` +
-        `Adjust the overall proportion to match a child of this age. ` +
-        `Do NOT impose generic child features — keep the actual person's facial structure.\n`
-    }
-  }
-
-  const prompt =
-    `[Character Reconstruction Task]\n` +
-    `Image 1 is the STYLE REFERENCE. Image 2 is the USER PHOTO.\n\n` +
-    `${ageInstruction}` +
-    `Requirements:\n` +
-    `1. Extract facial features (eye shape, eye size, face shape, fat/thin ratio, nose, lips) from the USER PHOTO (Image 2) and faithfully preserve them in the illustration. Also extract hairstyle, hair color, eye color, skin tone.\n` +
-    `2. Fully reconstruct the character in the hand-drawn artistic style shown in Image 1.\n` +
-    `3. Hand-drawn style emphasis: ${stylePrompt}\n` +
-    `4. Apply gentle anime/picture-book stylization — line art should be 2D anime-style, avoid realistic texture.\n` +
-    `5. Use flat-style shadow lighting: avoid realistic gradients; achieve depth through clearly defined cartoon shadow shapes.\n` +
-    `6. Convey an overall warm, breathable children's picture-book artistic quality.\n\n` +
-    `Output: upper-body front-facing portrait, centered composition, clean simple background, friendly smile.`
+  const prompt = buildCharacterWithStyleRefPrompt(stylePrompt, ageDesc)
 
   const response = (await genAI.models.generateContent({
     model: IMAGE_MODEL,
@@ -337,13 +336,7 @@ export async function generateStyleExampleCharacter(
   styleRefBase64: string,
   label: string
 ): Promise<{ imageData?: string; mimeType: string }> {
-  const prompt =
-    `Generate a children's storybook character portrait of a cute friendly child character ` +
-    `in exactly the same art style shown in the reference image. ` +
-    `Style: ${stylePrompt}. ` +
-    `The character (named "${label}") should have a round friendly face, big expressive eyes, ` +
-    `upper-body centered portrait, clean simple background, warm friendly expression. ` +
-    `Match the art style of the reference image precisely.`
+  const prompt = buildStyleExampleCharacterPrompt(stylePrompt, label)
 
   const response = (await genAI.models.generateContent({
     model: IMAGE_MODEL,
@@ -397,33 +390,25 @@ export async function generateSynopsisVersions(params: {
   supportingName: string
   backgroundKeywords: string
   ageRange: string
+  locale?: Locale
 }): Promise<{ A: { title: string; content: string }; B: { title: string; content: string }; C: { title: string; content: string } }> {
-  const { storyName, protagonistName, supportingName, backgroundKeywords, ageRange } = params
+  const {
+    storyName,
+    protagonistName,
+    supportingName,
+    backgroundKeywords,
+    ageRange,
+    locale = 'zh',
+  } = params
 
-  const prompt = `[系统设定]
-你是一位享誉全球的儿童绘本作家，擅长用最纯真、富有想象力的笔触为孩子们编织梦幻。你的文字风格融合了《小王子》的诗意哲思与《月亮忘记了》的治愈氛围。
-
-[创作指令]
-请根据以下【创作参数】，严格按照以下要求，生成三本不同侧重点的童话故事梗概。
-字数要求：每篇 50-100 字。
-叙事公式：[宁静起航] + [奇幻探索] + [温暖治愈结尾]。
-语言风格：多用感官动词（闻到、触摸、听见），语言具备节奏感，适合大声朗读。
-视觉契合：画面需体现梦幻水彩感，强调光影与色彩的流动。
-
-[创作参数]
-故事名称：${storyName}
-主角：${protagonistName}
-配角：${supportingName}
-核心元素：${backgroundKeywords}
-小读者年龄：${ageRange}岁
-
-[生成任务]
-请输出三版梗概，严格按如下 JSON 格式返回，不要包含任何其他内容：
-{
-  "A": {"title": "简短标题（4-6字）", "content": "版本A内容（感官体验型：将宇宙想象成一个巨大的、充满惊喜的游乐场，侧重于对环境、色彩和气味的描绘）"},
-  "B": {"title": "简短标题（4-6字）", "content": "版本B内容（情感互动型：侧重于主角与配角之间的温馨对话与陪伴）"},
-  "C": {"title": "简短标题（4-6字）", "content": "版本C内容（勇气冒险型：侧重于克服小小困难，找回丢失的美好）"}
-}`
+  const prompt = buildSynopsisVersionsPrompt({
+    storyName,
+    protagonistName,
+    supportingName,
+    backgroundKeywords,
+    ageRange,
+    locale,
+  })
 
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
 
@@ -459,21 +444,16 @@ export async function generateCompanionSuggestions(params: {
   protagonistName: string
   backgroundKeywords: string
   ageRange: string
+  locale?: Locale
 }): Promise<CompanionSuggestion[]> {
-  const { protagonistName, backgroundKeywords, ageRange } = params
+  const { protagonistName, backgroundKeywords, ageRange, locale = 'zh' } = params
 
-  const prompt = `你是一位儿童故事创作专家。请为以下主角推荐3个可爱的冒险小伙伴（动物或奇幻生物）。
-主角：${protagonistName}
-故事元素：${backgroundKeywords}
-小读者年龄：${ageRange}岁
-
-要求：每个小伙伴需要有独特的个性，适合${ageRange}岁小朋友的审美，充满奇幻感。
-严格按如下 JSON 格式返回，不要包含任何其他内容：
-[
-  {"emoji": "🐱", "name": "伙伴名称", "description": "一句话描述特点（15字内）"},
-  {"emoji": "🦋", "name": "伙伴名称", "description": "一句话描述特点（15字内）"},
-  {"emoji": "🐉", "name": "伙伴名称", "description": "一句话描述特点（15字内）"}
-]`
+  const prompt = buildCompanionSuggestionsPrompt({
+    protagonistName,
+    backgroundKeywords,
+    ageRange,
+    locale,
+  })
 
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
 
@@ -498,40 +478,30 @@ export async function generateStoryFromSynopsis(params: {
   synopsis: string
   ageRange: string
   styleDesc: string
+  locale?: Locale
   theme?: string
 }): Promise<{ story: string; choices: string[]; npcs: Array<{ name: string; description: string }> }> {
-  const { storyName, protagonistName, supportingName, synopsis, ageRange, styleDesc, theme } = params
+  const {
+    storyName,
+    protagonistName,
+    supportingName,
+    synopsis,
+    ageRange,
+    styleDesc,
+    locale = 'zh',
+    theme,
+  } = params
 
-  const prompt = `[System Role]
-You are a world-renowned children's picture book author. With the gentlest, most innocent touch, you transform ordinary moments into dreamlike adventures. Your narrative style draws from the philosophical depth of "The Little Prince" and the delicate detail of "The Tale of Peter Rabbit."
-
-[Story Parameters]
-Story Title: ${storyName}
-Protagonist: ${protagonistName}
-Supporting Character: ${supportingName}
-Background Keywords: ${synopsis}
-Target Audience: ${ageRange} years old
-Visual Style Reference: ${styleDesc || 'dreamlike watercolor, macaron color palette, starlit atmosphere'}
-
-[Creative Task]
-Generate a short fairy tale based on the above parameters. Requirements:
-1. Sensory Writing: Don't just say "very beautiful" — describe "stars like powdered sugar scattered on a meadow."
-2. Simple Dialogue: Add warm, child-like interactions between the protagonist and supporting character using "Name: dialogue" format.
-3. Emotional Resonance: The story's core should convey a small lesson about ${theme || 'exploration and friendship'}.
-4. Pacing: Structure must follow "a quiet beginning → a magical turning point → a warm, healing ending."
-5. Open-Ended Hook: End with an interactive question that sparks young readers' imagination, or a magical cliffhanger that plants seeds for the next episode.
-6. Scene Markers: Mark each natural scene with [Scene 1], [Scene 2], etc. — 3 to 4 scenes total.
-7. Write the story in the same language as the protagonist's name and background keywords suggest (Chinese if the names are Chinese).
-8. If the story introduces any NEW named character (not the protagonist/supporting character), list them as NPCs with concise traits.
-
-After the story text, on a new line output exactly these two JSON blocks in this order — nothing else after them:
-<!--NPCS:[{"name":"<new character name>","description":"<short traits, <=20 words>"}]-->
-<!--CHOICES:["<next-episode choice 1, ≤15 chars>","<choice 2, ≤15 chars>","<choice 3, ≤15 chars>"]-->
-Rules for NPCS:
-- Include only newly introduced named characters; do not repeat protagonist/supporting.
-- If none, return an empty array: []
-
-Output only the story text, NPCS block, and CHOICES block. No title, no extra explanation.`
+  const prompt = buildStoryFromSynopsisPrompt({
+    storyName,
+    protagonistName,
+    supportingName,
+    synopsis,
+    ageRange,
+    styleDesc,
+    locale,
+    theme,
+  })
 
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
   const raw = response.text?.trim() ?? ''
@@ -583,17 +553,11 @@ export async function generateStoryCoverImage(params: {
 }): Promise<{ data: string; mimeType: string } | undefined> {
   const { synopsis, protagonistName, styleDesc, characterImageBase64 } = params
 
-  const prompt = `你是一位享誉全球的治愈系童话插画师。请结合我提供的「故事梗概」捕捉情感内核，并深度参考提供的角色形象图中的手绘画风，为这篇童话创作一张极具氛围感的封面主图。
-
-要求：
-- 画面构图疏密有致，上方或下方留约1/4空白区域（预留书名位置）
-- 展现出温暖、梦幻且纯真的治愈感
-- 风格：${styleDesc || '梦幻水彩，马卡龙色调，温暖柔光'}
-- 主角：${protagonistName}
-- 竖版构图（宽:高约 3:4），适合儿童绘本封面
-- 不要包含任何文字
-
-故事梗概：${synopsis}`
+  const prompt = buildStoryCoverImagePrompt({
+    synopsis,
+    protagonistName,
+    styleDesc,
+  })
 
   const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
     { text: prompt },
@@ -635,6 +599,7 @@ export async function generateStoryWithAssets(params: {
   synopsis: string
   ageRange: string
   styleDesc: string
+  locale?: Locale
   theme?: string
   characterImageBase64?: string
 }): Promise<{
@@ -651,63 +616,26 @@ export async function generateStoryWithAssets(params: {
     synopsis,
     ageRange,
     styleDesc,
+    locale = 'zh',
     theme,
     characterImageBase64,
   } = params
 
   const debugTag = '[generateStoryWithAssets]'
-  const styleLabel = styleDesc || '梦幻水彩，马卡龙色调，温暖柔光'
+  const styleLabel = styleDesc || 'dreamlike watercolor, macaron palette, warm soft light'
   const hasCharacterImageRef = Boolean(characterImageBase64)
 
-  const prompt = `[系统设定]
-你是一位享誉全球的儿童绘本创作者，擅长用最纯真、富有想象力的笔触为孩子们编织梦幻故事与插画。
-
-[创作参数]
-故事名称：${storyName}
-主角：${protagonistName}
-配角：${supportingName}
-故事梗概：${synopsis}
-目标读者年龄：${ageRange}岁
-视觉风格：${styleLabel}
-故事核心主题：${theme || '探索与友谊'}
-
-[创作任务]
-请按照以下格式，依次输出所有内容：
-
-【故事正文】
-根据上面的参数创作一篇短童话。要求：
-1. 感官写作：不要说"很美丽"——要描述"星星像糖粉洒满草地"。
-2. 简短对话：用"角色名：对话"的格式加入温馨互动。
-3. 情感内核：传递关于${theme || '探索与友谊'}的小道理。
-4. 节奏：安静开场 → 奇幻转折 → 温暖治愈结尾。
-5. 开放钩子：以引发小读者想象的互动问题或为下一集埋伏笔的悬念结尾。
-6. 场景标记：用 [Scene 1]、[Scene 2] 等标记，共3-4个场景。
-7. 用主角名字和梗概暗示的语言写作（如果是中文名字则用中文写）。
-8. 如果故事引入了新的命名角色（不是主角/配角），在故事文本之后列出NPC。
-
-故事正文写完后，紧接着输出如下两个标记（各占一行）：
-<!--NPCS:[{"name":"<新角色名>","description":"<简短特征，≤20字>"}]-->
-<!--CHOICES:["<下集选项1，≤15字>","<选项2，≤15字>","<选项3，≤15字>"]-->
-（如果没有新NPC，NPCS填空数组 []）
-
-然后，对于NPCS中列出的每个新角色，请依次输出：
-【角色 - <角色名>】
-名字：<角色名>
-性格：<简要性格描述>
-外貌描述：<简要外貌>
-然后生成这个角色的全身立绘，${styleLabel}风格，白色背景
-
-最后输出：
-【封面】
-生成这个绘本的封面图，竖版构图（宽:高约3:4），${styleLabel}风格，展现故事核心场景，不包含任何文字
-${hasCharacterImageRef ? `
-
-[主角形象一致性约束]
-你会收到一张参考图片。该图片就是主角「${protagonistName}」的形象参考。
-所有涉及主角的画面（封面与正文相关画面）都必须保持主角的外观一致：
-- 脸型、发型、发色、服饰主色、整体气质保持一致
-- 不要把这张参考图当作NPC
-- 不要改变主角的物种/性别设定（除非故事文本明确要求）` : ''}`
+  const prompt = buildStoryWithAssetsPrompt({
+    storyName,
+    protagonistName,
+    supportingName,
+    synopsis,
+    ageRange,
+    styleDesc,
+    locale,
+    theme,
+    hasCharacterImageRef,
+  })
 
   console.log(`${debugTag} Start`, {
     storyName,
@@ -728,10 +656,7 @@ ${hasCharacterImageRef ? `
   if (characterImageBase64) {
     const isJpeg = characterImageBase64.startsWith('/9j/')
     parts.push({
-      text:
-        `Reference image below is the protagonist "${protagonistName}". ` +
-        `Use it to keep protagonist appearance consistent in cover and scene-related outputs. ` +
-        `Do not use it as an NPC reference.`,
+      text: buildProtagonistReferencePrompt(protagonistName),
     })
     parts.push({
       inlineData: {
@@ -809,15 +734,7 @@ ${hasCharacterImageRef ? `
     .replace(/<!--CHOICES:.*?-->/g, '')
     .replace(/<!--NPCS:.*?-->/g, '')
 
-  // Keep only main story body when wrapper sections are present.
-  // Drop any preface before 【故事正文】.
-  story = story.replace(/^[\s\S]*?【故事正文】\s*/m, '')
-  // Strip wrapper labels and generation-only sections.
-  story = story
-    .replace(/【故事正文】/g, '')
-    .replace(/【角色\s*[-—]\s*[\s\S]*$/g, '')
-    .replace(/【封面】[\s\S]*$/g, '')
-    .trim()
+  story = stripInterleavedStorySections(story)
   console.log(`${debugTag} ParsedText`, {
     rawTextChars: rawText.length,
     storyChars: story.length,
@@ -833,11 +750,10 @@ ${hasCharacterImageRef ? `
   for (let i = 0; i < images.length; i++) {
     const label = imageSectionLabels[i] || ''
     // Try NPC match first — more specific than cover
-    const npcMatch = label.match(/【角色\s*[-—–]\s*(.+?)】/)
-    if (npcMatch) {
-      const npcName = npcMatch[1].trim()
+    const npcName = extractInterleavedCharacterSectionName(label)
+    if (npcName) {
       npcImages.set(npcName, images[i])
-    } else if (label.includes('【封面】')) {
+    } else if (hasInterleavedCoverSection(label)) {
       coverImage = images[i]
     } else {
       if (i === images.length - 1 && !coverImage) {
@@ -882,6 +798,7 @@ export async function generateStorybookDirectorScript(params: {
   storyContent: string
   ageRange: string
   styleDesc: string
+  locale?: Locale
   characterPool?: string[]
   characterProfiles?: Array<{ name: string; description?: string }>
   minSceneCount?: number
@@ -894,6 +811,7 @@ export async function generateStorybookDirectorScript(params: {
     storyContent,
     ageRange,
     styleDesc,
+    locale = 'zh',
     characterPool = [],
     characterProfiles = [],
     minSceneCount = 15,
@@ -924,59 +842,27 @@ export async function generateStorybookDirectorScript(params: {
   if (!canonicalByKey.has(normalizeName(protagonistName))) {
     canonicalByKey.set(normalizeName(protagonistName), protagonistName)
   }
-  const roleList = [protagonistName, supportingName]
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .join('、')
-  const characterPoolText = Array.from(canonicalByKey.values()).join('、')
+  const characterPoolText = Array.from(canonicalByKey.values()).join(', ')
   const characterProfileText = Array.from(canonicalByKey.entries())
     .map(([key, name]) => {
       const detail = detailsByKey.get(key)
-      return detail ? `${name}：${detail}` : name
+      return detail ? `${name}: ${detail}` : name
     })
     .join('\n')
 
-  const prompt = `[系统设定]
-你是一位享誉全球的儿童动漫导演与金牌分镜设计师，擅长将温馨的童话转化为极具视觉冲击力且节奏感极强的动漫画面。你的风格融合了新海诚的光影美学与吉卜力工作室的纯真叙事。
-
-[创作指令]
-请根据提供的【创作参数】，设计一套共 ${minScenes}-${maxScenes} 个分镜的故事书动漫化脚本。
-
-[脚本核心规范]
-- 时长掌控：每个分镜需要有支撑 8-12 秒的动画内容，避免画面停滞。
-- 视觉通感：严禁使用抽象词汇。请使用具体的比喻，如"云朵像刚出炉的松饼"、"星尘像跳跳糖一样闪烁"。
-- 镜头语言：明确标注景别（全景、特写、俯瞰）与运镜（推、拉、摇、移）。
-- 童趣互动：对话需符合 ${ageRange} 岁心理，强调 ${protagonistName} 与 ${supportingName} 之间细微的体贴与好奇。
-- 画风统一：${styleDesc || '温馨2D动漫风格'}。
-- 三帧连贯性：每个分镜的【开头帧】必须与上一个分镜的【结尾帧】保持视觉衔接（位置、光影、角色姿态连贯）。
-- 角色一致性：若 charactersUsed 非空，则 opening/midAction/ending 三个 frame prompt 必须明确包含所有 charactersUsed 角色名（不可遗漏）。
-
-[创作参数]
-故事名称：${storyName}
-角色设定：${roleList}
-可用角色池：${characterPoolText || roleList}
-角色补充设定（姓名：特征）：
-${characterProfileText || '无'}
-核心文本：${storyContent}
-受众年龄：${ageRange} 岁
-
-[输出要求]
-严格按照以下 JSON 数组格式输出，不包含任何其他内容（无 markdown 代码块）：
-[
-  {
-    "index": 1,
-    "sceneDescription": "场景描述（时间/地点/环境氛围，20字内）",
-    "cameraDesign": "景别+运镜方式+画面中心点",
-    "animationAction": "详细描述角色动作与环境特效变化（8s内容）",
-    "voiceOver": "富有韵律感的旁白讲述（适合大声朗读）",
-    "dialogue": [{"speaker": "角色名", "text": "简洁温暖的对白（10字内）"}],
-    "charactersUsed": ["本分镜在画面里出现的角色名，必须来自可用角色池；无角色时填[]"],
-    "estimatedDuration": 10,
-    "openingFramePrompt": "16:9 children's anime illustration, ${styleDesc || 'warm 2D anime style'}: [opening frame — establishing shot with visual continuity from previous scene, character positions, lighting, atmosphere, NO text]",
-    "midActionFramePrompt": "16:9 children's anime illustration, ${styleDesc || 'warm 2D anime style'}: [peak action or emotional climax moment of the scene, highest energy, NO text]",
-    "endingFramePrompt": "16:9 children's anime illustration, ${styleDesc || 'warm 2D anime style'}: [scene completion state, calm after action, leaving visual hook for next scene, NO text]"
-  }
-]`
+  const prompt = buildDirectorScriptPrompt({
+    storyName,
+    protagonistName,
+    supportingName,
+    storyContent,
+    ageRange,
+    styleDesc,
+    locale,
+    characterPoolText,
+    characterProfileText,
+    minSceneCount: minScenes,
+    maxSceneCount: maxScenes,
+  })
 
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
 
@@ -1042,7 +928,7 @@ ${characterProfileText || '无'}
       return {
         charactersUsed: usedList,
         index: s.index - 1,  // convert to 0-based
-        title: s.sceneDescription?.slice(0, 40) ?? `分镜 ${s.index}`,
+        title: s.sceneDescription?.slice(0, 40) ?? (locale === 'zh' ? `分镜 ${s.index}` : `Scene ${s.index}`),
         narration: s.voiceOver ?? '',
         dialogue: s.dialogue ?? [],
         imagePrompt: openingFramePrompt,
@@ -1075,7 +961,7 @@ export async function generateStoryImage(
 
   const textHint = characterReference
     ? characterReference.replace(/\s+/g, ' ').slice(0, 240)
-    : 'Keep the character appearances consistent across all scenes.';
+    : DEFAULT_STORY_IMAGE_REFERENCE_HINT;
 
   const hasMultiple = characterImagesBase64 && characterImagesBase64.length > 1;
   
@@ -1084,9 +970,12 @@ export async function generateStoryImage(
     multiRefLabel = ' Each reference image below is labeled with the character name.';
   }
 
-  const prompt = `Simple children's picture book illustration for ages 4-8: ${normalizedScene}.
-Style: Bright happy colors, round friendly shapes, very simple background, cozy and warm like a bedtime story book. No text in the image.
-IMPORTANT: ${hasMultiple ? `The characters in this scene MUST look exactly like the characters shown in the reference images.${multiRefLabel} Keep the same face, hair, colors, outfit, and style for each character.` : 'The main character in this scene MUST look exactly like the character shown in the reference image. Keep the same face, hair, colors, outfit, and style.'} ${textHint}`;
+  const prompt = buildStoryImagePrompt({
+    sceneDescription: normalizedScene,
+    hasMultipleReferences: Boolean(hasMultiple),
+    multiRefLabel,
+    textHint,
+  })
 
   const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
     { text: prompt },
@@ -1098,7 +987,7 @@ IMPORTANT: ${hasMultiple ? `The characters in this scene MUST look exactly like 
       const name = characterNames && characterNames[i] ? characterNames[i] : `Character ${i + 1}`;
       
       if (hasMultiple) {
-        parts.push({ text: `Reference image for ${name}:` });
+        parts.push({ text: buildReferenceImageLabel(name) });
       }
       
       const isJpeg = imgBase64.startsWith('/9j/');
@@ -1142,31 +1031,20 @@ export async function assignCharacterVoice(
   name: string,
   age: number | null | undefined,
   style: string,
-  excludeVoice?: string
+  excludeVoice?: string,
+  locale: Locale = 'zh'
 ): Promise<{ voiceName: string; reason: string }> {
   // Filter out the currently assigned voice so re-assign always picks a different one
   const available = excludeVoice
     ? GEMINI_VOICES.filter(v => v.name !== excludeVoice)
     : GEMINI_VOICES
-
-  const voiceList = available.map(v =>
-    `- ${v.name}: ${v.tone} (${v.gender})`
-  ).join('\n')
-
-  const ageDesc = age != null ? `Age: ${age} years old` : 'Age: unknown'
-
-  const prompt = `You are casting a voice actor for a children's storybook character aged 5–8.
-
-Character info:
-- Name: ${name || 'Unnamed character'}
-- ${ageDesc}
-- Art style: ${style || 'cartoon'}
-
-Available voices:
-${voiceList}
-
-Choose the single most fitting voice. Respond with valid JSON only:
-{"voiceName": "VoiceName", "reason": "One sentence explaining why this voice fits."}`
+  const prompt = buildVoiceAssignmentPrompt({
+    name,
+    age,
+    style,
+    locale,
+    availableVoices: available,
+  })
 
   try {
     const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
@@ -1179,5 +1057,8 @@ Choose the single most fitting voice. Respond with valid JSON only:
   }
 
   // Default: pick first available voice
-  return { voiceName: available[0]?.name ?? 'Puck', reason: 'Default voice assigned.' }
+  return {
+    voiceName: available[0]?.name ?? 'Puck',
+    reason: locale === 'zh' ? '已分配默认声音。' : 'Default voice assigned.',
+  }
 }

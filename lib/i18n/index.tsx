@@ -3,10 +3,10 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import zh from './zh'
 import en from './en'
+import type { Locale } from './shared'
 
 const translations = { zh, en }
-
-export type Locale = 'zh' | 'en'
+export type { Locale } from './shared'
 
 function getNestedValue(obj: unknown, parts: string[]): string {
   let current = obj

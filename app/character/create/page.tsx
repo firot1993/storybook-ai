@@ -18,7 +18,7 @@ const PROGRESS_STEP_KEYS = ['0', '1', '2', '3'] as const
 
 export default function CharacterCreatePage() {
   const router = useRouter()
-  const { t } = useLanguage()
+  const { locale, t } = useLanguage()
 
   const [name, setName] = useState('')
   const [age, setAge] = useState('')
@@ -129,7 +129,7 @@ export default function CharacterCreatePage() {
       const res = await fetch(`/api/character/${character.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'assignVoice' }),
+        body: JSON.stringify({ action: 'assignVoice', locale }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || t('characterCreate.errors.voiceFailed'))

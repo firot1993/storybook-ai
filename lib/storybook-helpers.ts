@@ -1,5 +1,5 @@
 import { getCharacter } from '@/lib/db'
-import { getStyleById } from '@/lib/styles'
+import type { Locale } from '@/lib/i18n/shared'
 import type { StorybookCharacter } from '@/types'
 
 type StorybookLike = {
@@ -13,10 +13,13 @@ type StorybookLike = {
  * Handles both direct-name companions (AI suggestions) and DB-backed characters.
  * Also returns the protagonist Character record for accessing style images.
  */
-export async function resolveStorybookCharacters(storybook: StorybookLike) {
+export async function resolveStorybookCharacters(
+  storybook: StorybookLike,
+  locale: Locale = 'zh'
+) {
   const protagonistEntry = storybook.characters.find((c) => c.role === 'protagonist')
   const protagonistChar = protagonistEntry?.id ? await getCharacter(protagonistEntry.id) : null
-  const protagonistName = protagonistChar?.name || '小主角'
+  const protagonistName = protagonistChar?.name || (locale === 'zh' ? '小主角' : 'Little hero')
 
   // Supporting characters (including NPC-tagged entries) should be available
   // to story creation/synopsis prompts.
@@ -31,7 +34,8 @@ export async function resolveStorybookCharacters(storybook: StorybookLike) {
       return null
     })
   )
-  const supportingName = supportingNames.filter(Boolean).join('、') || '小伙伴'
+  const supportingName = supportingNames.filter(Boolean).join(locale === 'zh' ? '、' : ', ')
+    || (locale === 'zh' ? '小伙伴' : 'Companion')
 
   return { protagonistName, supportingName, protagonistChar }
 }
@@ -40,5 +44,13 @@ export async function resolveStorybookCharacters(storybook: StorybookLike) {
  * Resolve the style description string for a storybook's styleId.
  */
 export function resolveStorybookStyle(storybook: { styleId: string }): string {
-  return getStyleById(storybook.styleId)?.description || '梦幻水彩、马卡龙色调、星光熠熠的氛围'
+  const styleDescriptions: Record<string, string> = {
+    ghibli: 'hand-drawn anime, warm natural palette, gentle sunlit atmosphere',
+    watercolor: 'soft crayon and watercolor blend, muted pastel palette, dreamy mood',
+    plush3d: 'cute 3D chibi render, soft plush texture, pastel palette',
+    claymation: 'clay stop-motion look, handcrafted texture, warm earthy palette',
+    pencil: 'European colored-pencil illustration, classic storybook warmth',
+  }
+
+  return styleDescriptions[storybook.styleId] || 'dreamlike watercolor, macaron palette, sparkling starlit atmosphere'
 }

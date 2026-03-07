@@ -137,7 +137,7 @@ function VideoStartButton({
   onStarted: (vp: VideoProject) => void
   label?: string
 }) {
-  const { t } = useLanguage()
+  const { locale, t } = useLanguage()
   const [loading, setLoading] = useState(false)
   const [videoSceneRange, setVideoSceneRange] = useState<VideoSceneRangeOptionId>('15-18')
 
@@ -158,6 +158,7 @@ function VideoStartButton({
           storyId,
           minLength,
           maxLength,
+          locale,
         }),
       })
       if (!scriptRes.ok) throw new Error('Script generation failed')
@@ -175,7 +176,7 @@ function VideoStartButton({
       showToast(t('storyCreate.errors.videoFailed'), 'error')
       setLoading(false)
     }
-  }, [loading, onStarted, storyId, videoSceneRange, t])
+  }, [loading, locale, onStarted, storyId, videoSceneRange, t])
 
   return (
     <div className="mt-3 space-y-2.5">

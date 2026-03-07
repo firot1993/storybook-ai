@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStory, getStorybook, createScript, getCharacter } from '@/lib/db'
 import { generateStorybookDirectorScript, getGeminiErrorResponse } from '@/lib/gemini'
+import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
 
 /**
@@ -33,7 +34,9 @@ export async function POST(request: NextRequest) {
       maxLength,
       minlength,
       maxlength,
+      locale: localeRaw,
     } = await request.json()
+    const locale = normalizeLocale(localeRaw)
 
     if (!storyId) {
       return NextResponse.json({ error: 'storyId is required' }, { status: 400 })
@@ -80,10 +83,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Auto-resolve from storybook; allow per-request overrides
-    let protagonistName = protagonistOverride ?? '主角'
-    let supportingName = supportingOverride ?? '配角'
+    let protagonistName = protagonistOverride ?? (locale === 'zh' ? '主角' : 'Protagonist')
+    let supportingName = supportingOverride ?? (locale === 'zh' ? '配角' : 'Companion')
     let ageRange = ageRangeOverride ?? '4-6'
-    let styleDesc = styleDescOverride ?? '温馨2D动漫风格，马卡龙色调'
+    let styleDesc = styleDescOverride ?? 'warm 2D anime style, macaron palette'
     const characterPool: string[] = []
     const characterProfiles: Array<{ name: string; description?: string }> = []
     const seenCharacterName = new Set<string>()
@@ -127,7 +130,7 @@ export async function POST(request: NextRequest) {
         if (!styleDescOverride) styleDesc = resolveStorybookStyle(storybook)
 
         if (!protagonistOverride || !supportingOverride) {
-          const resolved = await resolveStorybookCharacters(storybook)
+          const resolved = await resolveStorybookCharacters(storybook, locale)
           if (!protagonistOverride) protagonistName = resolved.protagonistName
           if (!supportingOverride) supportingName = resolved.supportingName
         }
@@ -162,6 +165,7 @@ export async function POST(request: NextRequest) {
         storyContent: story.content,
         ageRange,
         styleDesc,
+        locale,
         characterPool,
         characterProfiles,
         minSceneCount,
