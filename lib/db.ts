@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { prisma } from './prisma'
 import { decodeStoryAudioPayload, encodeStoryAudioPayload } from './story-audio'
 
@@ -321,7 +322,7 @@ export async function createVideoProject(data: {
     data: {
       storyId: data.storyId,
       scriptId: data.scriptId,
-      videoSettings: data.videoSettings ?? {},
+      videoSettings: (data.videoSettings ?? {}) as Prisma.InputJsonValue,
     },
   })
 }
