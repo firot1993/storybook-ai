@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model Character {
@@ -11,7 +11,7 @@ model Character {
   name          String   @default("")
   originalImage String   @default("")
   cartoonImage  String
-  styleImages   String   @default("{}")
+  styleImages   Json     @default("{}")
   style         String   @default("")
   age           Int?
   voiceName     String   @default("")
@@ -22,9 +22,9 @@ model Character {
 model Storybook {
   id         String   @id @default(cuid())
   name       String
-  ageRange   String   @default("4-6")  // "2-4" | "4-6" | "6-8"
+  ageRange   String   @default("4-6")
   styleId    String   @default("")
-  characters String   @default("[]")   // JSON: [{id, role: "protagonist"|"supporting"}]
+  characters Json     @default("[]")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -33,7 +33,7 @@ model Storybook {
 
 model Synopsis {
   id           String   @id @default(cuid())
-  characterIds String   @default("[]")
+  characterIds Json     @default("[]")
   theme        String   @default("")
   keywords     String   @default("")
   ageGroup     String   @default("4-6")
@@ -47,13 +47,13 @@ model Story {
   id           String   @id @default(cuid())
   storybookId  String?
   synopsisId   String?
-  characterIds String   @default("[]")
+  characterIds Json     @default("[]")
   title        String
-  synopsis     String   @default("")   // selected synopsis text (A/B/C)
+  synopsis     String   @default("")
   content      String
-  mainImage    String   @default("")   // first scene image (style reference)
-  status       String   @default("draft") // draft | generating | complete
-  images       String   @default("[]")
+  mainImage    String   @default("")
+  status       String   @default("draft")
+  images       Json     @default("[]")
   audioUrl     String   @default("")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @default(now()) @updatedAt
@@ -70,11 +70,11 @@ model Scene {
   storyId   String
   story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
   index     Int
-  script    String   @default("")    // 该分镜的脚本文案
-  imageUrl  String   @default("")    // nano banana 生成的分镜图
-  lastFrame String   @default("")    // 末帧图（下一分镜连续性参考）
-  videoUrl  String   @default("")    // veo 生成的视频
-  status    String   @default("pending") // pending | img_gen | vid_gen | done | failed
+  script    String   @default("")
+  imageUrl  String   @default("")
+  lastFrame String   @default("")
+  videoUrl  String   @default("")
+  status    String   @default("pending")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -82,7 +82,7 @@ model Scene {
 model Script {
   id            String   @id @default(cuid())
   storyId       String
-  scenesJson    String   @default("[]")
+  scenesJson    Json     @default("[]")
   totalDuration Int      @default(0)
   createdAt     DateTime @default(now())
 
@@ -96,12 +96,12 @@ model VideoProject {
   scriptId       String
   status         String   @default("pending")
   progress       Int      @default(0)
-  sceneVideoUrls String   @default("[]")
+  sceneVideoUrls Json     @default("[]")
   rawVideoUrl    String   @default("")
-  subtitlesJson  String   @default("[]")
+  subtitlesJson  Json     @default("[]")
   finalVideoUrl  String   @default("")
   errorMessage   String   @default("")
-  videoSettings  String   @default("{}")
+  videoSettings  Json     @default("{}")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

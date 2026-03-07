@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({
-      storybook: { ...storybook, characters: JSON.parse(storybook.characters) },
+      storybook: { ...storybook, characters: storybook.characters },
     })
   } catch (error) {
     console.error('[POST /api/storybook]', error)
