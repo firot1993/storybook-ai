@@ -1,15 +1,6 @@
 'use client'
 
-const CHARACTER_STEPS = [
-  { label: 'Photo', emoji: '\u{1F4F8}' },
-  { label: 'Name', emoji: '\u{2B50}' },
-]
-
-const STORY_STEPS = [
-  { label: 'Friends', emoji: '\u{1F192}' },
-  { label: 'Ideas', emoji: '\u{1F4D6}' },
-  { label: 'Read', emoji: '\u{1F3AC}' },
-]
+import { useLanguage } from '@/lib/i18n'
 
 const CHARACTER_COLORS = [
   { bg: 'bg-candy-500', ring: 'ring-candy-200', text: 'text-candy-600', bar: 'bg-candy-400' },
@@ -28,6 +19,19 @@ interface StepProgressProps {
 }
 
 export default function StepProgress({ currentStep, type = 'character' }: StepProgressProps) {
+  const { t } = useLanguage()
+
+  const CHARACTER_STEPS = [
+    { label: t('stepProgress.character.photo'), emoji: '\u{1F4F8}' },
+    { label: t('stepProgress.character.name'), emoji: '\u{2B50}' },
+  ]
+
+  const STORY_STEPS = [
+    { label: t('stepProgress.story.friends'), emoji: '\u{1F192}' },
+    { label: t('stepProgress.story.ideas'), emoji: '\u{1F4D6}' },
+    { label: t('stepProgress.story.read'), emoji: '\u{1F3AC}' },
+  ]
+
   const steps = type === 'character' ? CHARACTER_STEPS : STORY_STEPS
   const colors = type === 'character' ? CHARACTER_COLORS : STORY_COLORS
 

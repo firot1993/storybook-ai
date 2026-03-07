@@ -17,6 +17,7 @@ import { Story, Character, VideoProject } from '@/types'
 import { getCurrentStoryFromIndexedDB, setCurrentStoryInIndexedDB } from '@/lib/client-story-store'
 import { showToast } from '@/components/toast'
 import { splitStoryIntoScenes, extractStoryChoices } from '@/lib/story-scenes'
+import { useLanguage } from '@/lib/i18n'
 
 function formatAudioTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -33,9 +34,9 @@ function sceneStorageKey(storyId: string): string {
 type StoryLine = { type: 'narration' | 'character'; speaker?: string; text: string }
 
 const VIDEO_SCENE_RANGE_OPTIONS = [
-  { id: '3-4', min: 3, max: 4, eta: '预计制作 3-5 分钟' },
-  { id: '7-10', min: 7, max: 10, eta: '预计制作 6-10 分钟' },
-  { id: '15-18', min: 15, max: 18, eta: '预计制作 12-18 分钟' },
+  { id: '3-4', min: 3, max: 4 },
+  { id: '7-10', min: 7, max: 10 },
+  { id: '15-18', min: 15, max: 18 },
 ] as const
 type VideoSceneRangeOptionId = (typeof VIDEO_SCENE_RANGE_OPTIONS)[number]['id']
 
@@ -93,7 +94,7 @@ function parseSceneLines(rawText: string): StoryLine[] {
   if (!normalized) return []
 
   const withSpeakerBreaks = normalized.replace(
-    /([.!?])\s+([A-Za-z][A-Za-z0-9' -]{0,24}(?::|["“]))/g,
+    /([.!?])\s+([A-Za-z][A-Za-z0-9' -]{0,24}(?::|["\u201C]))/g,
     '$1\n$2'
   )
 
@@ -105,7 +106,7 @@ function parseSceneLines(rawText: string): StoryLine[] {
   const lines: StoryLine[] = []
   for (const block of blocks) {
     const match = block.match(/^([A-Za-z][A-Za-z0-9' -]{0,24}):\s*([\s\S]+)$/)
-    const quoteMatch = block.match(/^([A-Za-z][A-Za-z0-9' -]{0,24})\s*["“]\s*([\s\S]+)$/)
+    const quoteMatch = block.match(/^([A-Za-z][A-Za-z0-9' -]{0,24})\s*["\u201C]\s*([\s\S]+)$/)
 
     if (!match && !quoteMatch) {
       lines.push(...splitNarrationIntoReadableLines(block))
@@ -114,7 +115,7 @@ function parseSceneLines(rawText: string): StoryLine[] {
 
     const speaker = (match?.[1] ?? quoteMatch?.[1] ?? '').trim()
     let text = (match?.[2] ?? quoteMatch?.[2] ?? '').replace(/\s+/g, ' ').trim()
-    text = text.replace(/[”"]$/, '').trim()
+    text = text.replace(/["\u201D]$/, '').trim()
     if (!text) continue
 
     if (speaker.toLowerCase() === 'narrator') {
@@ -130,12 +131,13 @@ function parseSceneLines(rawText: string): StoryLine[] {
 function VideoStartButton({
   storyId,
   onStarted,
-  label = '🎬 开始制作视频',
+  label,
 }: {
   storyId: string
   onStarted: (vp: VideoProject) => void
   label?: string
 }) {
+  const { t } = useLanguage()
   const [loading, setLoading] = useState(false)
   const [videoSceneRange, setVideoSceneRange] = useState<VideoSceneRangeOptionId>('15-18')
 
@@ -170,15 +172,15 @@ function VideoStartButton({
       const { videoProject } = await videoRes.json() as { videoProject: VideoProject }
       onStarted(videoProject)
     } catch {
-      showToast('视频启动失败，请重试', 'error')
+      showToast(t('storyCreate.errors.videoFailed'), 'error')
       setLoading(false)
     }
-  }, [loading, onStarted, storyId, videoSceneRange])
+  }, [loading, onStarted, storyId, videoSceneRange, t])
 
   return (
     <div className="mt-3 space-y-2.5">
       <div className="rounded-xl border border-forest-100 bg-forest-50/70 p-3">
-        <p className="text-[11px] font-bold text-forest-700 mb-2">视频场景数范围</p>
+        <p className="text-[11px] font-bold text-forest-700 mb-2">{t('storyPlay.videoScenesLabel')}</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {VIDEO_SCENE_RANGE_OPTIONS.map((option) => {
             const active = videoSceneRange === option.id
@@ -193,16 +195,16 @@ function VideoStartButton({
                     : 'bg-white border-forest-100 text-gray-700 hover:border-forest-300'
                 }`}
               >
-                <p className="text-xs font-extrabold">{option.id} 场景</p>
+                <p className="text-xs font-extrabold">{option.id} {t('storyPlay.sceneUnit')}</p>
                 <p className={`text-[10px] mt-0.5 ${active ? 'text-white/80' : 'text-gray-500'}`}>
-                  {option.eta}
+                  {t(`videoSceneRange.${option.id}.eta`)}
                 </p>
               </button>
             )
           })}
         </div>
         <p className="text-[10px] text-forest-700 mt-2">
-          当前选择：{videoSceneRange} 场景
+          {t('storyPlay.selectedScenes', { n: videoSceneRange })}
         </p>
       </div>
       <button
@@ -216,10 +218,10 @@ function VideoStartButton({
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
             </svg>
-            脚本生成中，请稍候…
+            {t('storyPlay.scriptGenerating')}
           </>
         ) : (
-          <>{label}</>
+          <>{label ?? t('storyPlay.startVideo')}</>
         )}
       </button>
     </div>
@@ -239,6 +241,7 @@ export default function PlayStoryPage() {
 }
 
 function PlayStoryContent() {
+  const { t } = useLanguage()
   const [story, setStory] = useState<Story | null>(null)
   const [characters, setCharacters] = useState<Character[]>([])
   const [currentScene, setCurrentScene] = useState(0)
@@ -503,10 +506,10 @@ function PlayStoryContent() {
     } catch (error) {
       shouldContinueNarrationRef.current = false
       console.error('Audio play failed:', error)
-      setAudioError('Tap play again to allow audio on this device.')
-      showToast('Tap play again to allow audio on this device.', 'error')
+      setAudioError(t('storyPlay.audioPlayError'))
+      showToast(t('storyPlay.audioPlayError'), 'error')
     }
-  }, [isPlaying])
+  }, [isPlaying, t])
 
   const seekAudio = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     if (!audioRef.current) return
@@ -617,7 +620,7 @@ function PlayStoryContent() {
         error?: string
       } | null
       if (!response.ok || !data?.audioUrl) {
-        showToast(data?.error || 'Could not generate audio right now. Please try again.', 'error')
+        showToast(data?.error || t('storyPlay.audioGenError'), 'error')
         return
       }
 
@@ -639,14 +642,14 @@ function PlayStoryContent() {
         await persistStoryLocally(updatedStory)
       }
 
-      showToast('Narration is ready! Press play to listen.', 'success')
+      showToast(t('storyPlay.narrationReady'), 'success')
     } catch (error) {
       console.error('Audio regeneration failed:', error)
-      showToast('Could not generate audio right now. Please try again.', 'error')
+      showToast(t('storyPlay.audioGenError'), 'error')
     } finally {
       setIsRegeneratingAudio(false)
     }
-  }, [isRegeneratingAudio, persistStoryLocally, searchParams, story])
+  }, [isRegeneratingAudio, persistStoryLocally, searchParams, story, t])
 
   // Interactive choices from open-ended story hook
   const storyChoices = useMemo(() => {
@@ -674,6 +677,7 @@ function PlayStoryContent() {
 
     return parseSceneLines(rawText)
   }, [contentScenes, currentScene, story, totalScenes])
+
   const narrationTextClass = readerTextSize === 'sm'
     ? 'text-sm sm:text-base leading-6 sm:leading-7'
     : readerTextSize === 'lg'
@@ -684,7 +688,11 @@ function PlayStoryContent() {
     : readerTextSize === 'lg'
       ? 'text-lg sm:text-xl leading-7 sm:leading-8'
       : 'text-base sm:text-lg leading-6 sm:leading-7'
-  const readerSizeLabel = readerTextSize === 'sm' ? 'Small' : readerTextSize === 'md' ? 'Medium' : 'Large'
+  const readerSizeLabel = readerTextSize === 'sm'
+    ? t('storyPlay.textSizeSm')
+    : readerTextSize === 'md'
+      ? t('storyPlay.textSizeMd')
+      : t('storyPlay.textSizeLg')
 
   if (!story) {
     return (
@@ -705,7 +713,7 @@ function PlayStoryContent() {
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
-          Home
+          {t('storyPlay.home')}
         </Link>
 
         <div className="flex items-center gap-2">
@@ -729,19 +737,19 @@ function PlayStoryContent() {
           href="/story/create"
           className="text-grape-500 hover:text-grape-700 text-sm font-bold transition-colors"
         >
-          New &#10024;
+          {t('storyPlay.newStory')}
         </Link>
       </div>
 
       {/* Video / Cover section */}
       {(() => {
         const VIDEO_STAGES = [
-          { status: 'pending',           label: '脚本设计中',  emoji: '📝', etaMin: 5 },
-          { status: 'generating_images', label: '分镜绘制中',  emoji: '🎨', etaMin: 8 },
-          { status: 'generating_audio',  label: '故事配音中',  emoji: '🎙️', etaMin: 3 },
-          { status: 'composing',         label: '视频合成中',  emoji: '🎬', etaMin: 4 },
-          { status: 'editing',           label: '视频剪辑中',  emoji: '✂️', etaMin: 2 },
-          { status: 'adding_subtitles',  label: '增加字幕中',  emoji: '💬', etaMin: 1 },
+          { status: 'pending',           label: t('storyPlay.stages.pending'),            emoji: '📝', etaMin: 5 },
+          { status: 'generating_images', label: t('storyPlay.stages.generating_images'),  emoji: '🎨', etaMin: 8 },
+          { status: 'generating_audio',  label: t('storyPlay.stages.generating_audio'),   emoji: '🎙️', etaMin: 3 },
+          { status: 'composing',         label: t('storyPlay.stages.composing'),          emoji: '🎬', etaMin: 4 },
+          { status: 'editing',           label: t('storyPlay.stages.editing'),            emoji: '✂️', etaMin: 2 },
+          { status: 'adding_subtitles',  label: t('storyPlay.stages.adding_subtitles'),   emoji: '💬', etaMin: 1 },
         ]
         const urlStoryId = searchParams.get('id')
         const isFailed = videoProject?.status === 'failed'
@@ -753,7 +761,9 @@ function PlayStoryContent() {
         const stage = VIDEO_STAGES[stageIdx]
         const remaining = isInProgress
           ? VIDEO_STAGES.slice(stageIdx).reduce((a, s) => a + s.etaMin, 0) : 0
-        const etaLabel = remaining <= 1 ? '约 1 分钟' : `约 ${remaining} 分钟`
+        const etaLabel = remaining <= 1
+          ? t('storyPlay.etaUnderOneMin')
+          : t('storyPlay.etaMinutes', { remaining })
 
         return (
           <div className="max-w-2xl mx-auto w-full mb-4">
@@ -763,8 +773,8 @@ function PlayStoryContent() {
                 <div className="w-6 h-6 rounded-full bg-forest-500 flex items-center justify-center shrink-0">
                   <span className="text-white text-[10px] font-extrabold">3</span>
                 </div>
-                <span className="text-sm font-extrabold text-forest-700">第三步：视频制作中</span>
-                <span className="text-[10px] text-gray-400 ml-1">· 每 3 秒自动刷新</span>
+                <span className="text-sm font-extrabold text-forest-700">{t('storyPlay.videoStepLabel')}</span>
+                <span className="text-[10px] text-gray-400 ml-1">{t('storyPlay.autoRefresh')}</span>
               </div>
             )}
 
@@ -807,7 +817,7 @@ function PlayStoryContent() {
                       </span>
                     </div>
                     <p className="text-white font-extrabold text-sm mb-0.5">{stage.emoji} {stage.label}</p>
-                    <p className="text-white/60 text-xs">预计还需 {etaLabel}</p>
+                    <p className="text-white/60 text-xs">{t('storyPlay.etaRemaining')} {etaLabel}</p>
                     <div className="flex gap-1.5 mt-4">
                       {VIDEO_STAGES.map((s, i) => (
                         <div key={i} title={s.label}
@@ -820,16 +830,16 @@ function PlayStoryContent() {
                   /* Failed state */
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <span className="text-3xl mb-2">⚠️</span>
-                    <p className="text-white font-extrabold text-sm mb-1">视频制作失败</p>
+                    <p className="text-white font-extrabold text-sm mb-1">{t('storyPlay.videoFailed')}</p>
                     <p className="text-white/60 text-xs text-center px-6">
-                      {videoProject?.errorMessage || '制作过程出现错误，请重新尝试'}
+                      {videoProject?.errorMessage || t('storyPlay.videoFailedDefault')}
                     </p>
                   </div>
                 ) : (
                   /* Static: title at bottom */
                   <div className="absolute inset-x-0 bottom-0 px-4 py-4 bg-gradient-to-t from-black/60 to-transparent">
                     <p className="text-white font-extrabold text-base leading-tight drop-shadow">{story.title}</p>
-                    <p className="text-white/70 text-xs mt-0.5">专属封面插画</p>
+                    <p className="text-white/70 text-xs mt-0.5">{t('storyPlay.videoCoverCaption')}</p>
                   </div>
                 )}
               </div>
@@ -840,7 +850,7 @@ function PlayStoryContent() {
               <VideoStartButton
                 storyId={urlStoryId}
                 onStarted={(vp) => setVideoProject(vp)}
-                label={isFailed || Boolean(videoProject?.finalVideoUrl) ? '🔄 重新制作视频' : '🎬 开始制作视频'}
+                label={isFailed || Boolean(videoProject?.finalVideoUrl) ? t('storyPlay.retryVideo') : t('storyPlay.startVideo')}
               />
             )}
           </div>
@@ -863,15 +873,18 @@ function PlayStoryContent() {
               <div className="text-center mb-5">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-forest-100 rounded-full mb-3">
                   <span className="text-base">✨</span>
-                  <span className="text-forest-700 text-xs font-extrabold tracking-wide">命运抉择</span>
+                  <span className="text-forest-700 text-xs font-extrabold tracking-wide">{t('storyPlay.destiniesTitle')}</span>
                 </div>
-                <h2 className="text-lg font-extrabold text-gray-800 leading-snug">下一站，你会去哪里？</h2>
-                <p className="text-xs text-gray-400 mt-1">选择你的冒险方向，开启下一集故事</p>
+                <h2 className="text-lg font-extrabold text-gray-800 leading-snug">{t('storyPlay.destiniesSubtitle')}</h2>
+                <p className="text-xs text-gray-400 mt-1">{t('storyPlay.destiniesHint')}</p>
               </div>
 
               {/* Choices */}
               <div className="space-y-2.5 mb-5">
-                {(storyChoices.length > 0 ? storyChoices : ['继续探索魔法森林', '寻找神秘的新朋友', '回到温暖的家园']).map((choice, i) => (
+                {(storyChoices.length > 0
+                  ? storyChoices
+                  : [t('storyPlay.defaultChoice1'), t('storyPlay.defaultChoice2'), t('storyPlay.defaultChoice3')]
+                ).map((choice, i) => (
                   <Link
                     key={i}
                     href={`/story/create?hint=${encodeURIComponent(choice)}`}
@@ -888,17 +901,17 @@ function PlayStoryContent() {
               {/* Divider */}
               <div className="flex items-center gap-3 mb-4">
                 <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">或者</span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{t('storyPlay.orDivider')}</span>
                 <div className="flex-1 h-px bg-gray-100" />
               </div>
 
               {/* Secondary actions */}
               <div className="flex gap-3">
                 <button onClick={() => goToScene(0)} className="btn-secondary flex-1 py-3 text-sm">
-                  重新阅读 🔁
+                  {t('storyPlay.rereadBtn')}
                 </button>
                 <Link href="/storybook" className="btn-secondary flex-1 py-3 text-sm text-center">
-                  故事书库 📚
+                  {t('storyPlay.libraryBtn')}
                 </Link>
               </div>
             </div>
@@ -909,7 +922,7 @@ function PlayStoryContent() {
                 <div className="relative group w-full aspect-[4/3] bg-amber-50">
                   <Image
                     src={story.images[currentScene]}
-                    alt={`Page ${currentScene + 1}`}
+                    alt={t('storyPlay.sceneLabel', { n: currentScene + 1 })}
                     fill
                     sizes="(max-width: 672px) 100vw, 672px"
                     className="object-cover"
@@ -917,7 +930,7 @@ function PlayStoryContent() {
                   <button
                     onClick={prevScene}
                     disabled={currentScene === 0}
-                    aria-label="Previous page"
+                    aria-label={t('storyPlay.ariaPrevPage')}
                     className={`absolute left-0 top-0 h-full w-1/4 transition-opacity ${
                       currentScene === 0
                         ? 'cursor-not-allowed'
@@ -935,7 +948,7 @@ function PlayStoryContent() {
                     }`}
                   />
                   <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] px-2 py-1 rounded-full bg-white/70 text-grape-700 font-semibold hidden sm:block">
-                    Tap sides to turn pages
+                    {t('storyPlay.navigationHint')}
                   </div>
                 </div>
               )}
@@ -945,7 +958,7 @@ function PlayStoryContent() {
                 <div className="mb-5 flex items-center justify-between gap-3">
                   <div className="inline-flex items-center gap-2 rounded-full bg-white/80 border border-amber-200 px-3 py-1.5 text-xs font-bold text-amber-700">
                     <span className="w-1.5 h-1.5 rounded-full bg-candy-400" />
-                    Scene {currentScene + 1}
+                    {t('storyPlay.sceneLabel', { n: currentScene + 1 })}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -953,14 +966,14 @@ function PlayStoryContent() {
                       onClick={cycleReaderTextSize}
                       className="px-3 py-1.5 rounded-full border border-grape-200 bg-white text-xs font-bold text-grape-600 hover:bg-grape-50"
                     >
-                      Text: {readerSizeLabel}
+                      {t('storyPlay.textSizeLabel')}{readerSizeLabel}
                     </button>
                     <button
                       type="button"
                       onClick={() => setFocusTextMode((prev) => !prev)}
                       className="px-3 py-1.5 rounded-full border border-grape-200 bg-white text-xs font-bold text-grape-600 hover:bg-grape-50"
                     >
-                      {focusTextMode ? 'Show Image' : 'Focus Text'}
+                      {focusTextMode ? t('storyPlay.showImage') : t('storyPlay.focusText')}
                     </button>
                   </div>
                 </div>
@@ -968,8 +981,8 @@ function PlayStoryContent() {
                   {sceneLines.map((line, idx) => {
                     if (line.type === 'narration') {
                       return (
-                        <p 
-                          key={idx} 
+                        <p
+                          key={idx}
                           className={`text-gray-800 ${
                             narrationTextClass
                           } ${
@@ -986,7 +999,7 @@ function PlayStoryContent() {
                             {line.speaker}
                           </span>
                           <span className="text-grape-700 italic">
-                            {line.text.startsWith('"') || line.text.startsWith('“') ? line.text : `“${line.text}”`}
+                            {line.text.startsWith('"') || line.text.startsWith('\u201c') ? line.text : `"${line.text}"`}
                           </span>
                         </p>
                       )
@@ -994,7 +1007,7 @@ function PlayStoryContent() {
                   })}
                 </div>
                 <div className="mt-8 pt-4 border-t border-amber-50 text-right text-[10px] text-amber-300 font-extrabold tracking-widest uppercase">
-                  Page {currentScene + 1} of {totalScenes}
+                  {t('storyPlay.pageOf', { page: currentScene + 1, total: totalScenes })}
                 </div>
               </div>
             </>
@@ -1054,7 +1067,7 @@ function PlayStoryContent() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={togglePlay}
-                        aria-label={isPlaying ? 'Pause' : 'Listen'}
+                        aria-label={isPlaying ? t('storyPlay.ariaPause') : t('storyPlay.ariaListen')}
                         disabled={(!isAudioReady && !audioError) || !currentAudioSource}
                         className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md text-white ${
                           (!isAudioReady && !audioError) || !currentAudioSource
@@ -1117,10 +1130,10 @@ function PlayStoryContent() {
                         {audioError
                           ? audioError
                           : isAudioReady
-                            ? 'Narration ready'
+                            ? t('storyPlay.narrationReady')
                             : currentAudioSource
-                              ? 'Loading narration...'
-                              : 'No audio for this scene'}
+                              ? t('storyPlay.loadingNarration')
+                              : t('storyPlay.noAudio')}
                       </span>
                       <span>{formatAudioTime(audioDuration)}</span>
                     </div>
@@ -1131,7 +1144,7 @@ function PlayStoryContent() {
                           disabled={isRegeneratingAudio}
                           className="text-xs font-bold text-grape-600 hover:text-grape-700 underline underline-offset-2 disabled:text-gray-400 disabled:no-underline"
                         >
-                          {isRegeneratingAudio ? 'Regenerating scene audio...' : 'Regenerate scene audio'}
+                          {isRegeneratingAudio ? t('storyPlay.regeneratingAudio') : t('storyPlay.regenerateAudio')}
                         </button>
                       </div>
                     )}
@@ -1141,7 +1154,7 @@ function PlayStoryContent() {
                     <button
                       onClick={handleRegenerateAudio}
                       disabled={isRegeneratingAudio}
-                      aria-label="Regenerate audio narration"
+                      aria-label={t('storyPlay.ariaRegenAudio')}
                       className={`h-11 px-4 rounded-full inline-flex items-center gap-2 text-sm font-bold transition-all duration-200 border-2 shadow-md ${
                         isRegeneratingAudio
                           ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'
@@ -1151,7 +1164,7 @@ function PlayStoryContent() {
                       {isRegeneratingAudio ? (
                         <>
                           <span className="w-4 h-4 border-2 border-candy-300 border-t-candy-600 rounded-full animate-spin" />
-                          Adding audio...
+                          {t('storyPlay.addingAudio')}
                         </>
                       ) : (
                         <>
@@ -1160,22 +1173,22 @@ function PlayStoryContent() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.54 8.46a5 5 0 010 7.07" />
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.07 4.93a10 10 0 010 14.14" />
                           </svg>
-                          Add Audio
+                          {t('storyPlay.addAudio')}
                         </>
                       )}
                     </button>
-                    <p className="text-xs text-grape-400 font-semibold">Enable hands-free narration</p>
+                    <p className="text-xs text-grape-400 font-semibold">{t('storyPlay.handsFreeTip')}</p>
                   </div>
                 )}
               </>
             )}
 
             <p className="text-sm font-bold text-grape-400">
-              {isTheEnd ? 'The End' : `Page ${currentScene + 1} of ${totalScenes}`}
+              {isTheEnd ? t('storyPlay.theEnd') : t('storyPlay.pageOf', { page: currentScene + 1, total: totalScenes })}
             </p>
             {!isTheEnd && (
               <p className="text-xs font-semibold text-grape-300 text-center">
-                Swipe, tap image sides, or use arrow keys
+                {t('storyPlay.navigationHint')}
               </p>
             )}
           </div>

@@ -7,23 +7,21 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Character, Story, Storybook, StorybookCharacter, SynopsisOption, CompanionSuggestion } from '@/types'
 import { STYLES } from '@/lib/styles'
 import { showToast } from '@/components/toast'
+import { useLanguage } from '@/lib/i18n'
 
-const AGE_OPTIONS: { value: '2-4' | '4-6' | '6-8'; label: string; emoji: string }[] = [
-  { value: '2-4', label: '2-4岁', emoji: '🍼' },
-  { value: '4-6', label: '4-6岁', emoji: '⭐' },
-  { value: '6-8', label: '6-8岁', emoji: '🚀' },
-]
+const AGE_OPTION_VALUES = ['2-4', '4-6', '6-8'] as const
+const AGE_OPTION_EMOJIS: Record<string, string> = { '2-4': '🍼', '4-6': '⭐', '6-8': '🚀' }
 
 const SYNOPSIS_STYLE = {
-  A: { label: '感官体验型', gradient: 'from-rose-400 to-orange-400', bg: 'bg-rose-50', border: 'border-rose-200', ring: 'ring-rose-300' },
-  B: { label: '情感互动型', gradient: 'from-violet-400 to-purple-400', bg: 'bg-violet-50', border: 'border-violet-200', ring: 'ring-violet-300' },
-  C: { label: '勇气冒险型', gradient: 'from-emerald-400 to-teal-400', bg: 'bg-emerald-50', border: 'border-emerald-200', ring: 'ring-emerald-300' },
+  A: { gradient: 'from-rose-400 to-orange-400', bg: 'bg-rose-50', border: 'border-rose-200', ring: 'ring-rose-300' },
+  B: { gradient: 'from-violet-400 to-purple-400', bg: 'bg-violet-50', border: 'border-violet-200', ring: 'ring-violet-300' },
+  C: { gradient: 'from-emerald-400 to-teal-400', bg: 'bg-emerald-50', border: 'border-emerald-200', ring: 'ring-emerald-300' },
 }
 
 const VIDEO_SCENE_RANGE_OPTIONS = [
-  { id: '3-4', min: 3, max: 4, eta: '预计制作 3-5 分钟' },
-  { id: '7-10', min: 7, max: 10, eta: '预计制作 6-10 分钟' },
-  { id: '15-18', min: 15, max: 18, eta: '预计制作 12-18 分钟' },
+  { id: '3-4', min: 3, max: 4 },
+  { id: '7-10', min: 7, max: 10 },
+  { id: '15-18', min: 15, max: 18 },
 ] as const
 type VideoSceneRangeOptionId = (typeof VIDEO_SCENE_RANGE_OPTIONS)[number]['id']
 
@@ -39,6 +37,7 @@ export default function CreateStoryPage() {
 function CreateStoryWizard() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { t } = useLanguage()
 
   // ── Main step ─────────────────────────────────────────────
   const [step, setStep] = useState(0)
@@ -187,8 +186,8 @@ function CreateStoryWizard() {
   }
 
   const handleCreateNewBook = async () => {
-    if (!newBookName.trim()) { showToast('请输入故事书名称', 'error'); return }
-    if (!newProtagonistId) { showToast('请选择主角', 'error'); return }
+    if (!newBookName.trim()) { showToast(t('storyCreate.errors.noBookName'), 'error'); return }
+    if (!newProtagonistId) { showToast(t('storyCreate.errors.noProtagonist'), 'error'); return }
     setSavingBook(true)
     try {
       const companionSuggestionByName = new Map(
@@ -243,7 +242,7 @@ function CreateStoryWizard() {
       setEpisodeAge(newBookAge)
       setStep(1)
     } catch {
-      showToast('创建故事书失败，请重试', 'error')
+      showToast(t('storyCreate.errors.createBookFailed'), 'error')
     } finally {
       setSavingBook(false)
     }
@@ -262,20 +261,20 @@ function CreateStoryWizard() {
         audioChunksRef.current = []
         recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
         recorder.onstop = async () => {
-          stream.getTracks().forEach((t) => t.stop())
+          stream.getTracks().forEach((tr) => tr.stop())
           setTranscribing(true)
           try {
             const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
             const form = new FormData()
             form.append('audio', blob, 'recording.webm')
-            form.append('hint', '故事背景关键词')
+            form.append('hint', t('storyCreate.sttHint'))
             const res = await fetch('/api/voice/transcribe', { method: 'POST', body: form })
             if (res.ok) {
               const data = await res.json()
               if (data.transcript) setKeywords((prev) => prev ? `${prev}，${data.transcript}` : data.transcript)
             }
           } catch {
-            showToast('语音转换失败', 'error')
+            showToast(t('storyCreate.errors.voiceFailed'), 'error')
           } finally {
             setTranscribing(false)
           }
@@ -284,13 +283,13 @@ function CreateStoryWizard() {
         mediaRecorderRef.current = recorder
         setIsRecording(true)
       } catch {
-        showToast('无法访问麦克风，请检查权限', 'error')
+        showToast(t('storyCreate.errors.micDenied'), 'error')
       }
     }
   }
 
   const handleGenerateSynopsis = async () => {
-    if (!keywords.trim()) { showToast('请输入灵感关键词', 'error'); return }
+    if (!keywords.trim()) { showToast(t('storyCreate.errors.noKeywords'), 'error'); return }
     setGeneratingSynopsis(true)
     setSynopsisOptions([])
     try {
@@ -306,7 +305,7 @@ function CreateStoryWizard() {
       const data = await res.json()
       setSynopsisOptions(data.options ?? [])
     } catch {
-      showToast('梗概生成失败，请重试', 'error')
+      showToast(t('storyCreate.errors.synopsisFailed'), 'error')
     } finally {
       setGeneratingSynopsis(false)
     }
@@ -316,7 +315,7 @@ function CreateStoryWizard() {
     setStep(2)
     setGeneratingStory(true)
     setSelectedSynopsisOpt(synopsis)
-    const title = synopsis.title || currentBook?.name || '我的故事'
+    const title = synopsis.title || currentBook?.name || t('storyCreate.generatingStory')
     setGeneratedTitle(title)
     setGeneratedCoverImage('')
     setDiscoveredNpcs([])
@@ -349,7 +348,7 @@ function CreateStoryWizard() {
         )
       )
     } catch {
-      showToast('故事生成失败，请重试', 'error')
+      showToast(t('storyCreate.errors.storyFailed'), 'error')
       setStep(1)
     } finally {
       setGeneratingStory(false)
@@ -391,15 +390,19 @@ function CreateStoryWizard() {
       // Navigate to play page — polling will pick up the video project
       router.push(`/story/play?id=${generatedStoryId}`)
     } catch {
-      showToast('视频启动失败，请重试', 'error')
+      showToast(t('storyCreate.errors.videoFailed'), 'error')
       setStartingVideo(false)
     }
-  }, [generatedStoryId, router, startingVideo, videoSceneRange])
+  }, [generatedStoryId, router, startingVideo, videoSceneRange, t])
 
   // ── Render ────────────────────────────────────────────────
 
   // Episode creation step labels (steps 1 & 2)
-  const EPISODE_STEPS = ['灵感种子', '生成故事', '完成']
+  const EPISODE_STEPS = [
+    t('storyCreate.steps.inspiration'),
+    t('storyCreate.steps.generating'),
+    t('storyCreate.steps.done'),
+  ]
 
   return (
     <div className="min-h-[calc(100vh-60px)] px-4 pt-6 pb-16">
@@ -411,7 +414,7 @@ function CreateStoryWizard() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
-            返回
+            {t('storyCreate.back')}
           </Link>
         )}
 
@@ -447,6 +450,7 @@ function CreateStoryWizard() {
           <div className="page-enter">
             {loadingBooks ? (
               <div className="space-y-3">
+                <div className="skeleton h-14 rounded-2xl" />
                 <div className="skeleton h-14 rounded-2xl" />
                 <div className="skeleton h-64 rounded-2xl" />
               </div>
@@ -486,7 +490,7 @@ function CreateStoryWizard() {
                 currentBook={currentBook ?? null}
                 onCreateNew={() => { setCreatingNew(true); setBookSubStep(0) }}
                 onNext={() => {
-                  if (!selectedStorybookId) { showToast('请选择一本故事书', 'error'); return }
+                  if (!selectedStorybookId) { showToast(t('storyCreate.errors.noBook'), 'error'); return }
                   setStep(1)
                 }}
               />
@@ -507,9 +511,9 @@ function CreateStoryWizard() {
                 )}
                 <div className="min-w-0">
                   <p className="font-extrabold text-forest-800 text-sm truncate">{currentBook.name}</p>
-                  <p className="text-[10px] text-gray-400">{STYLES.find(s => s.id === currentBook.styleId)?.emoji} {STYLES.find(s => s.id === currentBook.styleId)?.label} · {currentBook.ageRange}岁</p>
+                  <p className="text-[10px] text-gray-400">{STYLES.find(s => s.id === currentBook.styleId)?.emoji} {t(`styles.${currentBook.styleId}.label`)} · {currentBook.ageRange}{t('storyCreate.ageYearsUnit')}</p>
                 </div>
-                <button onClick={() => setStep(0)} className="ml-auto text-xs text-forest-500 font-bold hover:text-forest-700 shrink-0">切换</button>
+                <button onClick={() => setStep(0)} className="ml-auto text-xs text-forest-500 font-bold hover:text-forest-700 shrink-0">{t('storyCreate.switchBook')}</button>
               </div>
             )}
 
@@ -517,17 +521,17 @@ function CreateStoryWizard() {
               {/* ── Left panel ── */}
               <div className="flex flex-col gap-4">
                 <div className="card">
-                  <h2 className="text-base font-extrabold text-forest-800 mb-1">灵感种子 ✨</h2>
-                  <p className="text-xs text-gray-400 mb-4">输入关键词，AI 生成三版故事梗概</p>
+                  <h2 className="text-base font-extrabold text-forest-800 mb-1">{t('storyCreate.inspirationTitle')}</h2>
+                  <p className="text-xs text-gray-400 mb-4">{t('storyCreate.inspirationHint')}</p>
 
                   {/* Keywords + mic */}
                   <div className="mb-3">
-                    <label className="block text-xs font-bold text-forest-600 mb-1">背景关键词 *</label>
+                    <label className="block text-xs font-bold text-forest-600 mb-1">{t('storyCreate.keywordsLabel')}</label>
                     <div className="flex gap-2">
                       <textarea
                         value={keywords}
                         onChange={(e) => setKeywords(e.target.value)}
-                        placeholder="例如：星空、魔法书、会说话的猫、友谊"
+                        placeholder={t('storyCreate.keywordsPlaceholder')}
                         className="input text-sm flex-1 resize-none"
                         rows={2}
                       />
@@ -540,7 +544,7 @@ function CreateStoryWizard() {
                           transcribing ? 'border-gray-200 bg-gray-100 text-gray-400' :
                           'border-forest-300 bg-forest-50 text-forest-600 hover:bg-forest-100'
                         }`}
-                        title={isRecording ? '点击停止录音' : '点击语音输入'}
+                        title={isRecording ? t('storyCreate.stopRecording') : t('storyCreate.startRecording')}
                       >
                         {transcribing ? (
                           <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
@@ -554,27 +558,27 @@ function CreateStoryWizard() {
                     {isRecording && (
                       <p className="text-xs text-red-500 font-bold mt-1 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-                        正在录音，点击麦克风停止...
+                        {t('storyCreate.recording')}
                       </p>
                     )}
                   </div>
 
                   {/* Age range */}
                   <div className="mb-4">
-                    <label className="block text-xs font-bold text-forest-600 mb-1.5">小读者年龄</label>
+                    <label className="block text-xs font-bold text-forest-600 mb-1.5">{t('storyCreate.ageLabel')}</label>
                     <div className="flex gap-2">
-                      {AGE_OPTIONS.map((a) => (
+                      {AGE_OPTION_VALUES.map((value) => (
                         <button
-                          key={a.value}
+                          key={value}
                           type="button"
-                          onClick={() => setEpisodeAge(a.value)}
+                          onClick={() => setEpisodeAge(value)}
                           className={`flex-1 py-2 rounded-xl border-2 text-xs font-bold transition-all ${
-                            episodeAge === a.value
+                            episodeAge === value
                               ? 'border-forest-500 bg-forest-100 text-forest-700'
                               : 'border-gray-200 text-gray-500 hover:border-forest-200'
                           }`}
                         >
-                          {a.emoji} {a.label}
+                          {AGE_OPTION_EMOJIS[value]} {t(`ageOptions.${value}.label`)}
                         </button>
                       ))}
                     </div>
@@ -588,9 +592,9 @@ function CreateStoryWizard() {
                     {generatingSynopsis ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                        AI 正在生成梗概...
+                        {t('storyCreate.generatingSynopsisBtn')}
                       </span>
-                    ) : '生成三版梗概 ✨'}
+                    ) : t('storyCreate.generateSynopsisBtn')}
                   </button>
                 </div>
               </div>
@@ -600,8 +604,8 @@ function CreateStoryWizard() {
                 {!generatingSynopsis && synopsisOptions.length === 0 && (
                   <div className="flex-1 flex flex-col items-center justify-center min-h-[200px] rounded-2xl border-2 border-dashed border-gray-200 text-center p-6">
                     <div className="text-4xl mb-3 opacity-40">📖</div>
-                    <p className="text-sm text-gray-400 font-medium">在左侧输入关键词</p>
-                    <p className="text-xs text-gray-300 mt-1">点击「生成三版梗概」后，<br />三个故事版本将显示在这里</p>
+                    <p className="text-sm text-gray-400 font-medium">{t('storyCreate.synopsisEmptyHint')}</p>
+                    <p className="text-xs text-gray-300 mt-1">{t('storyCreate.synopsisEmptyHint2')}</p>
                   </div>
                 )}
 
@@ -622,9 +626,9 @@ function CreateStoryWizard() {
 
                 {!generatingSynopsis && synopsisOptions.length > 0 && (
                   <>
-                    <p className="text-xs font-bold text-gray-500 px-1">点击选择一版梗概，立即生成故事 →</p>
+                    <p className="text-xs font-bold text-gray-500 px-1">{t('storyCreate.synopsisSelectHint')}</p>
                     {synopsisOptions.map((opt) => {
-                      const style = SYNOPSIS_STYLE[opt.version]
+                      const style = SYNOPSIS_STYLE[opt.version as keyof typeof SYNOPSIS_STYLE]
                       return (
                         <button
                           key={opt.version}
@@ -633,9 +637,9 @@ function CreateStoryWizard() {
                         >
                           <div className={`bg-gradient-to-r ${style.gradient} px-4 py-2.5 flex items-center gap-2`}>
                             <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-white/30 text-white">
-                              版本 {opt.version}
+                              {t('storyCreate.versionLabel')} {opt.version}
                             </span>
-                            <span className="text-xs font-bold text-white/90">{style.label}</span>
+                            <span className="text-xs font-bold text-white/90">{t(`synopsis.${opt.version}.label`)}</span>
                             <svg className="w-3.5 h-3.5 text-white/70 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                             </svg>
@@ -666,9 +670,9 @@ function CreateStoryWizard() {
                   <div className="absolute inset-0 rounded-full border-4 border-forest-500 border-t-transparent animate-spin" />
                   <div className="absolute inset-0 flex items-center justify-center text-2xl">📖</div>
                 </div>
-                <h2 className="text-xl font-extrabold text-forest-800 mb-2">AI 正在编织故事...</h2>
-                <p className="text-sm text-gray-400 mb-1">同时生成专属封面插画</p>
-                <p className="text-xs text-gray-300">正在为「{generatedTitle}」创作中，请稍候</p>
+                <h2 className="text-xl font-extrabold text-forest-800 mb-2">{t('storyCreate.generatingStory')}</h2>
+                <p className="text-sm text-gray-400 mb-1">{t('storyCreate.generatingSubtitle')}</p>
+                <p className="text-xs text-gray-300">{t('storyCreate.generatingNote', { title: generatedTitle })}</p>
               </div>
             ) : generatedStoryId ? (
               <>
@@ -707,12 +711,12 @@ function CreateStoryWizard() {
                       )}
                       {currentBook && (
                         <span className="px-2.5 py-1 bg-forest-50 border border-forest-200 rounded-full text-[10px] font-bold text-forest-600">
-                          {currentBook.ageRange} 岁适读
+                          {currentBook.ageRange} {t('storyCreate.ageTagReaderUnit')}
                         </span>
                       )}
                       {bookProtagonist && (
                         <span className="px-2.5 py-1 bg-forest-50 border border-forest-200 rounded-full text-[10px] font-bold text-forest-600">
-                          主角：{bookProtagonist.name}
+                          {t('storyCreate.protagonistTag', { name: bookProtagonist.name })}
                         </span>
                       )}
                     </div>
@@ -720,7 +724,7 @@ function CreateStoryWizard() {
                     {/* Generated story content */}
                     {generatedStoryContent && (
                       <div className="mt-auto">
-                        <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1.5">本集故事</p>
+                        <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1.5">{t('storyCreate.storyContentLabel')}</p>
                         <div className="max-h-28 overflow-y-auto rounded-xl bg-forest-50 border border-forest-100 px-3 py-2.5">
                           <p className="text-[11px] text-gray-700 leading-relaxed whitespace-pre-line">{generatedStoryContent}</p>
                         </div>
@@ -732,7 +736,7 @@ function CreateStoryWizard() {
                 {/* Discovered NPCs */}
                 {discoveredNpcs.length > 0 && (
                   <div className="mt-4">
-                    <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2">本集新角色</p>
+                    <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2">{t('storyCreate.newCharactersLabel')}</p>
                     <div className="flex gap-3 overflow-x-auto pb-1">
                       {discoveredNpcs.map((npc, i) => (
                         <div key={i} className="flex flex-col items-center gap-1.5 min-w-[80px] max-w-[96px]">
@@ -760,7 +764,7 @@ function CreateStoryWizard() {
                 {/* Actions */}
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-forest-100 bg-forest-50/60 p-3">
-                    <p className="text-[11px] font-bold text-forest-700 mb-2">视频场景数范围</p>
+                    <p className="text-[11px] font-bold text-forest-700 mb-2">{t('storyCreate.videoScenesLabel')}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {VIDEO_SCENE_RANGE_OPTIONS.map((option) => {
                         const active = videoSceneRange === option.id
@@ -775,16 +779,16 @@ function CreateStoryWizard() {
                                 : 'bg-white border-forest-100 text-gray-700 hover:border-forest-300'
                             }`}
                           >
-                            <p className="text-xs font-extrabold">{option.id} 场景</p>
+                            <p className="text-xs font-extrabold">{option.id} {t('storyCreate.sceneUnit')}</p>
                             <p className={`text-[10px] mt-0.5 ${active ? 'text-white/80' : 'text-gray-500'}`}>
-                              {option.eta}
+                              {t(`videoSceneRange.${option.id}.eta`)}
                             </p>
                           </button>
                         )
                       })}
                     </div>
                     <p className="text-[10px] text-forest-700 mt-2">
-                      当前选择：{videoSceneRange} 场景
+                      {t('storyCreate.selectedScenes', { n: videoSceneRange })}
                     </p>
                   </div>
                   <button
@@ -795,15 +799,15 @@ function CreateStoryWizard() {
                     {startingVideo ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                        正在准备视频...
+                        {t('storyCreate.preparingBtn')}
                       </span>
-                    ) : '确认并开始制作视频 🎬'}
+                    ) : t('storyCreate.confirmVideoBtn')}
                   </button>
                   <Link
                     href={`/story/play?id=${generatedStoryId}`}
                     className="btn-secondary w-full text-center block text-sm"
                   >
-                    直接阅读故事 📖
+                    {t('storyCreate.readStoryBtn')}
                   </Link>
                   <button
                     onClick={() => {
@@ -818,14 +822,14 @@ function CreateStoryWizard() {
                     }}
                     className="btn-secondary w-full text-sm"
                   >
-                    再创作一集
+                    {t('storyCreate.createAnotherBtn')}
                   </button>
                   {selectedStorybookId && (
                     <Link
                       href="/storybook"
                       className="block text-sm text-center text-forest-600 font-bold hover:underline"
                     >
-                      返回故事书库
+                      {t('storyCreate.backToLibrary')}
                     </Link>
                   )}
                 </div>
@@ -881,7 +885,14 @@ function NewBookSubFlow({
   savingBook, handleCreateNewBook,
   onCancel,
 }: NewBookSubFlowProps) {
-  const SUB_STEPS = ['选择主角', '选择风格', '选小伙伴', '故事书信息']
+  const { t } = useLanguage()
+
+  const SUB_STEPS = [
+    t('storyCreateBook.subSteps.0'),
+    t('storyCreateBook.subSteps.1'),
+    t('storyCreateBook.subSteps.2'),
+    t('storyCreateBook.subSteps.3'),
+  ]
 
   const selectedStyle = STYLES.find((s) => s.id === newBookStyleId)
   const protagonistStyleImage = newProtagonist?.styleImages?.[newBookStyleId] ?? newProtagonist?.cartoonImage
@@ -891,12 +902,12 @@ function NewBookSubFlow({
       {/* Sub-step header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-extrabold text-forest-800">创建故事书 📚</h1>
-          <p className="text-sm text-gray-400 mt-0.5">步骤 {bookSubStep + 1} / {SUB_STEPS.length}</p>
+          <h1 className="text-2xl font-extrabold text-forest-800">{t('storyCreateBook.createBookTitle')}</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{t('storyCreateBook.stepOf', { current: bookSubStep + 1, total: SUB_STEPS.length })}</p>
         </div>
         {onCancel && (
           <button onClick={onCancel} className="text-xs font-bold text-gray-400 hover:text-gray-600">
-            取消
+            {t('storyCreateBook.cancel')}
           </button>
         )}
       </div>
@@ -923,11 +934,11 @@ function NewBookSubFlow({
       {/* Sub-step 0: Select protagonist */}
       {bookSubStep === 0 && (
         <div className="page-enter">
-          <h2 className="text-base font-extrabold text-forest-700 mb-4">⭐ 选择故事主角</h2>
+          <h2 className="text-base font-extrabold text-forest-700 mb-4">{t('storyCreateBook.selectProtagonistTitle')}</h2>
           {allCharacters.length === 0 ? (
             <div className="card text-center py-10">
-              <p className="text-gray-400 mb-3">还没有创建任何角色</p>
-              <Link href="/character/create" className="btn-primary text-sm">去创建角色 →</Link>
+              <p className="text-gray-400 mb-3">{t('storyCreateBook.noCharacters')}</p>
+              <Link href="/character/create" className="btn-primary text-sm">{t('storyCreateBook.createCharacterLink')}</Link>
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mb-6">
@@ -947,8 +958,8 @@ function NewBookSubFlow({
                     <div className="w-16 h-16 rounded-xl overflow-hidden">
                       <Image src={c.cartoonImage} alt={c.name} width={64} height={64} className="object-cover w-full h-full" />
                     </div>
-                    <span className="text-xs font-bold text-gray-700 truncate w-full text-center">{c.name || '未命名'}</span>
-                    {isSelected && <span className="text-[10px] text-forest-600 font-extrabold">已选✓</span>}
+                    <span className="text-xs font-bold text-gray-700 truncate w-full text-center">{c.name || t('storyCreateBook.unnamed')}</span>
+                    {isSelected && <span className="text-[10px] text-forest-600 font-extrabold">{t('storyCreateBook.selectedMark')}</span>}
                   </button>
                 )
               })}
@@ -956,13 +967,13 @@ function NewBookSubFlow({
           )}
           <button
             onClick={() => {
-              if (!newProtagonistId) { showToast('请选择一位主角', 'error'); return }
+              if (!newProtagonistId) { showToast(t('storyCreate.errors.noProtagonist'), 'error'); return }
               setBookSubStep(1)
             }}
             disabled={!newProtagonistId}
             className="btn-primary w-full disabled:opacity-50"
           >
-            下一步：选择画风 →
+            {t('storyCreateBook.nextStyle')}
           </button>
         </div>
       )}
@@ -970,9 +981,9 @@ function NewBookSubFlow({
       {/* Sub-step 1: Select style */}
       {bookSubStep === 1 && (
         <div className="page-enter">
-          <button onClick={() => setBookSubStep(0)} className="text-sm text-forest-500 font-bold mb-4 flex items-center gap-1">← 返回</button>
-          <h2 className="text-base font-extrabold text-forest-700 mb-1">🎨 选择故事画风</h2>
-          <p className="text-xs text-gray-400 mb-4">选择最喜欢的{newProtagonist?.name || '主角'}形象风格，这将是故事书的主要画风</p>
+          <button onClick={() => setBookSubStep(0)} className="text-sm text-forest-500 font-bold mb-4 flex items-center gap-1">{t('storyCreateBook.back')}</button>
+          <h2 className="text-base font-extrabold text-forest-700 mb-1">{t('storyCreateBook.selectStyleTitle')}</h2>
+          <p className="text-xs text-gray-400 mb-4">{t('storyCreateBook.styleHint', { name: newProtagonist?.name || t('storyCreateBook.noProtagonistName') })}</p>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
             {STYLES.map((s) => {
@@ -991,7 +1002,7 @@ function NewBookSubFlow({
                 >
                   <div className="w-full aspect-square bg-gray-100 relative">
                     {styleImg ? (
-                      <Image src={styleImg} alt={s.label} fill className="object-cover" sizes="(max-width: 768px) 33vw, 120px" />
+                      <Image src={styleImg} alt={t(`styles.${s.id}.label`)} fill className="object-cover" sizes="(max-width: 768px) 33vw, 120px" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-2xl opacity-30">{s.emoji}</div>
                     )}
@@ -1006,7 +1017,7 @@ function NewBookSubFlow({
                     )}
                   </div>
                   <div className={`w-full py-1.5 px-2 text-center ${isSelected ? 'bg-forest-500 text-white' : 'bg-white'}`}>
-                    <p className={`text-xs font-extrabold truncate ${isSelected ? '' : 'text-gray-700'}`}>{s.emoji} {s.label}</p>
+                    <p className={`text-xs font-extrabold truncate ${isSelected ? '' : 'text-gray-700'}`}>{s.emoji} {t(`styles.${s.id}.label`)}</p>
                   </div>
                 </button>
               )
@@ -1017,11 +1028,11 @@ function NewBookSubFlow({
           {protagonistStyleImage && (
             <div className="card p-3 mb-4 flex items-center gap-3">
               <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0">
-                <Image src={protagonistStyleImage} alt={selectedStyle?.label ?? ''} width={64} height={64} className="object-cover w-full h-full" />
+                <Image src={protagonistStyleImage} alt={selectedStyle ? t(`styles.${selectedStyle.id}.label`) : ''} width={64} height={64} className="object-cover w-full h-full" />
               </div>
               <div>
-                <p className="text-xs font-extrabold text-forest-700">{selectedStyle?.emoji} {selectedStyle?.label}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">{selectedStyle?.description}</p>
+                <p className="text-xs font-extrabold text-forest-700">{selectedStyle?.emoji} {selectedStyle ? t(`styles.${selectedStyle.id}.label`) : ''}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{selectedStyle ? t(`styles.${selectedStyle.id}.description`) : ''}</p>
               </div>
             </div>
           )}
@@ -1033,7 +1044,7 @@ function NewBookSubFlow({
             }}
             className="btn-primary w-full"
           >
-            下一步：选择小伙伴 →
+            {t('storyCreateBook.nextCompanions')}
           </button>
         </div>
       )}
@@ -1041,18 +1052,18 @@ function NewBookSubFlow({
       {/* Sub-step 2: Companions */}
       {bookSubStep === 2 && (
         <div className="page-enter">
-          <button onClick={() => setBookSubStep(1)} className="text-sm text-forest-500 font-bold mb-4 flex items-center gap-1">← 返回</button>
+          <button onClick={() => setBookSubStep(1)} className="text-sm text-forest-500 font-bold mb-4 flex items-center gap-1">{t('storyCreateBook.back')}</button>
           <div className="flex items-center justify-between mb-1">
-            <h2 className="text-base font-extrabold text-forest-700">🌟 选择冒险小伙伴</h2>
+            <h2 className="text-base font-extrabold text-forest-700">{t('storyCreateBook.companionsTitle')}</h2>
             <button
               onClick={() => { if (newProtagonistId) fetchCompanions(newProtagonistId) }}
               disabled={loadingCompanions}
               className="text-xs font-bold text-forest-500 hover:text-forest-700 disabled:opacity-40"
             >
-              {loadingCompanions ? '推荐中...' : '↺ 换一批'}
+              {loadingCompanions ? t('storyCreateBook.refreshing') : t('storyCreateBook.refreshBtn')}
             </button>
           </div>
-          <p className="text-xs text-gray-400 mb-4">可多选，这些小伙伴将在故事书的每一集中出现</p>
+          <p className="text-xs text-gray-400 mb-4">{t('storyCreateBook.companionsHint')}</p>
 
           {loadingCompanions ? (
             <div className="grid grid-cols-1 gap-2 mb-4">
@@ -1089,12 +1100,12 @@ function NewBookSubFlow({
           ) : null}
 
           <div className="flex items-center gap-2 mb-5">
-            <span className="text-xs text-gray-400 shrink-0">自定义：</span>
+            <span className="text-xs text-gray-400 shrink-0">{t('storyCreateBook.customCompanionLabel')}</span>
             <input
               type="text"
               value={customCompanion}
               onChange={(e) => setCustomCompanion(e.target.value)}
-              placeholder="输入小伙伴名称（可不填）"
+              placeholder={t('storyCreateBook.customCompanionPlaceholder')}
               className="input py-1.5 text-sm flex-1"
             />
           </div>
@@ -1120,13 +1131,13 @@ function NewBookSubFlow({
               onClick={() => setBookSubStep(3)}
               className="text-sm font-bold text-gray-400 hover:text-gray-600 px-4 py-3"
             >
-              跳过
+              {t('storyCreateBook.skip')}
             </button>
             <button
               onClick={() => setBookSubStep(3)}
               className="btn-primary flex-1"
             >
-              下一步：命名故事书 →
+              {t('storyCreateBook.nextNaming')}
             </button>
           </div>
         </div>
@@ -1135,8 +1146,8 @@ function NewBookSubFlow({
       {/* Sub-step 3: Book name + age */}
       {bookSubStep === 3 && (
         <div className="page-enter">
-          <button onClick={() => setBookSubStep(2)} className="text-sm text-forest-500 font-bold mb-4 flex items-center gap-1">← 返回</button>
-          <h2 className="text-base font-extrabold text-forest-700 mb-4">📖 为故事书命名</h2>
+          <button onClick={() => setBookSubStep(2)} className="text-sm text-forest-500 font-bold mb-4 flex items-center gap-1">{t('storyCreateBook.back')}</button>
+          <h2 className="text-base font-extrabold text-forest-700 mb-4">{t('storyCreateBook.namingTitle')}</h2>
 
           {/* Preview card */}
           <div className="card mb-5 flex items-center gap-4 bg-gradient-to-r from-forest-50 to-honey-50/50">
@@ -1146,11 +1157,11 @@ function NewBookSubFlow({
               </div>
             )}
             <div>
-              <p className="font-extrabold text-forest-800">{newProtagonist?.name || '主角'} 的故事书</p>
+              <p className="font-extrabold text-forest-800">{t('storyCreateBook.bookPreview', { name: newProtagonist?.name || t('storyCreateBook.noProtagonistName') })}</p>
               <p className="text-[10px] text-gray-400 mt-0.5">
-                {selectedStyle?.emoji} {selectedStyle?.label}
+                {selectedStyle?.emoji} {selectedStyle ? t(`styles.${selectedStyle.id}.label`) : ''}
                 {(selectedCompanionNames.length > 0 || customCompanion.trim()) && (
-                  <> · 小伙伴：{[...selectedCompanionNames, customCompanion.trim()].filter(Boolean).join('、')}</>
+                  <> · {t('storyCreateBook.companionPreview')}{[...selectedCompanionNames, customCompanion.trim()].filter(Boolean).join('、')}</>
                 )}
               </p>
             </div>
@@ -1158,30 +1169,30 @@ function NewBookSubFlow({
 
           <div className="space-y-4 mb-6">
             <div>
-              <label className="block text-xs font-bold text-forest-600 mb-1.5">故事书名称 *</label>
+              <label className="block text-xs font-bold text-forest-600 mb-1.5">{t('storyCreateBook.bookNameLabel')}</label>
               <input
                 type="text"
                 value={newBookName}
                 onChange={(e) => setNewBookName(e.target.value)}
-                placeholder={`${newProtagonist?.name || '主角'}的奇妙冒险`}
+                placeholder={t('storyCreateBook.bookNamePlaceholder', { name: newProtagonist?.name || t('storyCreateBook.noProtagonistName') })}
                 className="input"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-forest-600 mb-1.5">适读年龄</label>
+              <label className="block text-xs font-bold text-forest-600 mb-1.5">{t('storyCreateBook.ageLabel')}</label>
               <div className="flex gap-2">
-                {AGE_OPTIONS.map((a) => (
+                {AGE_OPTION_VALUES.map((value) => (
                   <button
-                    key={a.value}
+                    key={value}
                     type="button"
-                    onClick={() => setNewBookAge(a.value)}
+                    onClick={() => setNewBookAge(value)}
                     className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${
-                      newBookAge === a.value
+                      newBookAge === value
                         ? 'border-forest-500 bg-forest-100 text-forest-700'
                         : 'border-gray-200 text-gray-500'
                     }`}
                   >
-                    {a.emoji} {a.label}
+                    {AGE_OPTION_EMOJIS[value]} {t(`ageOptions.${value}.label`)}
                   </button>
                 ))}
               </div>
@@ -1196,9 +1207,9 @@ function NewBookSubFlow({
             {savingBook ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                创建中...
+                {t('storyCreateBook.creating')}
               </span>
-            ) : '创建故事书，开始创作第一集 →'}
+            ) : t('storyCreateBook.createBookBtn')}
           </button>
         </div>
       )}
@@ -1227,18 +1238,20 @@ function ExistingBookSelection({
   selectedStorybookId, setSelectedStorybookId,
   onCreateNew, onNext,
 }: ExistingBookSelectionProps) {
+  const { t } = useLanguage()
+
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-extrabold text-forest-800">选择故事书 📚</h1>
-          <p className="text-sm text-gray-400 mt-0.5">为哪本故事书创作新一集？</p>
+          <h1 className="text-2xl font-extrabold text-forest-800">{t('storyCreateExisting.title')}</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{t('storyCreateExisting.subtitle')}</p>
         </div>
         <button
           onClick={onCreateNew}
           className="text-xs font-bold px-3 py-2 border-2 border-forest-300 text-forest-600 rounded-full hover:bg-forest-50 transition-colors"
         >
-          + 新建故事书
+          {t('storyCreateExisting.newBookBtn')}
         </button>
       </div>
 
@@ -1276,9 +1289,9 @@ function ExistingBookSelection({
               <div className="flex-1 min-w-0">
                 <p className="font-extrabold text-forest-800 truncate">{book.name}</p>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <span className="text-[10px] bg-forest-100 text-forest-600 px-1.5 py-0.5 rounded-full font-bold">{book.ageRange}岁</span>
-                  {styleConfig && <span className="text-[10px] text-gray-400">{styleConfig.emoji} {styleConfig.label}</span>}
-                  <span className="text-[10px] text-gray-400">· {chapterCount === 0 ? '暂无故事' : `${chapterCount} 集`}</span>
+                  <span className="text-[10px] bg-forest-100 text-forest-600 px-1.5 py-0.5 rounded-full font-bold">{book.ageRange}{t('storyCreateExisting.ageUnit')}</span>
+                  {styleConfig && <span className="text-[10px] text-gray-400">{styleConfig.emoji} {t(`styles.${styleConfig.id}.label`)}</span>}
+                  <span className="text-[10px] text-gray-400">· {chapterCount === 0 ? t('storyCreateExisting.noStories') : t('storyCreateExisting.episodeCount', { count: chapterCount })}</span>
                 </div>
               </div>
 
@@ -1298,7 +1311,7 @@ function ExistingBookSelection({
         disabled={!selectedStorybookId}
         className="btn-primary w-full disabled:opacity-50"
       >
-        下一步：填写灵感种子 →
+        {t('storyCreateExisting.nextBtn')}
       </button>
     </div>
   )

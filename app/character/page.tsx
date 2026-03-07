@@ -6,8 +6,10 @@ import Image from 'next/image'
 import type { Character } from '@/types'
 import { showToast } from '@/components/toast'
 import ConfirmDialog from '@/components/confirm-dialog'
+import { useLanguage } from '@/lib/i18n'
 
 export default function CharacterPage() {
+  const { t } = useLanguage()
   const [characters, setCharacters] = useState<Character[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
@@ -32,7 +34,7 @@ export default function CharacterPage() {
     const res = await fetch(`/api/character/${deleteTarget.id}`, { method: 'DELETE' })
     if (res.ok) {
       setCharacters((prev) => prev.filter((c) => c.id !== deleteTarget.id))
-      showToast('角色已删除', 'success')
+      showToast(t('character.deleted'), 'success')
     }
     setDeleteTarget(null)
   }
@@ -43,8 +45,8 @@ export default function CharacterPage() {
 
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-extrabold text-forest-800">我的角色 👥</h1>
-            <p className="text-sm text-gray-400 mt-0.5">你的专属绘本角色</p>
+            <h1 className="text-2xl font-extrabold text-forest-800">{t('character.pageTitle')}</h1>
+            <p className="text-sm text-gray-400 mt-0.5">{t('character.pageSubtitle')}</p>
           </div>
         </div>
 
@@ -64,8 +66,8 @@ export default function CharacterPage() {
               <div className="w-14 h-14 rounded-full bg-ember-100 flex items-center justify-center text-2xl group-hover:scale-110 group-hover:rotate-12 transition-transform mb-2">
                 📸
               </div>
-              <p className="font-extrabold text-ember-600 text-sm">创建角色</p>
-              <p className="text-[10px] text-ember-400 font-medium mt-0.5">上传照片</p>
+              <p className="font-extrabold text-ember-600 text-sm">{t('character.createCard')}</p>
+              <p className="text-[10px] text-ember-400 font-medium mt-0.5">{t('character.uploadHint')}</p>
             </Link>
 
             {characters.map((char) => (
@@ -74,7 +76,7 @@ export default function CharacterPage() {
                   <div className="relative flex-1 bg-forest-50">
                     <Image
                       src={char.cartoonImage}
-                      alt={char.name || 'Character'}
+                      alt={char.name || t('character.unnamed')}
                       fill className="object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2.5">
@@ -82,18 +84,18 @@ export default function CharacterPage() {
                         href={`/story/create?characterId=${char.id}`}
                         className="w-full bg-white/90 hover:bg-white text-forest-700 text-[10px] font-bold py-1.5 rounded-full text-center"
                       >
-                        📖 创作故事
+                        {t('character.createStoryHover')}
                       </Link>
                     </div>
                   </div>
                   <div className="p-2.5 bg-white text-center">
-                    <p className="font-bold text-forest-700 text-sm truncate">{char.name || '未命名'}</p>
-                    {char.age && <p className="text-[10px] text-ember-500 font-medium">{char.age} 岁</p>}
+                    <p className="font-bold text-forest-700 text-sm truncate">{char.name || t('character.unnamed')}</p>
+                    {char.age && <p className="text-[10px] text-ember-500 font-medium">{char.age} {t('character.yearsOld')}</p>}
                     {char.voiceName && <p className="text-[10px] text-gray-400">🎙️ {char.voiceName}</p>}
                   </div>
                 </div>
                 <button
-                  onClick={() => setDeleteTarget({ id: char.id, name: char.name || '未命名' })}
+                  onClick={() => setDeleteTarget({ id: char.id, name: char.name || t('character.unnamed') })}
                   className="absolute top-2 right-2 bg-red-500/80 hover:bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-sm"
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -108,17 +110,17 @@ export default function CharacterPage() {
         {!loading && characters.length === 0 && (
           <div className="text-center py-16 mt-4">
             <div className="text-5xl mb-4">🌟</div>
-            <p className="font-bold text-forest-700 mb-1">还没有角色</p>
-            <p className="text-sm text-gray-400 mb-5">点击上方卡片创建你的第一个角色！</p>
+            <p className="font-bold text-forest-700 mb-1">{t('character.emptyState')}</p>
+            <p className="text-sm text-gray-400 mb-5">{t('character.emptyHelp')}</p>
           </div>
         )}
       </div>
 
       <ConfirmDialog
         open={!!deleteTarget}
-        title="删除角色？"
-        message={`确定要删除「${deleteTarget?.name}」吗？`}
-        confirmLabel="删除"
+        title={t('character.deleteTitle')}
+        message={t('character.deleteMessage', { name: deleteTarget?.name ?? '' })}
+        confirmLabel={t('character.deleteConfirm')}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
