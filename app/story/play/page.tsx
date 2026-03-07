@@ -94,7 +94,7 @@ function parseSceneLines(rawText: string): StoryLine[] {
   if (!normalized) return []
 
   const withSpeakerBreaks = normalized.replace(
-    /([.!?])\s+([A-Za-z][A-Za-z0-9' -]{0,24}(?::|[""]))/g,
+    /([.!?])\s+([A-Za-z][A-Za-z0-9' -]{0,24}(?::|["\u201C]))/g,
     '$1\n$2'
   )
 
@@ -106,7 +106,7 @@ function parseSceneLines(rawText: string): StoryLine[] {
   const lines: StoryLine[] = []
   for (const block of blocks) {
     const match = block.match(/^([A-Za-z][A-Za-z0-9' -]{0,24}):\s*([\s\S]+)$/)
-    const quoteMatch = block.match(/^([A-Za-z][A-Za-z0-9' -]{0,24})\s*[""]\s*([\s\S]+)$/)
+    const quoteMatch = block.match(/^([A-Za-z][A-Za-z0-9' -]{0,24})\s*["\u201C]\s*([\s\S]+)$/)
 
     if (!match && !quoteMatch) {
       lines.push(...splitNarrationIntoReadableLines(block))
@@ -115,7 +115,7 @@ function parseSceneLines(rawText: string): StoryLine[] {
 
     const speaker = (match?.[1] ?? quoteMatch?.[1] ?? '').trim()
     let text = (match?.[2] ?? quoteMatch?.[2] ?? '').replace(/\s+/g, ' ').trim()
-    text = text.replace(/[""]$/, '').trim()
+    text = text.replace(/["\u201D]$/, '').trim()
     if (!text) continue
 
     if (speaker.toLowerCase() === 'narrator') {
@@ -506,10 +506,10 @@ function PlayStoryContent() {
     } catch (error) {
       shouldContinueNarrationRef.current = false
       console.error('Audio play failed:', error)
-      setAudioError('Tap play again to allow audio on this device.')
-      showToast('Tap play again to allow audio on this device.', 'error')
+      setAudioError(t('storyPlay.audioPlayError'))
+      showToast(t('storyPlay.audioPlayError'), 'error')
     }
-  }, [isPlaying])
+  }, [isPlaying, t])
 
   const seekAudio = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     if (!audioRef.current) return
@@ -620,7 +620,7 @@ function PlayStoryContent() {
         error?: string
       } | null
       if (!response.ok || !data?.audioUrl) {
-        showToast(data?.error || 'Could not generate audio right now. Please try again.', 'error')
+        showToast(data?.error || t('storyPlay.audioGenError'), 'error')
         return
       }
 
@@ -645,7 +645,7 @@ function PlayStoryContent() {
       showToast(t('storyPlay.narrationReady'), 'success')
     } catch (error) {
       console.error('Audio regeneration failed:', error)
-      showToast('Could not generate audio right now. Please try again.', 'error')
+      showToast(t('storyPlay.audioGenError'), 'error')
     } finally {
       setIsRegeneratingAudio(false)
     }
@@ -930,7 +930,7 @@ function PlayStoryContent() {
                   <button
                     onClick={prevScene}
                     disabled={currentScene === 0}
-                    aria-label="Previous page"
+                    aria-label={t('storyPlay.ariaPrevPage')}
                     className={`absolute left-0 top-0 h-full w-1/4 transition-opacity ${
                       currentScene === 0
                         ? 'cursor-not-allowed'
@@ -1067,7 +1067,7 @@ function PlayStoryContent() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={togglePlay}
-                        aria-label={isPlaying ? 'Pause' : 'Listen'}
+                        aria-label={isPlaying ? t('storyPlay.ariaPause') : t('storyPlay.ariaListen')}
                         disabled={(!isAudioReady && !audioError) || !currentAudioSource}
                         className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md text-white ${
                           (!isAudioReady && !audioError) || !currentAudioSource
@@ -1154,7 +1154,7 @@ function PlayStoryContent() {
                     <button
                       onClick={handleRegenerateAudio}
                       disabled={isRegeneratingAudio}
-                      aria-label="Regenerate audio narration"
+                      aria-label={t('storyPlay.ariaRegenAudio')}
                       className={`h-11 px-4 rounded-full inline-flex items-center gap-2 text-sm font-bold transition-all duration-200 border-2 shadow-md ${
                         isRegeneratingAudio
                           ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'

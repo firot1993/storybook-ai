@@ -186,7 +186,7 @@ function CreateStoryWizard() {
   }
 
   const handleCreateNewBook = async () => {
-    if (!newBookName.trim()) { showToast(t('storyCreate.errors.noBook'), 'error'); return }
+    if (!newBookName.trim()) { showToast(t('storyCreate.errors.noBookName'), 'error'); return }
     if (!newProtagonistId) { showToast(t('storyCreate.errors.noProtagonist'), 'error'); return }
     setSavingBook(true)
     try {
