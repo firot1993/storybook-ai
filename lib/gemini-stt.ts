@@ -1,4 +1,8 @@
 import { GoogleGenAI } from '@google/genai'
+import {
+  DEFAULT_TRANSCRIBE_AUDIO_HINT,
+  buildExtractCharacterInfoPrompt,
+} from './ai-prompts'
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' })
 // Gemini 2.0 Flash supports inline audio for transcription
@@ -22,7 +26,7 @@ export class GeminiSttError extends Error {
 export async function transcribeAudio(
   audioBase64: string,
   mimeType: string,
-  hint = 'Transcribe the spoken content accurately. Return only the transcribed text, nothing else.'
+  hint = DEFAULT_TRANSCRIBE_AUDIO_HINT
 ): Promise<string> {
   if (!process.env.GEMINI_API_KEY) {
     throw new GeminiSttError(503, 'GEMINI_API_KEY is not configured.')
@@ -68,12 +72,7 @@ export async function extractCharacterInfo(
 ): Promise<{ name?: string; description?: string }> {
   if (!process.env.GEMINI_API_KEY) return { description: transcript }
 
-  const prompt = `From this voice input, extract the character's name and description.
-
-Voice input: "${transcript}"
-
-Return ONLY valid JSON with no markdown:
-{"name": "name or null", "description": "description or null"}`
+  const prompt = buildExtractCharacterInfoPrompt(transcript)
 
   try {
     const response = await genAI.models.generateContent({

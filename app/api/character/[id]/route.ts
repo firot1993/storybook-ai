@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCharacter, updateCharacter, deleteCharacter } from '@/lib/db'
 import { assignCharacterVoice } from '@/lib/gemini'
+import { normalizeLocale } from '@/lib/i18n/shared'
 
 export async function GET(
   _request: NextRequest,
@@ -22,6 +23,7 @@ export async function PATCH(
   const body = await request.json()
 
   if (body.action === 'assignVoice') {
+    const locale = normalizeLocale(body.locale)
     const character = await getCharacter(id)
     if (!character) {
       return NextResponse.json({ error: 'Character not found' }, { status: 404 })
@@ -31,7 +33,8 @@ export async function PATCH(
         character.name,
         character.age,
         character.style,
-        character.voiceName || undefined  // exclude current voice so re-assign picks a different one
+        character.voiceName || undefined,  // exclude current voice so re-assign picks a different one
+        locale
       )
       const updated = await updateCharacter(id, { voiceName })
       return NextResponse.json({ character: updated, voiceName, reason })

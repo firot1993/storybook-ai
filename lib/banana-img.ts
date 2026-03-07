@@ -1,5 +1,15 @@
 import sharp from 'sharp'
 import { generateStoryImage } from './gemini'
+import {
+  CHARACTER_CARTOON_NEGATIVE_PROMPT,
+  COMPANION_CARTOON_NEGATIVE_PROMPT,
+  DEFAULT_IMAGE_NEGATIVE_PROMPT,
+  SCENE_ILLUSTRATION_NEGATIVE_PROMPT,
+  buildCharacterNamesReference,
+  buildCharacterCartoonPrompt,
+  buildCompanionCharacterCartoonPrompt,
+  buildSceneIllustrationPrompt,
+} from './ai-prompts'
 
 const BANANA_API_URL = process.env.BANANA_API_URL || 'https://api.banana.dev'
 const BANANA_API_KEY = process.env.BANANA_API_KEY || ''
@@ -162,7 +172,7 @@ export async function generateImageFromPrompt(
   const {
     width = 768,
     height = 768,
-    negativePrompt = 'text, watermark, signature, blurry, low quality, ugly, scary, realistic, photo',
+    negativePrompt = DEFAULT_IMAGE_NEGATIVE_PROMPT,
     steps = 20,
     guidanceScale = 7.5,
     referenceImageBase64,
@@ -193,7 +203,7 @@ export async function generateImageFromPrompt(
     const refs = geminiRefs.length > 0 ? geminiRefs : [referenceImageBase64 as string]
     const result = await generateStoryImage(
       prompt,
-      characterNames ? `Characters: ${characterNames.join(', ')}` : '',
+      characterNames ? buildCharacterNamesReference(characterNames) : '',
       refs,
       characterNames
     )
@@ -218,23 +228,12 @@ export async function generateCharacterCartoon(
   style = 'cute cartoon character',
   photoBase64?: string
 ): Promise<{ data: string; mimeType: 'image/jpeg' }> {
-  const prompt = photoBase64
-    ? `Character reconstruction: extract the core facial features and hairstyle from this photo, ` +
-      `then rebuild the character in hand-drawn children's picture-book style. ` +
-      `Style: ${style}. ${description ? `Character details: ${description}.` : ''} ` +
-      `Emphasize hand-drawn texture with flat-style shadow lighting. ` +
-      `Maintain the person's distinguishing facial features with gentle anime/picture-book stylization. ` +
-      `Warm, breathable artistic atmosphere. Upper-body portrait, centered, clean simple background, friendly expression.`
-    : `Children's picture-book illustration: ${description}. ` +
-      `Style: ${style}. Hand-drawn texture, flat-style shadows, warm and breathable artistic feel, ` +
-      `upper-body portrait, centered, clean simple background, friendly expression.`
-
-  const neg = 'realistic, photographic, scary, dark, adult content, text, watermark, blurry, 3D render'
+  const prompt = buildCharacterCartoonPrompt(description, style, Boolean(photoBase64))
 
   return generateImageFromPrompt(prompt, {
     width: 768,
     height: 768,
-    negativePrompt: neg,
+    negativePrompt: CHARACTER_CARTOON_NEGATIVE_PROMPT,
     referenceImageBase64: photoBase64,
   })
 }
@@ -251,26 +250,12 @@ export async function generateCompanionCharacterCartoon(
   description: string,
   style = 'cute cartoon character'
 ): Promise<{ data: string; mimeType: 'image/jpeg' }> {
-  const safeName = (name || '').trim().slice(0, 40) || 'Companion'
-  const safeDescription = (description || '').trim().slice(0, 200) || 'friendly magical companion'
-
-  const prompt =
-    `Children's picture-book companion character design. ` +
-    `Character name: ${safeName}. Character traits: ${safeDescription}. ` +
-    `Style: ${style}. ` +
-    `Character type should match the name semantics: if the name/description suggests a child/person, draw a human child; ` +
-    `if it suggests animal/spirit/object/fantasy creature, draw a non-human companion. ` +
-    `Do not force a fixed species when the name already implies one. ` +
-    `Cute, warm, friendly, storybook look. ` +
-    `Centered portrait, clean simple background, clear silhouette, no text.`
-
-  const neg =
-    'photo, realistic photography, live action, scary, dark, horror, text, watermark'
+  const prompt = buildCompanionCharacterCartoonPrompt(name, description, style)
 
   return generateImageFromPrompt(prompt, {
     width: 768,
     height: 768,
-    negativePrompt: neg,
+    negativePrompt: COMPANION_CARTOON_NEGATIVE_PROMPT,
   })
 }
 
@@ -282,14 +267,14 @@ export async function generateSceneIllustration(
   characterImagesBase64: string[],
   characterNames: string[]
 ): Promise<{ data: string; mimeType: 'image/jpeg' }> {
-  const fullPrompt = `Children's picture book illustration, ages 4-8: ${imagePrompt}. Style: Bright happy colors, round friendly shapes, simple background, cozy and warm. No text in image.`
+  const fullPrompt = buildSceneIllustrationPrompt(imagePrompt)
   const referenceImages = await normalizeReferenceImages(characterImagesBase64)
   const bananaReferenceSheet = await buildReferenceSheetForBanana(referenceImages)
 
   return generateImageFromPrompt(fullPrompt, {
     width: 1280,
     height: 720,
-    negativePrompt: 'text, letters, words, watermark, scary, realistic, photo',
+    negativePrompt: SCENE_ILLUSTRATION_NEGATIVE_PROMPT,
     referenceImageBase64: bananaReferenceSheet,
     referenceImagesBase64: referenceImages,
     characterNames,

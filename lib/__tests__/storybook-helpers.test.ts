@@ -10,21 +10,21 @@ import { resolveStorybookStyle } from '../storybook-helpers'
 describe('resolveStorybookStyle', () => {
   it('returns the description for a valid styleId', () => {
     const result = resolveStorybookStyle({ styleId: 'ghibli' })
-    expect(result).toBe('宫崎骏手绘动画风格，温暖自然色调')
+    expect(result).toBe('hand-drawn anime, warm natural palette, gentle sunlit atmosphere')
   })
 
   it('returns the description for watercolor style', () => {
     const result = resolveStorybookStyle({ styleId: 'watercolor' })
-    expect(result).toBe('蜡笔水彩混合，柔和马卡龙色调，梦幻感')
+    expect(result).toBe('soft crayon and watercolor blend, muted pastel palette, dreamy mood')
   })
 
   it('returns default description for unknown styleId', () => {
     const result = resolveStorybookStyle({ styleId: 'nonexistent' })
-    expect(result).toBe('梦幻水彩、马卡龙色调、星光熠熠的氛围')
+    expect(result).toBe('dreamlike watercolor, macaron palette, sparkling starlit atmosphere')
   })
 
   it('returns default description for empty styleId', () => {
     const result = resolveStorybookStyle({ styleId: '' })
-    expect(result).toBe('梦幻水彩、马卡龙色调、星光熠熠的氛围')
+    expect(result).toBe('dreamlike watercolor, macaron palette, sparkling starlit atmosphere')
   })
 })

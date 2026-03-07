@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStorybook } from '@/lib/db'
 import { generateSynopsisVersions } from '@/lib/gemini'
+import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters } from '@/lib/storybook-helpers'
 import type { SynopsisOption } from '@/types'
 
@@ -9,7 +10,8 @@ import type { SynopsisOption } from '@/types'
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   try {
-    const { storyName, backgroundKeywords, ageRange } = await request.json()
+    const { storyName, backgroundKeywords, ageRange, locale: localeRaw } = await request.json()
+    const locale = normalizeLocale(localeRaw)
 
     if (!backgroundKeywords?.trim()) {
       return NextResponse.json({ error: '请输入背景关键词' }, { status: 400 })
@@ -18,7 +20,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const storybook = await getStorybook(id)
     if (!storybook) return NextResponse.json({ error: 'Storybook not found' }, { status: 404 })
 
-    const { protagonistName, supportingName } = await resolveStorybookCharacters(storybook)
+    const { protagonistName, supportingName } = await resolveStorybookCharacters(storybook, locale)
 
     const versions = await generateSynopsisVersions({
       storyName: storyName?.trim() || storybook.name,
@@ -26,12 +28,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       supportingName,
       backgroundKeywords: backgroundKeywords.trim(),
       ageRange: ageRange || storybook.ageRange,
+      locale,
     })
 
+    const labels = locale === 'zh'
+      ? { A: '感官体验型', B: '情感互动型', C: '勇气冒险型' }
+      : { A: 'Sensory Wonder', B: 'Heartfelt Bond', C: 'Brave Adventure' }
+
     const options: SynopsisOption[] = [
-      { version: 'A', label: '感官体验型', title: versions.A.title, content: versions.A.content },
-      { version: 'B', label: '情感互动型', title: versions.B.title, content: versions.B.content },
-      { version: 'C', label: '勇气冒险型', title: versions.C.title, content: versions.C.content },
+      { version: 'A', label: labels.A, title: versions.A.title, content: versions.A.content },
+      { version: 'B', label: labels.B, title: versions.B.title, content: versions.B.content },
+      { version: 'C', label: labels.C, title: versions.C.title, content: versions.C.content },
     ]
 
     return NextResponse.json({ options })

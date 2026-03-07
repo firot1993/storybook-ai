@@ -37,7 +37,7 @@ export default function CreateStoryPage() {
 function CreateStoryWizard() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { t } = useLanguage()
+  const { locale, t } = useLanguage()
 
   // ── Main step ─────────────────────────────────────────────
   const [step, setStep] = useState(0)
@@ -166,7 +166,11 @@ function CreateStoryWizard() {
       const res = await fetch('/api/companions/suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ protagonistId, backgroundKeywords: '奇幻冒险' }),
+        body: JSON.stringify({
+          protagonistId,
+          backgroundKeywords: locale === 'zh' ? '奇幻冒险' : 'fantasy adventure',
+          locale,
+        }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -177,7 +181,7 @@ function CreateStoryWizard() {
     } finally {
       setLoadingCompanions(false)
     }
-  }, [])
+  }, [locale])
 
   const toggleCompanion = (name: string) => {
     setSelectedCompanionNames((prev) =>
@@ -268,10 +272,14 @@ function CreateStoryWizard() {
             const form = new FormData()
             form.append('audio', blob, 'recording.webm')
             form.append('hint', t('storyCreate.sttHint'))
+            form.append('locale', locale)
             const res = await fetch('/api/voice/transcribe', { method: 'POST', body: form })
             if (res.ok) {
               const data = await res.json()
-              if (data.transcript) setKeywords((prev) => prev ? `${prev}，${data.transcript}` : data.transcript)
+              if (data.transcript) {
+                const separator = locale === 'zh' ? '，' : ', '
+                setKeywords((prev) => prev ? `${prev}${separator}${data.transcript}` : data.transcript)
+              }
             }
           } catch {
             showToast(t('storyCreate.errors.voiceFailed'), 'error')
@@ -299,6 +307,7 @@ function CreateStoryWizard() {
         body: JSON.stringify({
           backgroundKeywords: keywords.trim(),
           ageRange: episodeAge,
+          locale,
         }),
       })
       if (!res.ok) throw new Error()
@@ -328,6 +337,7 @@ function CreateStoryWizard() {
           selectedSynopsis: synopsis.content,
           synopsisVersion: synopsis.version,
           ageRange: episodeAge,
+          locale,
         }),
       })
       if (!res.ok) throw new Error()
@@ -374,6 +384,7 @@ function CreateStoryWizard() {
           storyId: generatedStoryId,
           minLength,
           maxLength,
+          locale,
         }),
       })
       if (!scriptRes.ok) throw new Error('Script generation failed')
@@ -393,7 +404,7 @@ function CreateStoryWizard() {
       showToast(t('storyCreate.errors.videoFailed'), 'error')
       setStartingVideo(false)
     }
-  }, [generatedStoryId, router, startingVideo, videoSceneRange, t])
+  }, [generatedStoryId, locale, router, startingVideo, videoSceneRange, t])
 
   // ── Render ────────────────────────────────────────────────
 
