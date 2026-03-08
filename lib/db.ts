@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { prisma } from './prisma'
 import { decodeStoryAudioPayload, encodeStoryAudioPayload } from './story-audio'
 
@@ -17,7 +18,7 @@ export async function createCharacter(data: {
       name: data.name ?? '',
       originalImage: data.originalImage ?? '',
       cartoonImage: data.cartoonImage,
-      styleImages: JSON.stringify(data.styleImages ?? {}),
+      styleImages: data.styleImages ?? {},
       style: data.style ?? '',
       age: data.age ?? null,
       voiceName: data.voiceName ?? '',
@@ -45,18 +46,14 @@ async function listSupportingCharacterIds(): Promise<string[]> {
   const ids = new Set<string>()
 
   for (const book of books) {
-    try {
-      const parsed = JSON.parse(book.characters) as unknown
-      if (!Array.isArray(parsed)) continue
-      for (const entry of parsed) {
-        if (!entry || typeof entry !== 'object') continue
-        const character = entry as StorybookCharacterLite
-        if (character.role !== 'supporting') continue
-        const id = typeof character.id === 'string' ? character.id.trim() : ''
-        if (id) ids.add(id)
-      }
-    } catch {
-      // ignore malformed storybook characters payload
+    const parsed = book.characters as unknown
+    if (!Array.isArray(parsed)) continue
+    for (const entry of parsed) {
+      if (!entry || typeof entry !== 'object') continue
+      const character = entry as StorybookCharacterLite
+      if (character.role !== 'supporting') continue
+      const id = typeof character.id === 'string' ? character.id.trim() : ''
+      if (id) ids.add(id)
     }
   }
 
@@ -84,9 +81,7 @@ export async function listCharacters(options?: { includeNpc?: boolean }) {
 
   return rows.map((r) => ({
     ...r,
-    styleImages: typeof r.styleImages === 'string'
-      ? JSON.parse(r.styleImages) as Record<string, string>
-      : r.styleImages,
+    styleImages: r.styleImages as Record<string, string>,
   }))
 }
 
@@ -95,9 +90,7 @@ export async function getCharacter(id: string) {
   if (!row) return null
   return {
     ...row,
-    styleImages: typeof row.styleImages === 'string'
-      ? JSON.parse(row.styleImages) as Record<string, string>
-      : row.styleImages,
+    styleImages: row.styleImages as Record<string, string>,
   }
 }
 
@@ -118,7 +111,7 @@ export async function createStorybook(data: {
       name: data.name,
       ageRange: data.ageRange,
       styleId: data.styleId,
-      characters: JSON.stringify(data.characters),
+      characters: data.characters as unknown as import('@prisma/client').Prisma.InputJsonValue,
     },
   })
 }
@@ -130,7 +123,7 @@ export async function listStorybooks() {
   })
   return books.map((b: (typeof books)[number]) => ({
     ...b,
-    characters: JSON.parse(b.characters) as import('@/types').StorybookCharacter[],
+    characters: b.characters as unknown as import('@/types').StorybookCharacter[],
   }))
 }
 
@@ -142,11 +135,11 @@ export async function getStorybook(id: string) {
   if (!b) return null
   return {
     ...b,
-    characters: JSON.parse(b.characters) as import('@/types').StorybookCharacter[],
+    characters: b.characters as unknown as import('@/types').StorybookCharacter[],
     chapters: b.chapters.map((s: (typeof b.chapters)[number]) => ({
       ...s,
-      characterIds: JSON.parse(s.characterIds) as string[],
-      images: JSON.parse(s.images) as string[],
+      characterIds: s.characterIds as unknown as string[],
+      images: s.images as unknown as string[],
     })),
   }
 }
@@ -161,7 +154,7 @@ export async function updateStorybook(
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.ageRange !== undefined ? { ageRange: data.ageRange } : {}),
       ...(data.styleId !== undefined ? { styleId: data.styleId } : {}),
-      ...(data.characters !== undefined ? { characters: JSON.stringify(data.characters) } : {}),
+      ...(data.characters !== undefined ? { characters: data.characters as unknown as import('@prisma/client').Prisma.InputJsonValue } : {}),
     },
   })
 }
@@ -184,13 +177,13 @@ export async function createStory(data: {
   return prisma.story.create({
     data: {
       ...(data.storybookId ? { storybookId: data.storybookId } : {}),
-      characterIds: JSON.stringify(data.characterIds),
+      characterIds: data.characterIds,
       title: data.title,
       synopsis: data.synopsis ?? '',
       content: data.content,
       mainImage: data.mainImage ?? '',
       status: data.status ?? 'draft',
-      images: JSON.stringify(data.images),
+      images: data.images,
       audioUrl: encodeStoryAudioPayload({
         audioUrl: data.audioUrl ?? '',
         sceneAudioUrls: data.sceneAudioUrls ?? [],
@@ -219,7 +212,7 @@ export async function updateStory(
       ...(data.content !== undefined ? { content: data.content } : {}),
       ...(data.mainImage !== undefined ? { mainImage: data.mainImage } : {}),
       ...(data.status !== undefined ? { status: data.status } : {}),
-      ...(data.images !== undefined ? { images: JSON.stringify(data.images) } : {}),
+      ...(data.images !== undefined ? { images: data.images } : {}),
     },
   })
 }
@@ -230,8 +223,8 @@ export async function getStory(id: string) {
   const decodedAudio = decodeStoryAudioPayload(story.audioUrl)
   return {
     ...story,
-    characterIds: JSON.parse(story.characterIds) as string[],
-    images: JSON.parse(story.images) as string[],
+    characterIds: story.characterIds as unknown as string[],
+    images: story.images as unknown as string[],
     audioUrl: decodedAudio.audioUrl,
     sceneAudioUrls: decodedAudio.sceneAudioUrls,
   }
@@ -306,7 +299,7 @@ export async function createScript(data: {
   return prisma.script.create({
     data: {
       storyId: data.storyId,
-      scenesJson: JSON.stringify(data.scenes),
+      scenesJson: data.scenes as unknown as import('@prisma/client').Prisma.InputJsonValue,
       totalDuration: data.totalDuration,
     },
   })
@@ -315,7 +308,7 @@ export async function createScript(data: {
 export async function getScript(id: string) {
   const s = await prisma.script.findUnique({ where: { id } })
   if (!s) return null
-  return { ...s, scenes: JSON.parse(s.scenesJson) as import('@/types').ScriptScene[] }
+  return { ...s, scenes: s.scenesJson as unknown as import('@/types').ScriptScene[] }
 }
 
 // ── VideoProject ────────────────────────────────────────────
@@ -329,7 +322,7 @@ export async function createVideoProject(data: {
     data: {
       storyId: data.storyId,
       scriptId: data.scriptId,
-      videoSettings: JSON.stringify(data.videoSettings ?? {}),
+      videoSettings: (data.videoSettings ?? {}) as Prisma.InputJsonValue,
     },
   })
 }
@@ -351,9 +344,9 @@ export async function updateVideoProject(
     data: {
       ...(data.status !== undefined ? { status: data.status } : {}),
       ...(data.progress !== undefined ? { progress: data.progress } : {}),
-      ...(data.sceneVideoUrls ? { sceneVideoUrls: JSON.stringify(data.sceneVideoUrls) } : {}),
+      ...(data.sceneVideoUrls ? { sceneVideoUrls: data.sceneVideoUrls } : {}),
       ...(data.rawVideoUrl !== undefined ? { rawVideoUrl: data.rawVideoUrl } : {}),
-      ...(data.subtitles ? { subtitlesJson: JSON.stringify(data.subtitles) } : {}),
+      ...(data.subtitles ? { subtitlesJson: data.subtitles as unknown as import('@prisma/client').Prisma.InputJsonValue } : {}),
       ...(data.finalVideoUrl !== undefined ? { finalVideoUrl: data.finalVideoUrl } : {}),
       ...(data.errorMessage !== undefined ? { errorMessage: data.errorMessage } : {}),
     },
@@ -368,8 +361,8 @@ export async function getVideoProjectByStoryId(storyId: string) {
   if (!vp) return null
   return {
     ...vp,
-    sceneVideoUrls: JSON.parse(vp.sceneVideoUrls) as string[],
-    subtitles: JSON.parse(vp.subtitlesJson) as import('@/types').SubtitleCue[],
-    videoSettings: JSON.parse(vp.videoSettings) as Record<string, unknown>,
+    sceneVideoUrls: vp.sceneVideoUrls as unknown as string[],
+    subtitles: vp.subtitlesJson as unknown as import('@/types').SubtitleCue[],
+    videoSettings: vp.videoSettings as Record<string, unknown>,
   }
 }
