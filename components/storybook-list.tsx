@@ -43,13 +43,17 @@ export default function StorybookList({
           : null
         const styleConfig = STYLES.find((s) => s.id === book.styleId)
         const isExpanded = expandedId === book.id
+        const panelId = `storybook-panel-${book.id}`
         const chapters = book.chapters ?? []
         const chapterCount = chapters.length
 
         return (
           <div key={book.id} className="card p-0 overflow-hidden transition-all">
             <button
+              type="button"
               onClick={() => onToggle(book.id)}
+              aria-expanded={isExpanded}
+              aria-controls={panelId}
               className="w-full flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors text-left"
             >
               <div className="relative shrink-0">
@@ -85,9 +89,9 @@ export default function StorybookList({
               </div>
             </button>
 
-            {isExpanded && (
-              <div className="border-t border-gray-100">
-                {chapterCount === 0 ? (
+            <div id={panelId} hidden={!isExpanded} className="border-t border-gray-100">
+              {isExpanded && (
+                chapterCount === 0 ? (
                   <div className="px-4 py-6 text-center">
                     <p className="text-sm text-gray-400 mb-3">{t('storybook.emptyBook')}</p>
                     <Link
@@ -145,9 +149,9 @@ export default function StorybookList({
                       </Link>
                     </div>
                   </div>
-                )}
-              </div>
-            )}
+                )
+              )}
+            </div>
           </div>
         )
       })}

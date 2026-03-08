@@ -102,12 +102,13 @@ export default function NameCharacterPage() {
 
         const stored = localStorage.getItem('currentCharacter')
         if (!stored) {
-          router.push('/character')
+          if (!cancelled) router.push('/character')
           return
         }
         applyCharacter(JSON.parse(stored) as Character)
         if (!cancelled) setHydrated(true)
       } catch (err) {
+        if (cancelled) return
         showToast(err instanceof Error ? err.message : t('characterName.loadFailed'), 'error')
         router.push('/character')
       } finally {
