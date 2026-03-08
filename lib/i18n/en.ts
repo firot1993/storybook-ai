@@ -170,6 +170,7 @@ const en = {
     previousChoicesUnavailable: 'No choices were found in the previous episode.',
     previousChoicesMismatch: 'This previous episode does not belong to the selected storybook.',
     retryPreviousChoices: 'Retry',
+    startWithoutContinuation: 'Start without continuation',
     fixedChoiceHint: 'This episode will continue from your selected choice',
     choiceOnlyPlaceholder: 'Choice-based continuation: keywords are fixed',
     keywordsLabel: 'Background Keywords *',

@@ -125,7 +125,12 @@ export async function createStorybook(data: {
 export async function listStorybooks() {
   const books = await prisma.storybook.findMany({
     orderBy: { createdAt: 'desc' },
-    include: { chapters: { select: { id: true, title: true, synopsis: true, status: true, createdAt: true }, orderBy: { createdAt: 'asc' } } },
+    include: {
+      chapters: {
+        select: { id: true, title: true, synopsis: true, status: true, createdAt: true, content: true },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
   })
   return books.map((b: (typeof books)[number]) => ({
     ...b,

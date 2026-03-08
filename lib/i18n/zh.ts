@@ -170,6 +170,7 @@ const zh = {
     previousChoicesUnavailable: '上一集没有可用的剧情选项。',
     previousChoicesMismatch: '上一集不属于当前故事书，请返回重新选择。',
     retryPreviousChoices: '重试',
+    startWithoutContinuation: '不续写，直接开始本集',
     fixedChoiceHint: '本集将基于你已选择的剧情选项继续',
     choiceOnlyPlaceholder: '续写模式：关键词已固定',
     keywordsLabel: '背景关键词 *',

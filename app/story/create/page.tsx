@@ -8,7 +8,7 @@ import { Character, Story, Storybook, StorybookCharacter, SynopsisOption, Compan
 import { STYLES } from '@/lib/styles'
 import { showToast } from '@/components/toast'
 import { useLanguage } from '@/lib/i18n'
-import { extractStoryChoices } from '@/lib/story-scenes'
+import { normalizeStoryChoices } from '@/lib/story-scenes'
 
 const AGE_OPTION_VALUES = ['2-4', '4-6', '6-8'] as const
 const AGE_OPTION_EMOJIS: Record<string, string> = { '2-4': '🍼', '4-6': '⭐', '6-8': '🚀' }
@@ -26,6 +26,16 @@ const VIDEO_SCENE_RANGE_OPTIONS = [
 ] as const
 type VideoSceneRangeOptionId = (typeof VIDEO_SCENE_RANGE_OPTIONS)[number]['id']
 type PreviousChoicesStatus = 'idle' | 'available' | 'unavailable' | 'load_failed' | 'mismatch'
+
+async function getApiErrorMessage(res: Response): Promise<string | null> {
+  try {
+    const data = await res.json() as { error?: unknown }
+    if (typeof data.error === 'string' && data.error.trim()) return data.error.trim()
+  } catch {
+    // ignore invalid JSON payloads
+  }
+  return null
+}
 
 
 export default function CreateStoryPage() {
@@ -93,6 +103,15 @@ function CreateStoryWizard() {
   const [discoveredNpcs, setDiscoveredNpcs] = useState<Array<{ name: string; description?: string; image?: string }>>([])
   const [startingVideo, setStartingVideo] = useState(false)
   const [videoSceneRange, setVideoSceneRange] = useState<VideoSceneRangeOptionId>('15-18')
+  const clearContinuationParams = useCallback((nextStep?: number) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('fromStoryId')
+    params.delete('choice')
+    params.delete('hint')
+    const query = params.toString()
+    router.replace(query ? `/story/create?${query}` : '/story/create')
+    if (typeof nextStep === 'number') setStep(nextStep)
+  }, [router, searchParams])
 
   // ── Initial data load ────────────────────────────────────
   useEffect(() => {
@@ -180,9 +199,7 @@ function CreateStoryWizard() {
           return
         }
         const content = typeof data.story?.content === 'string' ? data.story.content : ''
-        const choices = extractStoryChoices(content)
-          .map((choice) => choice.trim())
-          .filter(Boolean)
+        const choices = normalizeStoryChoices(content)
         if (!cancelled) {
           setPreviousEpisodeChoices(choices)
           if (choices.length === 0) {
@@ -404,11 +421,15 @@ function CreateStoryWizard() {
           ...(previousStoryId ? { fromStoryId: previousStoryId } : {}),
         }),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const message = await getApiErrorMessage(res)
+        throw new Error(message || t('storyCreate.errors.synopsisFailed'))
+      }
       const data = await res.json()
       setSynopsisOptions(data.options ?? [])
-    } catch {
-      showToast(t('storyCreate.errors.synopsisFailed'), 'error')
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : t('storyCreate.errors.synopsisFailed')
+      showToast(message, 'error')
     } finally {
       setGeneratingSynopsis(false)
     }
@@ -444,7 +465,10 @@ function CreateStoryWizard() {
           ...(previousStoryId ? { fromStoryId: previousStoryId } : {}),
         }),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const message = await getApiErrorMessage(res)
+        throw new Error(message || t('storyCreate.errors.storyFailed'))
+      }
       const data = await res.json()
       setGeneratedStoryId(data.story.id)
       setGeneratedTitle(data.story.title)
@@ -461,8 +485,9 @@ function CreateStoryWizard() {
             : { ...b, chapters: [...(b.chapters ?? []), data.story as Story] }
         )
       )
-    } catch {
-      showToast(t('storyCreate.errors.storyFailed'), 'error')
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : t('storyCreate.errors.storyFailed')
+      showToast(message, 'error')
       setStep(1)
     } finally {
       setGeneratingStory(false)
@@ -628,9 +653,18 @@ function CreateStoryWizard() {
                   <p className="font-extrabold text-forest-800 text-sm truncate">{currentBook.name}</p>
                   <p className="text-[10px] text-gray-400">{STYLES.find(s => s.id === currentBook.styleId)?.emoji} {t(`styles.${currentBook.styleId}.label`)} · {currentBook.ageRange}{t('storyCreate.ageYearsUnit')}</p>
                 </div>
-                {!previousStoryId && (
-                  <button onClick={() => setStep(0)} className="ml-auto text-xs text-forest-500 font-bold hover:text-forest-700 shrink-0">{t('storyCreate.switchBook')}</button>
-                )}
+                <button
+                  onClick={() => {
+                    if (previousStoryId) {
+                      clearContinuationParams(0)
+                      return
+                    }
+                    setStep(0)
+                  }}
+                  className="ml-auto text-xs text-forest-500 font-bold hover:text-forest-700 shrink-0"
+                >
+                  {t('storyCreate.switchBook')}
+                </button>
               </div>
             )}
 
@@ -665,6 +699,15 @@ function CreateStoryWizard() {
                               className="text-[11px] font-extrabold text-red-700 hover:text-red-800 underline shrink-0"
                             >
                               {t('storyCreate.retryPreviousChoices')}
+                            </button>
+                          )}
+                          {!canRetryPreviousChoices && (
+                            <button
+                              type="button"
+                              onClick={() => clearContinuationParams()}
+                              className="text-[11px] font-extrabold text-red-700 hover:text-red-800 underline shrink-0"
+                            >
+                              {t('storyCreate.startWithoutContinuation')}
                             </button>
                           )}
                         </div>

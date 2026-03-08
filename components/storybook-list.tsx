@@ -5,8 +5,9 @@ import type { Character, Story, Storybook } from '@/types'
 import { STYLES } from '@/lib/styles'
 import { CharacterAvatar } from '@/components/character-avatar'
 import { useLanguage } from '@/lib/i18n'
+import { normalizeStoryChoices } from '@/lib/story-scenes'
 
-export type StorybookChapterItem = Pick<Story, 'id' | 'title' | 'synopsis' | 'status' | 'createdAt'>
+export type StorybookChapterItem = Pick<Story, 'id' | 'title' | 'synopsis' | 'status' | 'createdAt' | 'content'>
 export type StorybookListItem = Pick<Storybook, 'id' | 'name' | 'ageRange' | 'styleId' | 'characters'> & {
   chapters?: StorybookChapterItem[]
 }
@@ -46,11 +47,13 @@ export default function StorybookList({
         const panelId = `storybook-panel-${book.id}`
         const chapters = book.chapters ?? []
         const chapterCount = chapters.length
-        const latestChapterId = chapters[chapterCount - 1]?.id
+        const latestChapter = chapters[chapterCount - 1]
+        const latestChapterId = latestChapter?.id
+        const latestChapterHasChoices = normalizeStoryChoices(latestChapter?.content ?? '').length > 0
         const [createPath, createSearch = ''] = createHref.split('?', 2)
         const continueParams = new URLSearchParams(createSearch)
         continueParams.set('bookId', book.id)
-        if (latestChapterId) {
+        if (latestChapterId && latestChapterHasChoices) {
           continueParams.set('fromStoryId', latestChapterId)
         } else {
           continueParams.delete('fromStoryId')

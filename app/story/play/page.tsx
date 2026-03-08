@@ -665,21 +665,26 @@ function PlayStoryContent() {
     [storyChoices, t]
   )
   const endingChoiceLinks = useMemo(() => {
+    const hasStoryChoices = storyChoices.length > 0
     const baseParams = new URLSearchParams()
     if (story?.storybookId) baseParams.set('bookId', story.storybookId)
-    if (story?.id) baseParams.set('fromStoryId', story.id)
+    if (hasStoryChoices && story?.id) baseParams.set('fromStoryId', story.id)
     const baseQuery = baseParams.toString()
 
     return endingChoices.map((choice, index) => {
       const params = new URLSearchParams(baseQuery)
-      params.set('choice', choice)
+      if (hasStoryChoices) {
+        params.set('choice', choice)
+      } else {
+        params.set('hint', choice)
+      }
       return {
         key: `${index}-${choice}`,
         choice,
         href: `/story/create?${params.toString()}`,
       }
     })
-  }, [endingChoices, story?.id, story?.storybookId])
+  }, [endingChoices, storyChoices, story?.id, story?.storybookId])
 
   const sceneLines = useMemo(() => {
     if (!story) return []
