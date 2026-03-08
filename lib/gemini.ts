@@ -238,6 +238,9 @@ export async function generateSynopsisVersions(params: {
   locale?: Locale
   protagonistPronoun?: string
   protagonistRole?: string
+  previousStoryTitle?: string
+  previousStoryContent?: string
+  previousStoryChoices?: string[]
 }): Promise<{ A: { title: string; content: string }; B: { title: string; content: string }; C: { title: string; content: string } }> {
   const {
     storyName,
@@ -248,6 +251,9 @@ export async function generateSynopsisVersions(params: {
     locale = 'zh',
     protagonistPronoun,
     protagonistRole,
+    previousStoryTitle,
+    previousStoryContent,
+    previousStoryChoices,
   } = params
 
   const prompt = buildSynopsisVersionsPrompt({
@@ -259,6 +265,9 @@ export async function generateSynopsisVersions(params: {
     locale,
     protagonistPronoun,
     protagonistRole,
+    previousStoryTitle,
+    previousStoryContent,
+    previousStoryChoices,
   })
 
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
@@ -341,6 +350,9 @@ export async function generateStoryWithAssets(params: {
   protagonistPronoun?: string
   protagonistRole?: string
   needsSupportingCharacter?: boolean
+  previousStoryTitle?: string
+  previousStoryContent?: string
+  previousStoryChoices?: string[]
 }): Promise<{
   story: string
   choices: string[]
@@ -368,6 +380,9 @@ export async function generateStoryWithAssets(params: {
     protagonistPronoun,
     protagonistRole,
     needsSupportingCharacter,
+    previousStoryTitle,
+    previousStoryContent,
+    previousStoryChoices,
   } = params
 
   const debugTag = '[generateStoryWithAssets]'
@@ -387,6 +402,9 @@ export async function generateStoryWithAssets(params: {
     protagonistPronoun,
     protagonistRole,
     needsSupportingCharacter,
+    previousStoryTitle,
+    previousStoryContent,
+    previousStoryChoices,
   })
 
   console.log(`${debugTag} Start`, {
@@ -397,6 +415,7 @@ export async function generateStoryWithAssets(params: {
     styleLabel,
     hasCharacterImageRef,
     synopsisChars: synopsis.length,
+    hasPreviousStoryContext: Boolean(previousStoryContent),
     promptChars: prompt.length,
   })
 

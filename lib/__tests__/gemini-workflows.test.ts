@@ -72,7 +72,35 @@ describe('gemini workflow prompt composition', () => {
     expect(prompt).toContain('[System Role]')
     expect(prompt).toContain('All title and content values must be written in Simplified Chinese.')
     expect(prompt).toContain('Story title: Moonlight Trip')
+    expect(prompt).not.toContain('[Continuation Context]')
     expect(prompt).not.toMatch(/[\u4e00-\u9fff]/)
+  })
+
+  it('adds continuation context to synopsis prompt when previous episode data is provided', async () => {
+    generateContentMock.mockResolvedValue({
+      text: JSON.stringify({
+        A: { title: 'Moon Path', content: 'A gentle outline.' },
+        B: { title: 'Warm Light', content: 'A friendship outline.' },
+        C: { title: 'Brave Steps', content: 'An adventure outline.' },
+      }),
+    })
+
+    await generateSynopsisVersions({
+      storyName: 'Moonlight Trip',
+      protagonistName: 'Luna',
+      supportingName: 'Milo',
+      backgroundKeywords: 'Follow the lantern',
+      ageRange: '4-6',
+      locale: 'en',
+      previousStoryTitle: 'Lantern in the Woods',
+      previousStoryContent: '[Scene 1] A lantern appeared at dusk.',
+      previousStoryChoices: ['Follow the lantern', 'Hide behind a tree'],
+    })
+
+    const prompt = getPromptTextFromCall()
+    expect(prompt).toContain('[Continuation Context]')
+    expect(prompt).toContain('Previous episode title: Lantern in the Woods')
+    expect(prompt).toContain('Previous end-of-episode choices: Follow the lantern, Hide behind a tree')
   })
 
   it('uses English interleaved section markers and still parses story assets correctly', async () => {
@@ -127,6 +155,7 @@ describe('gemini workflow prompt composition', () => {
     expect(prompt).toContain('[STORY BODY]')
     expect(prompt).toContain('[CHARACTER - <Character Name>]')
     expect(prompt).toContain('[COVER]')
+    expect(prompt).not.toContain('[Continuation Context]')
     expect(prompt).toContain(
       'All story prose, dialogue, NPC descriptions, and choice text must be written in English.'
     )
@@ -141,6 +170,51 @@ describe('gemini workflow prompt composition', () => {
       data: compressedBase64,
       mimeType: 'image/jpeg',
     })
+  })
+
+  it('adds continuation context to story prompt when previous episode data is provided', async () => {
+    generateContentMock.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text:
+                  '[STORY BODY]\n' +
+                  '[Scene 1] A lantern floated toward the river.\n' +
+                  '<!--NPCS:[]-->\n' +
+                  '<!--CHOICES:["Cross the bridge","Follow the river","Call for help"]-->\n',
+              },
+              { text: '[COVER]\n' },
+              {
+                inlineData: {
+                  data: Buffer.from('cover-image').toString('base64'),
+                  mimeType: 'image/png',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })
+
+    await generateStoryWithAssets({
+      storyName: 'Moonlight Trip',
+      protagonistName: 'Luna',
+      supportingName: 'Milo',
+      synopsis: 'Luna follows the lantern to the old bridge.',
+      ageRange: '4-6',
+      styleDesc: 'soft watercolor storybook',
+      locale: 'en',
+      previousStoryTitle: 'Lantern in the Woods',
+      previousStoryContent: '[Scene 1] A lantern appeared at dusk.',
+      previousStoryChoices: ['Follow the lantern', 'Hide behind a tree'],
+    })
+
+    const prompt = getPromptTextFromCall()
+    expect(prompt).toContain('[Continuation Context]')
+    expect(prompt).toContain('Previous episode title: Lantern in the Woods')
+    expect(prompt).toContain('Previous end-of-episode choices: Follow the lantern, Hide behind a tree')
   })
 
   it('composes a director-script prompt with localized text output instructions and English frame prompts', async () => {

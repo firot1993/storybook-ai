@@ -8,6 +8,7 @@ import { Character, Story, Storybook, StorybookCharacter, SynopsisOption, Compan
 import { STYLES } from '@/lib/styles'
 import { showToast } from '@/components/toast'
 import { useLanguage } from '@/lib/i18n'
+import { normalizeStoryChoices } from '@/lib/story-scenes'
 
 const AGE_OPTION_VALUES = ['2-4', '4-6', '6-8'] as const
 const AGE_OPTION_EMOJIS: Record<string, string> = { '2-4': '🍼', '4-6': '⭐', '6-8': '🚀' }
@@ -24,6 +25,17 @@ const VIDEO_SCENE_RANGE_OPTIONS = [
   { id: '15-18', min: 15, max: 18 },
 ] as const
 type VideoSceneRangeOptionId = (typeof VIDEO_SCENE_RANGE_OPTIONS)[number]['id']
+type PreviousChoicesStatus = 'idle' | 'available' | 'unavailable' | 'load_failed' | 'mismatch'
+
+async function getApiErrorMessage(res: Response): Promise<string | null> {
+  try {
+    const data = await res.json() as { error?: unknown }
+    if (typeof data.error === 'string' && data.error.trim()) return data.error.trim()
+  } catch {
+    // ignore invalid JSON payloads
+  }
+  return null
+}
 
 
 export default function CreateStoryPage() {
@@ -38,6 +50,9 @@ function CreateStoryWizard() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { locale, t } = useLanguage()
+  const preselectedBookId = searchParams.get('bookId')?.trim() || ''
+  const previousStoryId = searchParams.get('fromStoryId')?.trim() || ''
+  const selectedChoice = searchParams.get('choice')?.trim() || ''
 
   // ── Main step ─────────────────────────────────────────────
   const [step, setStep] = useState(0)
@@ -62,10 +77,15 @@ function CreateStoryWizard() {
 
   // All characters
   const [allCharacters, setAllCharacters] = useState<Character[]>([])
+  const continuationTargetBookId = preselectedBookId || selectedStorybookId || ''
 
   // ── Step 1 — Episode creation ("灵感种子") ───────────────
   const [keywords, setKeywords] = useState('')
   const [episodeAge, setEpisodeAge] = useState<'2-4' | '4-6' | '6-8'>('4-6')
+  const [previousEpisodeChoices, setPreviousEpisodeChoices] = useState<string[]>([])
+  const [loadingPreviousChoices, setLoadingPreviousChoices] = useState(false)
+  const [previousChoicesStatus, setPreviousChoicesStatus] = useState<PreviousChoicesStatus>('idle')
+  const [previousChoicesReloadTick, setPreviousChoicesReloadTick] = useState(0)
   const [isRecording, setIsRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -83,6 +103,15 @@ function CreateStoryWizard() {
   const [discoveredNpcs, setDiscoveredNpcs] = useState<Array<{ name: string; description?: string; image?: string }>>([])
   const [startingVideo, setStartingVideo] = useState(false)
   const [videoSceneRange, setVideoSceneRange] = useState<VideoSceneRangeOptionId>('15-18')
+  const clearContinuationParams = useCallback((nextStep?: number) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('fromStoryId')
+    params.delete('choice')
+    params.delete('hint')
+    const query = params.toString()
+    router.replace(query ? `/story/create?${query}` : '/story/create')
+    if (typeof nextStep === 'number') setStep(nextStep)
+  }, [router, searchParams])
 
   // ── Initial data load ────────────────────────────────────
   useEffect(() => {
@@ -99,6 +128,10 @@ function CreateStoryWizard() {
           setStorybooks(books)
           if (books.length === 0) {
             setCreatingNew(true)
+          } else if (preselectedBookId && books.some((book) => book.id === preselectedBookId)) {
+            setSelectedStorybookId(preselectedBookId)
+            setCreatingNew(false)
+            setStep(1)
           } else {
             setSelectedStorybookId(books[0].id)
           }
@@ -112,7 +145,7 @@ function CreateStoryWizard() {
       }
     }
     fetchData()
-  }, [])
+  }, [preselectedBookId])
 
   // Sync episodeAge when selecting existing book
   useEffect(() => {
@@ -120,11 +153,76 @@ function CreateStoryWizard() {
     if (book) setEpisodeAge(book.ageRange as '2-4' | '4-6' | '6-8')
   }, [selectedStorybookId, storybooks])
 
-  // Pre-fill keywords from ?hint= query param (e.g. from 命运抉择 choices)
+  // Pre-fill keywords from query params:
+  // - choice: locked continuation choice
+  // - hint: legacy free-form hint (fallback)
   useEffect(() => {
+    if (selectedChoice) {
+      setKeywords(selectedChoice)
+      return
+    }
     const hint = searchParams.get('hint')
-    if (hint) setKeywords(hint)
-  }, [searchParams])
+    if (hint) {
+      setKeywords(hint)
+      return
+    }
+    if (previousStoryId) setKeywords('')
+  }, [searchParams, selectedChoice, previousStoryId])
+
+  // Load previous episode choices when entering from "Continue next episode"
+  useEffect(() => {
+    let cancelled = false
+
+    const loadPreviousChoices = async () => {
+      if (!previousStoryId || selectedChoice) {
+        if (!cancelled) {
+          setPreviousEpisodeChoices([])
+          setPreviousChoicesStatus('idle')
+          setLoadingPreviousChoices(false)
+        }
+        return
+      }
+
+      setLoadingPreviousChoices(true)
+      setPreviousChoicesStatus('idle')
+      setPreviousEpisodeChoices([])
+      try {
+        const res = await fetch(`/api/story/${previousStoryId}`)
+        if (!res.ok) throw new Error()
+        const data = await res.json() as { story?: { content?: string; storybookId?: string } }
+        const sourceStorybookId = typeof data.story?.storybookId === 'string' ? data.story.storybookId : ''
+        if (continuationTargetBookId && sourceStorybookId && sourceStorybookId !== continuationTargetBookId) {
+          if (!cancelled) {
+            setPreviousChoicesStatus('mismatch')
+            showToast(t('storyCreate.previousChoicesMismatch'), 'error')
+          }
+          return
+        }
+        const content = typeof data.story?.content === 'string' ? data.story.content : ''
+        const choices = normalizeStoryChoices(content)
+        if (!cancelled) {
+          setPreviousEpisodeChoices(choices)
+          if (choices.length === 0) {
+            setPreviousChoicesStatus('unavailable')
+          } else {
+            setPreviousChoicesStatus('available')
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setPreviousEpisodeChoices([])
+          setPreviousChoicesStatus('load_failed')
+          showToast(t('storyCreate.previousChoicesLoadFailed'), 'error')
+        }
+      } finally {
+        if (!cancelled) setLoadingPreviousChoices(false)
+      }
+    }
+
+    loadPreviousChoices()
+
+    return () => { cancelled = true }
+  }, [continuationTargetBookId, previousStoryId, previousChoicesReloadTick, selectedChoice, t])
 
   // ── Derived ──────────────────────────────────────────────
   const currentBook = storybooks.find((b) => b.id === selectedStorybookId)
@@ -149,6 +247,17 @@ function CreateStoryWizard() {
   const bookProtagonistImage = bookProtagonist
     ? (bookProtagonist.styleImages?.[currentBook?.styleId ?? ''] ?? bookProtagonist.cartoonImage)
     : null
+  const showPreviousChoices = !!previousStoryId
+  const choiceSelectionRequired = !!previousStoryId && !selectedChoice
+  const lockInspirationInput = !!selectedChoice || choiceSelectionRequired
+  const previousChoicesErrorMessage = previousChoicesStatus === 'load_failed'
+    ? t('storyCreate.previousChoicesLoadFailed')
+    : previousChoicesStatus === 'unavailable'
+      ? t('storyCreate.previousChoicesUnavailable')
+      : previousChoicesStatus === 'mismatch'
+        ? t('storyCreate.previousChoicesMismatch')
+        : null
+  const canRetryPreviousChoices = previousChoicesStatus === 'load_failed'
 
   useEffect(() => {
     if (!newProtagonistId) return
@@ -255,6 +364,7 @@ function CreateStoryWizard() {
   // ── Step 1: Episode creation helpers ─────────────────────
 
   const handleMicClick = async () => {
+    if (lockInspirationInput) return
     if (isRecording) {
       mediaRecorderRef.current?.stop()
       setIsRecording(false)
@@ -308,16 +418,30 @@ function CreateStoryWizard() {
           backgroundKeywords: keywords.trim(),
           ageRange: episodeAge,
           locale,
+          ...(previousStoryId ? { fromStoryId: previousStoryId } : {}),
         }),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const message = await getApiErrorMessage(res)
+        throw new Error(message || t('storyCreate.errors.synopsisFailed'))
+      }
       const data = await res.json()
       setSynopsisOptions(data.options ?? [])
-    } catch {
-      showToast(t('storyCreate.errors.synopsisFailed'), 'error')
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : t('storyCreate.errors.synopsisFailed')
+      showToast(message, 'error')
     } finally {
       setGeneratingSynopsis(false)
     }
+  }
+
+  const handleUsePreviousChoice = (choice: string) => {
+    const params = new URLSearchParams()
+    const nextBookId = preselectedBookId || selectedStorybookId || ''
+    if (nextBookId) params.set('bookId', nextBookId)
+    if (previousStoryId) params.set('fromStoryId', previousStoryId)
+    params.set('choice', choice)
+    router.push(`/story/create?${params.toString()}`)
   }
 
   const handleSelectSynopsis = async (synopsis: SynopsisOption) => {
@@ -338,9 +462,13 @@ function CreateStoryWizard() {
           synopsisVersion: synopsis.version,
           ageRange: episodeAge,
           locale,
+          ...(previousStoryId ? { fromStoryId: previousStoryId } : {}),
         }),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const message = await getApiErrorMessage(res)
+        throw new Error(message || t('storyCreate.errors.storyFailed'))
+      }
       const data = await res.json()
       setGeneratedStoryId(data.story.id)
       setGeneratedTitle(data.story.title)
@@ -357,8 +485,9 @@ function CreateStoryWizard() {
             : { ...b, chapters: [...(b.chapters ?? []), data.story as Story] }
         )
       )
-    } catch {
-      showToast(t('storyCreate.errors.storyFailed'), 'error')
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : t('storyCreate.errors.storyFailed')
+      showToast(message, 'error')
       setStep(1)
     } finally {
       setGeneratingStory(false)
@@ -524,7 +653,18 @@ function CreateStoryWizard() {
                   <p className="font-extrabold text-forest-800 text-sm truncate">{currentBook.name}</p>
                   <p className="text-[10px] text-gray-400">{STYLES.find(s => s.id === currentBook.styleId)?.emoji} {t(`styles.${currentBook.styleId}.label`)} · {currentBook.ageRange}{t('storyCreate.ageYearsUnit')}</p>
                 </div>
-                <button onClick={() => setStep(0)} className="ml-auto text-xs text-forest-500 font-bold hover:text-forest-700 shrink-0">{t('storyCreate.switchBook')}</button>
+                <button
+                  onClick={() => {
+                    if (previousStoryId) {
+                      clearContinuationParams(0)
+                      return
+                    }
+                    setStep(0)
+                  }}
+                  className="ml-auto text-xs text-forest-500 font-bold hover:text-forest-700 shrink-0"
+                >
+                  {t('storyCreate.switchBook')}
+                </button>
               </div>
             )}
 
@@ -535,6 +675,66 @@ function CreateStoryWizard() {
                   <h2 className="text-base font-extrabold text-forest-800 mb-1">{t('storyCreate.inspirationTitle')}</h2>
                   <p className="text-xs text-gray-400 mb-4">{t('storyCreate.inspirationHint')}</p>
 
+                  {showPreviousChoices && (
+                    <div className="mb-3 rounded-2xl border border-forest-100 bg-forest-50/70 px-3 py-2.5">
+                      <p className="text-[11px] font-extrabold text-forest-700 mb-2">{t('storyCreate.previousChoicesTitle')}</p>
+                      {loadingPreviousChoices ? (
+                        <div className="flex gap-2">
+                          <div className="skeleton h-7 w-24 rounded-full" />
+                          <div className="skeleton h-7 w-24 rounded-full" />
+                        </div>
+                      ) : selectedChoice ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="px-2.5 py-1 rounded-full border border-forest-300 bg-white text-forest-700 text-[11px] font-bold">
+                            {selectedChoice}
+                          </span>
+                        </div>
+                      ) : previousChoicesErrorMessage ? (
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                          <p className="text-[11px] font-bold text-red-700">{previousChoicesErrorMessage}</p>
+                          {canRetryPreviousChoices && (
+                            <button
+                              type="button"
+                              onClick={() => setPreviousChoicesReloadTick((prev) => prev + 1)}
+                              className="text-[11px] font-extrabold text-red-700 hover:text-red-800 underline shrink-0"
+                            >
+                              {t('storyCreate.retryPreviousChoices')}
+                            </button>
+                          )}
+                          {!canRetryPreviousChoices && (
+                            <button
+                              type="button"
+                              onClick={() => clearContinuationParams()}
+                              className="text-[11px] font-extrabold text-red-700 hover:text-red-800 underline shrink-0"
+                            >
+                              {t('storyCreate.startWithoutContinuation')}
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {previousEpisodeChoices.map((choice, index) => (
+                            <button
+                              key={`${choice}-${index}`}
+                              type="button"
+                              onClick={() => handleUsePreviousChoice(choice)}
+                              className="px-2.5 py-1 rounded-full border border-forest-200 bg-white text-forest-700 text-[11px] font-bold hover:bg-forest-100 transition-colors"
+                            >
+                              {choice}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-[10px] text-gray-500 mt-1.5">
+                        {selectedChoice
+                          ? t('storyCreate.fixedChoiceHint')
+                          : previousChoicesErrorMessage
+                            ? previousChoicesErrorMessage
+                            : t('storyCreate.previousChoicesHint')}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Keywords + mic */}
                   <div className="mb-3">
                     <label className="block text-xs font-bold text-forest-600 mb-1">{t('storyCreate.keywordsLabel')}</label>
@@ -542,17 +742,19 @@ function CreateStoryWizard() {
                       <textarea
                         value={keywords}
                         onChange={(e) => setKeywords(e.target.value)}
-                        placeholder={t('storyCreate.keywordsPlaceholder')}
+                        placeholder={lockInspirationInput ? t('storyCreate.choiceOnlyPlaceholder') : t('storyCreate.keywordsPlaceholder')}
                         className="input text-sm flex-1 resize-none"
                         rows={2}
+                        readOnly={lockInspirationInput}
+                        disabled={lockInspirationInput}
                       />
                       <button
                         type="button"
                         onClick={handleMicClick}
-                        disabled={transcribing}
+                        disabled={transcribing || lockInspirationInput}
                         className={`w-11 h-11 mt-0.5 rounded-xl border-2 flex items-center justify-center transition-all shrink-0 ${
                           isRecording ? 'border-red-500 bg-red-500 text-white animate-pulse' :
-                          transcribing ? 'border-gray-200 bg-gray-100 text-gray-400' :
+                          transcribing || lockInspirationInput ? 'border-gray-200 bg-gray-100 text-gray-400' :
                           'border-forest-300 bg-forest-50 text-forest-600 hover:bg-forest-100'
                         }`}
                         title={isRecording ? t('storyCreate.stopRecording') : t('storyCreate.startRecording')}
@@ -597,7 +799,7 @@ function CreateStoryWizard() {
 
                   <button
                     onClick={handleGenerateSynopsis}
-                    disabled={generatingSynopsis || !keywords.trim()}
+                    disabled={generatingSynopsis || !keywords.trim() || choiceSelectionRequired}
                     className="btn-primary w-full disabled:opacity-50 text-sm"
                   >
                     {generatingSynopsis ? (

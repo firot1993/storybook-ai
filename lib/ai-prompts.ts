@@ -9,6 +9,9 @@ interface SynopsisVersionsPromptParams {
   locale: Locale
   protagonistPronoun?: string
   protagonistRole?: string
+  previousStoryTitle?: string
+  previousStoryContent?: string
+  previousStoryChoices?: string[]
 }
 
 interface CompanionSuggestionsPromptParams {
@@ -33,6 +36,9 @@ interface StoryWithAssetsPromptParams {
   protagonistPronoun?: string
   protagonistRole?: string
   needsSupportingCharacter?: boolean
+  previousStoryTitle?: string
+  previousStoryContent?: string
+  previousStoryChoices?: string[]
 }
 
 interface DirectorScriptPromptParams {
@@ -193,7 +199,28 @@ export function buildSynopsisVersionsPrompt(params: SynopsisVersionsPromptParams
     locale,
     protagonistPronoun,
     protagonistRole,
+    previousStoryTitle,
+    previousStoryContent,
+    previousStoryChoices,
   } = params
+  const continuationChoices = (previousStoryChoices ?? [])
+    .map((choice) => choice.trim())
+    .filter(Boolean)
+    .join(locale === 'zh' ? '、' : ', ')
+  const continuationContextBlock = previousStoryContent?.trim()
+    ? dedentPrompt(`
+        [Continuation Context]
+        Previous episode title: ${previousStoryTitle || '(untitled)'}
+        Previous episode excerpt:
+        ${previousStoryContent.trim()}
+        Previous end-of-episode choices: ${continuationChoices || 'N/A'}
+
+        Continuation requirements:
+        1. Keep world-state and character continuity with the previous episode.
+        2. Treat "Core elements" as the selected branch direction for this next episode.
+        3. Do not reset the story from an unrelated beginning.
+      `)
+    : ''
 
   return dedentPrompt(`
     [System Role]
@@ -218,6 +245,7 @@ export function buildSynopsisVersionsPrompt(params: SynopsisVersionsPromptParams
     Supporting character: ${supportingName}
     Core elements: ${backgroundKeywords}
     Target reader age: ${ageRange}
+    ${continuationContextBlock}
 
     [Output Format]
     Return strict JSON only. No markdown, no extra commentary.
@@ -269,9 +297,30 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
     protagonistPronoun,
     protagonistRole,
     needsSupportingCharacter,
+    previousStoryTitle,
+    previousStoryContent,
+    previousStoryChoices,
   } = params
   const styleLabel = styleDesc || DEFAULT_STORY_STYLE_LABEL
   const themeLabel = theme || 'exploration and friendship'
+  const continuationChoices = (previousStoryChoices ?? [])
+    .map((choice) => choice.trim())
+    .filter(Boolean)
+    .join(locale === 'zh' ? '、' : ', ')
+  const continuationContextBlock = previousStoryContent?.trim()
+    ? dedentPrompt(`
+        [Continuation Context]
+        Previous episode title: ${previousStoryTitle || '(untitled)'}
+        Previous episode excerpt:
+        ${previousStoryContent.trim()}
+        Previous end-of-episode choices: ${continuationChoices || 'N/A'}
+
+        Continuation requirements:
+        1. This episode must directly continue from the previous episode's ending.
+        2. Treat "Synopsis seed" as the chosen branch while preserving continuity.
+        3. Do not restart the story from scratch.
+      `)
+    : ''
 
   return dedentPrompt(`
     [System Role]
@@ -285,6 +334,7 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
     Target reader age: ${ageRange}
     Visual style: ${styleLabel}
     Core theme: ${themeLabel}
+    ${continuationContextBlock}
 
     [Output Requirements]
     Produce the response in this exact order:

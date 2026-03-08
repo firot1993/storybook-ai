@@ -5,8 +5,9 @@ import type { Character, Story, Storybook } from '@/types'
 import { STYLES } from '@/lib/styles'
 import { CharacterAvatar } from '@/components/character-avatar'
 import { useLanguage } from '@/lib/i18n'
+import { normalizeStoryChoices } from '@/lib/story-scenes'
 
-export type StorybookChapterItem = Pick<Story, 'id' | 'title' | 'synopsis' | 'status' | 'createdAt'>
+export type StorybookChapterItem = Pick<Story, 'id' | 'title' | 'synopsis' | 'status' | 'createdAt' | 'content'>
 export type StorybookListItem = Pick<Storybook, 'id' | 'name' | 'ageRange' | 'styleId' | 'characters'> & {
   chapters?: StorybookChapterItem[]
 }
@@ -46,6 +47,19 @@ export default function StorybookList({
         const panelId = `storybook-panel-${book.id}`
         const chapters = book.chapters ?? []
         const chapterCount = chapters.length
+        const latestChapter = chapters[chapterCount - 1]
+        const latestChapterId = latestChapter?.id
+        const latestChapterHasChoices = normalizeStoryChoices(latestChapter?.content ?? '').length > 0
+        const [createPath, createSearch = ''] = createHref.split('?', 2)
+        const continueParams = new URLSearchParams(createSearch)
+        continueParams.set('bookId', book.id)
+        if (latestChapterId && latestChapterHasChoices) {
+          continueParams.set('fromStoryId', latestChapterId)
+        } else {
+          continueParams.delete('fromStoryId')
+        }
+        const continueQuery = continueParams.toString()
+        const continueHref = continueQuery ? `${createPath}?${continueQuery}` : createPath
 
         return (
           <div key={book.id} className="card p-0 overflow-hidden transition-all">
@@ -95,7 +109,7 @@ export default function StorybookList({
                   <div className="px-4 py-6 text-center">
                     <p className="text-sm text-gray-400 mb-3">{t('storybook.emptyBook')}</p>
                     <Link
-                      href={createHref}
+                      href={continueHref}
                       className="text-xs font-bold text-forest-600 hover:text-forest-800 underline"
                     >
                       {t('storybook.createFirst')}
@@ -141,7 +155,7 @@ export default function StorybookList({
 
                     <div className="px-4 py-3 bg-gray-50/50">
                       <Link
-                        href={createHref}
+                        href={continueHref}
                         className="flex items-center gap-2 text-xs font-bold text-forest-500 hover:text-forest-700 transition-colors"
                       >
                         <span className="w-6 h-6 rounded-lg border-2 border-dashed border-forest-300 flex items-center justify-center text-forest-400">+</span>

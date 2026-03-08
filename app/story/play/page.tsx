@@ -657,6 +657,34 @@ function PlayStoryContent() {
     if (!story) return []
     return extractStoryChoices(story.content)
   }, [story])
+  const endingChoices = useMemo(
+    () =>
+      storyChoices.length > 0
+        ? storyChoices
+        : [t('storyPlay.defaultChoice1'), t('storyPlay.defaultChoice2'), t('storyPlay.defaultChoice3')],
+    [storyChoices, t]
+  )
+  const endingChoiceLinks = useMemo(() => {
+    const hasStoryChoices = storyChoices.length > 0
+    const baseParams = new URLSearchParams()
+    if (story?.storybookId) baseParams.set('bookId', story.storybookId)
+    if (hasStoryChoices && story?.id) baseParams.set('fromStoryId', story.id)
+    const baseQuery = baseParams.toString()
+
+    return endingChoices.map((choice, index) => {
+      const params = new URLSearchParams(baseQuery)
+      if (hasStoryChoices) {
+        params.set('choice', choice)
+      } else {
+        params.set('hint', choice)
+      }
+      return {
+        key: `${index}-${choice}`,
+        choice,
+        href: `/story/create?${params.toString()}`,
+      }
+    })
+  }, [endingChoices, storyChoices, story?.id, story?.storybookId])
 
   const sceneLines = useMemo(() => {
     if (!story) return []
@@ -882,13 +910,10 @@ function PlayStoryContent() {
 
               {/* Choices */}
               <div className="space-y-2.5 mb-5">
-                {(storyChoices.length > 0
-                  ? storyChoices
-                  : [t('storyPlay.defaultChoice1'), t('storyPlay.defaultChoice2'), t('storyPlay.defaultChoice3')]
-                ).map((choice, i) => (
+                {endingChoiceLinks.map(({ key, choice, href }) => (
                   <Link
-                    key={i}
-                    href={`/story/create?hint=${encodeURIComponent(choice)}`}
+                    key={key}
+                    href={href}
                     className="flex items-center justify-between p-4 rounded-xl bg-white border-2 border-forest-100 hover:border-forest-400 hover:bg-forest-50 transition-all text-left shadow-sm group"
                   >
                     <span className="font-bold text-sm text-gray-800 group-hover:text-forest-700 transition-colors">{choice}</span>
