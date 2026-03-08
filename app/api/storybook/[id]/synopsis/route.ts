@@ -20,7 +20,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const storybook = await getStorybook(id)
     if (!storybook) return NextResponse.json({ error: 'Storybook not found' }, { status: 404 })
 
-    const { protagonistName, supportingName } = await resolveStorybookCharacters(storybook, locale)
+    const { protagonistName, supportingName, protagonistPronoun, protagonistRole } = await resolveStorybookCharacters(storybook, locale)
 
     const versions = await generateSynopsisVersions({
       storyName: storyName?.trim() || storybook.name,
@@ -29,6 +29,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       backgroundKeywords: backgroundKeywords.trim(),
       ageRange: ageRange || storybook.ageRange,
       locale,
+      protagonistPronoun,
+      protagonistRole,
     })
 
     const labels = locale === 'zh'

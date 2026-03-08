@@ -7,6 +7,8 @@ interface SynopsisVersionsPromptParams {
   backgroundKeywords: string
   ageRange: string
   locale: Locale
+  protagonistPronoun?: string
+  protagonistRole?: string
 }
 
 interface CompanionSuggestionsPromptParams {
@@ -14,6 +16,8 @@ interface CompanionSuggestionsPromptParams {
   backgroundKeywords: string
   ageRange: string
   locale: Locale
+  protagonistPronoun?: string
+  protagonistRole?: string
 }
 
 interface StoryWithAssetsPromptParams {
@@ -26,6 +30,8 @@ interface StoryWithAssetsPromptParams {
   locale: Locale
   theme?: string
   hasCharacterImageRef: boolean
+  protagonistPronoun?: string
+  protagonistRole?: string
 }
 
 interface DirectorScriptPromptParams {
@@ -40,6 +46,8 @@ interface DirectorScriptPromptParams {
   characterProfileText: string
   minSceneCount: number
   maxSceneCount: number
+  protagonistPronoun?: string
+  protagonistRole?: string
 }
 
 interface StoryImagePromptParams {
@@ -96,6 +104,11 @@ function dedentPrompt(text: string): string {
     .map((line) => line.slice(margin))
     .join('\n')
     .trim()
+}
+
+function formatProtagonistLabel(name: string, pronoun?: string, role?: string): string {
+  const parts = [pronoun, role].filter(Boolean)
+  return parts.length > 0 ? `${name} (${parts.join(', ')})` : name
 }
 
 function getTitleLengthInstruction(locale: Locale): string {
@@ -177,6 +190,8 @@ export function buildSynopsisVersionsPrompt(params: SynopsisVersionsPromptParams
     backgroundKeywords,
     ageRange,
     locale,
+    protagonistPronoun,
+    protagonistRole,
   } = params
 
   return dedentPrompt(`
@@ -198,7 +213,7 @@ export function buildSynopsisVersionsPrompt(params: SynopsisVersionsPromptParams
 
     [Story Parameters]
     Story title: ${storyName}
-    Protagonist: ${protagonistName}
+    Protagonist: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}
     Supporting character: ${supportingName}
     Core elements: ${backgroundKeywords}
     Target reader age: ${ageRange}
@@ -214,13 +229,13 @@ export function buildSynopsisVersionsPrompt(params: SynopsisVersionsPromptParams
 }
 
 export function buildCompanionSuggestionsPrompt(params: CompanionSuggestionsPromptParams): string {
-  const { protagonistName, backgroundKeywords, ageRange, locale } = params
+  const { protagonistName, backgroundKeywords, ageRange, locale, protagonistPronoun, protagonistRole } = params
 
   return dedentPrompt(`
     You are a children's story development expert.
     Recommend 3 lovable adventure companions for the protagonist below. They may be animals, magical creatures, or other child-friendly fantasy companions.
 
-    Protagonist: ${protagonistName}
+    Protagonist: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}
     Story elements: ${backgroundKeywords}
     Target reader age: ${ageRange}
 
@@ -250,6 +265,8 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
     locale,
     theme,
     hasCharacterImageRef,
+    protagonistPronoun,
+    protagonistRole,
   } = params
   const styleLabel = styleDesc || DEFAULT_STORY_STYLE_LABEL
   const themeLabel = theme || 'exploration and friendship'
@@ -260,7 +277,7 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
 
     [Story Parameters]
     Story title: ${storyName}
-    Protagonist: ${protagonistName}
+    Protagonist: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}
     Supporting character: ${supportingName}
     Synopsis seed: ${synopsis}
     Target reader age: ${ageRange}
@@ -341,6 +358,8 @@ export function buildDirectorScriptPrompt(params: DirectorScriptPromptParams): s
     characterProfileText,
     minSceneCount,
     maxSceneCount,
+    protagonistPronoun,
+    protagonistRole,
   } = params
   const roleList = [protagonistName, supportingName]
     .map((name) => name.trim())
@@ -369,7 +388,7 @@ export function buildDirectorScriptPrompt(params: DirectorScriptPromptParams): s
 
     [Story Parameters]
     Story title: ${storyName}
-    Main roles: ${roleList}
+    Main roles: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}, ${supportingName}
     Available character pool: ${characterPoolText || roleList}
     Character notes:
     ${characterProfileText || 'None'}

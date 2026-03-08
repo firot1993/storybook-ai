@@ -22,6 +22,9 @@ export default function CharacterCreatePage() {
 
   const [name, setName] = useState('')
   const [age, setAge] = useState('')
+  const [pronoun, setPronoun] = useState('')
+  const [customPronoun, setCustomPronoun] = useState('')
+  const [characterRole, setCharacterRole] = useState('')
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [photoBase64, setPhotoBase64] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -174,11 +177,14 @@ export default function CharacterCreatePage() {
     try {
       const ageNum = age ? parseInt(age, 10) : null
       const activeImage = character.styleImages?.[activeStyleId] ?? character.cartoonImage
+      const resolvedPronoun = pronoun === 'other' ? customPronoun.trim() : pronoun
       const updated: Character = {
         ...character, name: name.trim(),
         age: ageNum ?? undefined,
         voiceName: voiceName || character.voiceName,
         cartoonImage: activeImage, style: activeStyleId,
+        pronoun: resolvedPronoun,
+        role: characterRole.trim(),
       }
       localStorage.setItem('currentCharacter', JSON.stringify(updated))
       await fetch(`/api/character/${character.id}`, {
@@ -188,6 +194,8 @@ export default function CharacterCreatePage() {
           name: name.trim(),
           ...(ageNum !== null ? { age: ageNum } : {}),
           ...(voiceName ? { voiceName } : {}),
+          pronoun: resolvedPronoun,
+          role: characterRole.trim(),
         }),
       })
       showToast(t('characterCreate.success', { name: name.trim() }), 'success')
@@ -278,6 +286,44 @@ export default function CharacterCreatePage() {
                       }`}>{a}</button>
                   ))}
                 </div>
+              </div>
+
+              {/* Pronoun */}
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">{t('characterCreate.pronounLabel')}</label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {[
+                    { label: t('characterCreate.pronounBoy'), value: 'he/him' },
+                    { label: t('characterCreate.pronounGirl'), value: 'she/her' },
+                    { label: t('characterCreate.pronounOther'), value: 'other' },
+                  ].map((opt) => (
+                    <button key={opt.value} type="button"
+                      onClick={() => { setPronoun(pronoun === opt.value ? '' : opt.value); if (opt.value !== 'other') setCustomPronoun('') }}
+                      className={`px-3 py-1 rounded-full text-xs font-bold border-2 transition-all ${
+                        pronoun === opt.value ? 'border-forest-500 bg-forest-500 text-white shadow' : 'border-gray-200 text-gray-500 hover:border-forest-300'
+                      }`}>{opt.label}</button>
+                  ))}
+                </div>
+                {pronoun === 'other' && (
+                  <input type="text" value={customPronoun} onChange={(e) => setCustomPronoun(e.target.value)}
+                    placeholder={t('characterCreate.pronounCustomPlaceholder')} className="input !py-1.5 !text-sm mt-1.5" />
+                )}
+              </div>
+
+              {/* Role */}
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">{t('characterCreate.roleLabel')}</label>
+                <div className="flex gap-1.5 flex-wrap mb-1.5">
+                  {['explorer', 'dreamer', 'scholar', 'prankster', 'guardian', 'trickster'].map((chip) => (
+                    <button key={chip} type="button"
+                      onClick={() => setCharacterRole(characterRole === chip ? '' : chip)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold border-2 transition-all ${
+                        characterRole === chip ? 'border-forest-500 bg-forest-500 text-white shadow' : 'border-gray-200 text-gray-500 hover:border-forest-300'
+                      }`}>{t(`characterCreate.roles.${chip}`)}</button>
+                  ))}
+                </div>
+                <input type="text" value={characterRole} onChange={(e) => setCharacterRole(e.target.value)}
+                  placeholder={t('characterCreate.rolePlaceholder')} className="input !py-1.5 !text-sm" />
               </div>
 
               {/* Photo upload */}
