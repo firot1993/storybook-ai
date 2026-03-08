@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStorybook } from '@/lib/db'
+import { getStory, getStorybook } from '@/lib/db'
 import { generateSynopsisVersions } from '@/lib/gemini'
 import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters } from '@/lib/storybook-helpers'
+import { extractStoryChoices } from '@/lib/story-scenes'
 import type { SynopsisOption } from '@/types'
+
+function buildPreviousStoryExcerpt(content: string, maxChars = 2200): string {
+  const storyBody = content.replace(/<!--CHOICES:[\s\S]*?-->/g, '').trim()
+  if (!storyBody) return ''
+  return storyBody.length > maxChars ? storyBody.slice(-maxChars) : storyBody
+}
 
 // POST /api/storybook/[id]/synopsis
 // 根据故事书配置 + 背景关键词，生成 A/B/C 三版梗概
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   try {
-    const { storyName, backgroundKeywords, ageRange, locale: localeRaw } = await request.json()
+    const { storyName, backgroundKeywords, ageRange, fromStoryId, locale: localeRaw } = await request.json()
     const locale = normalizeLocale(localeRaw)
 
     if (!backgroundKeywords?.trim()) {
@@ -19,6 +26,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const storybook = await getStorybook(id)
     if (!storybook) return NextResponse.json({ error: 'Storybook not found' }, { status: 404 })
+
+    let previousStoryContext: { title: string; content: string; choices: string[] } | undefined
+    const previousStoryId = typeof fromStoryId === 'string' ? fromStoryId.trim() : ''
+    if (previousStoryId) {
+      const previousStory = await getStory(previousStoryId)
+      if (!previousStory) {
+        return NextResponse.json({ error: 'Previous story not found' }, { status: 400 })
+      }
+      if (previousStory.storybookId !== id) {
+        return NextResponse.json({ error: 'Previous story does not belong to this storybook' }, { status: 400 })
+      }
+
+      previousStoryContext = {
+        title: previousStory.title || '',
+        content: buildPreviousStoryExcerpt(previousStory.content || ''),
+        choices: extractStoryChoices(previousStory.content || '')
+          .map((choice) => choice.trim())
+          .filter(Boolean)
+          .slice(0, 3),
+      }
+    }
 
     const { protagonistName, supportingName, protagonistPronoun, protagonistRole } = await resolveStorybookCharacters(storybook, locale)
 
@@ -31,6 +59,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       locale,
       protagonistPronoun,
       protagonistRole,
+      previousStoryTitle: previousStoryContext?.title,
+      previousStoryContent: previousStoryContext?.content,
+      previousStoryChoices: previousStoryContext?.choices,
     })
 
     const labels = locale === 'zh'

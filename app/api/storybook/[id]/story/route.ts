@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createCharacter, createStory, getCharacter, getStorybook, updateStorybook } from '@/lib/db'
+import { createCharacter, createStory, getCharacter, getStory, getStorybook, updateStorybook } from '@/lib/db'
 import { generateStoryWithAssets } from '@/lib/gemini'
 import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
+import { extractStoryChoices } from '@/lib/story-scenes'
 import type { Story, StorybookCharacter } from '@/types'
 
 type NpcWithImage = StorybookCharacter & { image?: string }
+
+function buildPreviousStoryExcerpt(content: string, maxChars = 2200): string {
+  const storyBody = content.replace(/<!--CHOICES:[\s\S]*?-->/g, '').trim()
+  if (!storyBody) return ''
+  return storyBody.length > maxChars ? storyBody.slice(-maxChars) : storyBody
+}
 
 async function buildNpcCharactersWithAssets(
   npcs: Array<{ name: string; description: string }>,
@@ -74,6 +81,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       synopsisVersion,
       theme,
       ageRange,
+      fromStoryId,
       locale: localeRaw,
     } = await request.json()
     const locale = normalizeLocale(localeRaw)
@@ -84,6 +92,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const storybook = await getStorybook(id)
     if (!storybook) return NextResponse.json({ error: 'Storybook not found' }, { status: 404 })
+
+    let previousStoryContext: { title: string; content: string; choices: string[] } | undefined
+    const previousStoryId = typeof fromStoryId === 'string' ? fromStoryId.trim() : ''
+    if (previousStoryId) {
+      const previousStory = await getStory(previousStoryId)
+      if (!previousStory) {
+        return NextResponse.json({ error: 'Previous story not found' }, { status: 400 })
+      }
+      if (previousStory.storybookId !== id) {
+        return NextResponse.json({ error: 'Previous story does not belong to this storybook' }, { status: 400 })
+      }
+
+      previousStoryContext = {
+        title: previousStory.title || '',
+        content: buildPreviousStoryExcerpt(previousStory.content || ''),
+        choices: extractStoryChoices(previousStory.content || '')
+          .map((choice) => choice.trim())
+          .filter(Boolean)
+          .slice(0, 3),
+      }
+    }
 
     const { protagonistName, supportingName, protagonistChar, protagonistPronoun, protagonistRole } = await resolveStorybookCharacters(storybook, locale)
     const styleDesc = resolveStorybookStyle(storybook)
@@ -124,6 +153,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       protagonistPronoun,
       protagonistRole,
       needsSupportingCharacter,
+      previousStoryTitle: previousStoryContext?.title,
+      previousStoryContent: previousStoryContext?.content,
+      previousStoryChoices: previousStoryContext?.choices,
     })
 
     const mainImage = coverImage

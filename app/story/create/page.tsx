@@ -72,6 +72,8 @@ function CreateStoryWizard() {
   const [episodeAge, setEpisodeAge] = useState<'2-4' | '4-6' | '6-8'>('4-6')
   const [previousEpisodeChoices, setPreviousEpisodeChoices] = useState<string[]>([])
   const [loadingPreviousChoices, setLoadingPreviousChoices] = useState(false)
+  const [previousChoicesError, setPreviousChoicesError] = useState<string | null>(null)
+  const [previousChoicesReloadTick, setPreviousChoicesReloadTick] = useState(0)
   const [isRecording, setIsRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -151,13 +153,18 @@ function CreateStoryWizard() {
     let cancelled = false
 
     const loadPreviousChoices = async () => {
-      if (!previousStoryId) {
-        setPreviousEpisodeChoices([])
-        setLoadingPreviousChoices(false)
+      if (!previousStoryId || selectedChoice) {
+        if (!cancelled) {
+          setPreviousEpisodeChoices([])
+          setPreviousChoicesError(null)
+          setLoadingPreviousChoices(false)
+        }
         return
       }
 
       setLoadingPreviousChoices(true)
+      setPreviousChoicesError(null)
+      setPreviousEpisodeChoices([])
       try {
         const res = await fetch(`/api/story/${previousStoryId}`)
         if (!res.ok) throw new Error()
@@ -166,9 +173,19 @@ function CreateStoryWizard() {
         const choices = extractStoryChoices(content)
           .map((choice) => choice.trim())
           .filter(Boolean)
-        if (!cancelled) setPreviousEpisodeChoices(choices)
+        if (!cancelled) {
+          setPreviousEpisodeChoices(choices)
+          if (choices.length === 0) {
+            setPreviousChoicesError(t('storyCreate.previousChoicesUnavailable'))
+          }
+        }
       } catch {
-        if (!cancelled) setPreviousEpisodeChoices([])
+        if (!cancelled) {
+          const message = t('storyCreate.previousChoicesLoadFailed')
+          setPreviousEpisodeChoices([])
+          setPreviousChoicesError(message)
+          showToast(message, 'error')
+        }
       } finally {
         if (!cancelled) setLoadingPreviousChoices(false)
       }
@@ -177,7 +194,7 @@ function CreateStoryWizard() {
     loadPreviousChoices()
 
     return () => { cancelled = true }
-  }, [previousStoryId])
+  }, [previousStoryId, previousChoicesReloadTick, selectedChoice, t])
 
   // ── Derived ──────────────────────────────────────────────
   const currentBook = storybooks.find((b) => b.id === selectedStorybookId)
@@ -202,13 +219,8 @@ function CreateStoryWizard() {
   const bookProtagonistImage = bookProtagonist
     ? (bookProtagonist.styleImages?.[currentBook?.styleId ?? ''] ?? bookProtagonist.cartoonImage)
     : null
-  const showPreviousChoices =
-    !!previousStoryId &&
-    (loadingPreviousChoices || previousEpisodeChoices.length > 0 || !!selectedChoice)
-  const choiceSelectionRequired =
-    !!previousStoryId &&
-    !selectedChoice &&
-    (loadingPreviousChoices || previousEpisodeChoices.length > 0)
+  const showPreviousChoices = !!previousStoryId
+  const choiceSelectionRequired = !!previousStoryId && !selectedChoice
   const lockInspirationInput = !!selectedChoice || choiceSelectionRequired
 
   useEffect(() => {
@@ -370,6 +382,7 @@ function CreateStoryWizard() {
           backgroundKeywords: keywords.trim(),
           ageRange: episodeAge,
           locale,
+          ...(previousStoryId ? { fromStoryId: previousStoryId } : {}),
         }),
       })
       if (!res.ok) throw new Error()
@@ -409,6 +422,7 @@ function CreateStoryWizard() {
           synopsisVersion: synopsis.version,
           ageRange: episodeAge,
           locale,
+          ...(previousStoryId ? { fromStoryId: previousStoryId } : {}),
         }),
       })
       if (!res.ok) throw new Error()
@@ -622,6 +636,17 @@ function CreateStoryWizard() {
                             {selectedChoice}
                           </span>
                         </div>
+                      ) : previousChoicesError ? (
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                          <p className="text-[11px] font-bold text-red-700">{previousChoicesError}</p>
+                          <button
+                            type="button"
+                            onClick={() => setPreviousChoicesReloadTick((prev) => prev + 1)}
+                            className="text-[11px] font-extrabold text-red-700 hover:text-red-800 underline shrink-0"
+                          >
+                            {t('storyCreate.retryPreviousChoices')}
+                          </button>
+                        </div>
                       ) : (
                         <div className="flex flex-wrap gap-1.5">
                           {previousEpisodeChoices.map((choice, index) => (
@@ -637,7 +662,11 @@ function CreateStoryWizard() {
                         </div>
                       )}
                       <p className="text-[10px] text-gray-500 mt-1.5">
-                        {selectedChoice ? t('storyCreate.fixedChoiceHint') : t('storyCreate.previousChoicesHint')}
+                        {selectedChoice
+                          ? t('storyCreate.fixedChoiceHint')
+                          : previousChoicesError
+                            ? t('storyCreate.previousChoicesLoadFailed')
+                            : t('storyCreate.previousChoicesHint')}
                       </p>
                     </div>
                   )}
