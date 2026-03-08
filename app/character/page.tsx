@@ -92,6 +92,14 @@ export default function CharacterPage() {
                     <p className="font-bold text-forest-700 text-sm truncate">{char.name || t('character.unnamed')}</p>
                     {char.age && <p className="text-[10px] text-ember-500 font-medium">{char.age} {t('character.yearsOld')}</p>}
                     {char.voiceName && <p className="text-[10px] text-gray-400">🎙️ {char.voiceName}</p>}
+                    <div className="mt-2">
+                      <Link
+                        href={`/character/name?id=${char.id}`}
+                        className="inline-flex items-center justify-center w-full rounded-full border border-forest-200 text-forest-700 text-[11px] font-bold py-1.5 hover:bg-forest-50 transition-colors"
+                      >
+                        {t('character.manageBtn')}
+                      </Link>
+                    </div>
                   </div>
                 </div>
                 <button
