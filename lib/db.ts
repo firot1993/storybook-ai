@@ -12,6 +12,8 @@ export async function createCharacter(data: {
   style?: string
   age?: number | null
   voiceName?: string
+  pronoun?: string
+  role?: string
 }) {
   return prisma.character.create({
     data: {
@@ -22,13 +24,15 @@ export async function createCharacter(data: {
       style: data.style ?? '',
       age: data.age ?? null,
       voiceName: data.voiceName ?? '',
+      pronoun: data.pronoun ?? '',
+      role: data.role ?? '',
     },
   })
 }
 
 export async function updateCharacter(
   id: string,
-  data: { name?: string; age?: number | null; voiceName?: string }
+  data: { name?: string; age?: number | null; voiceName?: string; pronoun?: string; role?: string }
 ) {
   return prisma.character.update({ where: { id }, data })
 }
@@ -75,6 +79,8 @@ export async function listCharacters(options?: { includeNpc?: boolean }) {
       style: true,
       age: true,
       voiceName: true,
+      pronoun: true,
+      role: true,
       createdAt: true,
     },
   })

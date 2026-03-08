@@ -87,6 +87,8 @@ export async function POST(request: NextRequest) {
     let supportingName = supportingOverride ?? (locale === 'zh' ? '配角' : 'Companion')
     let ageRange = ageRangeOverride ?? '4-6'
     let styleDesc = styleDescOverride ?? 'warm 2D anime style, macaron palette'
+    let protagonistPronoun = ''
+    let protagonistRole = ''
     const characterPool: string[] = []
     const characterProfiles: Array<{ name: string; description?: string }> = []
     const seenCharacterName = new Set<string>()
@@ -133,6 +135,8 @@ export async function POST(request: NextRequest) {
           const resolved = await resolveStorybookCharacters(storybook, locale)
           if (!protagonistOverride) protagonistName = resolved.protagonistName
           if (!supportingOverride) supportingName = resolved.supportingName
+          protagonistPronoun = resolved.protagonistPronoun
+          protagonistRole = resolved.protagonistRole
         }
 
         const records = await Promise.all(
@@ -170,6 +174,8 @@ export async function POST(request: NextRequest) {
         characterProfiles,
         minSceneCount,
         maxSceneCount,
+        protagonistPronoun,
+        protagonistRole,
       })
     } catch (error) {
       const { status, message } = getGeminiErrorResponse(error)

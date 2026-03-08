@@ -110,6 +110,8 @@ export async function POST(request: NextRequest) {
       style: primaryStyleId,
       age: dbCharacter.age ?? undefined,
       voiceName: dbCharacter.voiceName,
+      pronoun: dbCharacter.pronoun,
+      role: dbCharacter.role,
       createdAt: dbCharacter.createdAt,
     }
 

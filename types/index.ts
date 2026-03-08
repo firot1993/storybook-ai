@@ -9,6 +9,10 @@ export interface StorybookCharacter {
   description?: string
   /** Marks dynamically discovered story NPCs persisted on the storybook */
   isNpc?: boolean
+  /** Per-storybook pronoun override (e.g. "he/him", "she/her", or custom) */
+  pronoun?: string
+  /** Per-storybook character role override (e.g. "explorer", "dreamer") */
+  characterRole?: string
 }
 
 export interface Storybook {
@@ -61,6 +65,10 @@ export interface Character {
   style: string
   age?: number
   voiceName: string
+  /** Pronoun string, e.g. "he/him", "she/her", or custom text */
+  pronoun: string
+  /** Character role/personality, e.g. "explorer", "curious dreamer" */
+  role: string
   createdAt: Date
 }
 

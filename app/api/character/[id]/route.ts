@@ -43,7 +43,7 @@ export async function PATCH(
     }
   }
 
-  const updateData: { name?: string; age?: number | null; voiceName?: string } = {}
+  const updateData: { name?: string; age?: number | null; voiceName?: string; pronoun?: string; role?: string } = {}
   if (typeof body.name === 'string' && body.name.trim()) {
     updateData.name = body.name.trim()
   }
@@ -52,6 +52,12 @@ export async function PATCH(
   }
   if (typeof body.voiceName === 'string') {
     updateData.voiceName = body.voiceName
+  }
+  if (typeof body.pronoun === 'string') {
+    updateData.pronoun = body.pronoun
+  }
+  if (typeof body.role === 'string') {
+    updateData.role = body.role
   }
 
   if (Object.keys(updateData).length === 0) {

@@ -234,6 +234,8 @@ export async function generateSynopsisVersions(params: {
   backgroundKeywords: string
   ageRange: string
   locale?: Locale
+  protagonistPronoun?: string
+  protagonistRole?: string
 }): Promise<{ A: { title: string; content: string }; B: { title: string; content: string }; C: { title: string; content: string } }> {
   const {
     storyName,
@@ -242,6 +244,8 @@ export async function generateSynopsisVersions(params: {
     backgroundKeywords,
     ageRange,
     locale = 'zh',
+    protagonistPronoun,
+    protagonistRole,
   } = params
 
   const prompt = buildSynopsisVersionsPrompt({
@@ -251,6 +255,8 @@ export async function generateSynopsisVersions(params: {
     backgroundKeywords,
     ageRange,
     locale,
+    protagonistPronoun,
+    protagonistRole,
   })
 
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
@@ -288,14 +294,18 @@ export async function generateCompanionSuggestions(params: {
   backgroundKeywords: string
   ageRange: string
   locale?: Locale
+  protagonistPronoun?: string
+  protagonistRole?: string
 }): Promise<CompanionSuggestion[]> {
-  const { protagonistName, backgroundKeywords, ageRange, locale = 'zh' } = params
+  const { protagonistName, backgroundKeywords, ageRange, locale = 'zh', protagonistPronoun, protagonistRole } = params
 
   const prompt = buildCompanionSuggestionsPrompt({
     protagonistName,
     backgroundKeywords,
     ageRange,
     locale,
+    protagonistPronoun,
+    protagonistRole,
   })
 
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
@@ -326,6 +336,8 @@ export async function generateStoryWithAssets(params: {
   locale?: Locale
   theme?: string
   characterImageBase64?: string
+  protagonistPronoun?: string
+  protagonistRole?: string
 }): Promise<{
   story: string
   choices: string[]
@@ -343,6 +355,8 @@ export async function generateStoryWithAssets(params: {
     locale = 'zh',
     theme,
     characterImageBase64,
+    protagonistPronoun,
+    protagonistRole,
   } = params
 
   const debugTag = '[generateStoryWithAssets]'
@@ -359,6 +373,8 @@ export async function generateStoryWithAssets(params: {
     locale,
     theme,
     hasCharacterImageRef,
+    protagonistPronoun,
+    protagonistRole,
   })
 
   console.log(`${debugTag} Start`, {
@@ -527,6 +543,8 @@ export async function generateStorybookDirectorScript(params: {
   characterProfiles?: Array<{ name: string; description?: string }>
   minSceneCount?: number
   maxSceneCount?: number
+  protagonistPronoun?: string
+  protagonistRole?: string
 }): Promise<import('@/types').DirectorStoryboardScene[]> {
   const {
     storyName,
@@ -540,6 +558,8 @@ export async function generateStorybookDirectorScript(params: {
     characterProfiles = [],
     minSceneCount = 15,
     maxSceneCount = 18,
+    protagonistPronoun,
+    protagonistRole,
   } = params
 
   const minScenes = Math.max(1, Math.trunc(minSceneCount))
@@ -586,6 +606,8 @@ export async function generateStorybookDirectorScript(params: {
     characterProfileText,
     minSceneCount: minScenes,
     maxSceneCount: maxScenes,
+    protagonistPronoun,
+    protagonistRole,
   })
 
   const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })

@@ -12,12 +12,16 @@ export async function POST(request: NextRequest) {
 
     const protagonistChar = protagonistId ? await getCharacter(protagonistId) : null
     const protagonistName = protagonistChar?.name || (locale === 'zh' ? '小主角' : 'Little hero')
+    const protagonistPronoun = protagonistChar?.pronoun || ''
+    const protagonistRole = protagonistChar?.role || ''
 
     const companions = await generateCompanionSuggestions({
       protagonistName,
       backgroundKeywords: backgroundKeywords?.trim() || (locale === 'zh' ? '奇幻冒险' : 'fantasy adventure'),
       ageRange: ageRange || '4-6',
       locale,
+      protagonistPronoun,
+      protagonistRole,
     })
 
     return NextResponse.json({ companions })
