@@ -49,6 +49,7 @@ function saveStoryResult(
     story: string
     choices: string[]
     npcs: Array<{ name: string; description: string }>
+    supporting?: { name: string; description: string }
     coverImage?: { data: string; mimeType: string }
     npcImages: Map<string, { data: string; mimeType: string }>
     _debug?: {
@@ -71,6 +72,7 @@ function saveStoryResult(
   console.log('Choices:', result.choices)
   console.log('NPCs:', result.npcs)
   console.log('NPC images mapped:', Array.from(result.npcImages.keys()))
+  console.log('Supporting character:', result.supporting ?? '(none)')
   console.log('Cover image present:', Boolean(result.coverImage))
 
   // Save synopsis
@@ -130,6 +132,20 @@ function saveStoryResult(
   for (const [name, img] of result.npcImages) {
     console.log(`  NPC "${name}": ${img.mimeType}, ${img.data.length} base64 chars`)
     saveImage(dir, `npc-${name}`, img)
+  }
+
+  // Save supporting character image (portrait is in npcImages under the supporting name)
+  if (result.supporting?.name) {
+    const supImg = result.npcImages.get(result.supporting.name)
+      ?? Array.from(result.npcImages.entries()).find(
+        ([k]) => k.toLowerCase() === result.supporting!.name.toLowerCase()
+      )?.[1]
+    if (supImg) {
+      console.log(`  Supporting "${result.supporting.name}": ${supImg.mimeType}, ${supImg.data.length} base64 chars`)
+      saveImage(dir, `supporting-${result.supporting.name}`, supImg)
+    } else {
+      console.warn(`  ⚠ Supporting character "${result.supporting.name}" has no portrait image`)
+    }
   }
 
   // Save cover image
@@ -325,7 +341,13 @@ describe.skipIf(!GEMINI_API_KEY)(
         console.log('Protagonist:', protagonistName, { pronoun: protagonistPronoun, role: protagonistRole })
         console.log('Supporting:', supportingName)
         console.log('Style:', styleDesc)
+        const hasSupportingCharacter = storybook.characters.some(
+          (c: { role?: string; isNpc?: boolean }) => c.role === 'supporting' && !c.isNpc
+        )
+        const needsSupportingCharacter = !hasSupportingCharacter
+
         console.log('Has protagonist image:', Boolean(protagonistImageBase64))
+        console.log('Needs supporting character:', needsSupportingCharacter)
 
         const dir = path.join(runDir, 'db')
         fs.mkdirSync(dir, { recursive: true })
@@ -405,6 +427,7 @@ describe.skipIf(!GEMINI_API_KEY)(
           characterImageBase64: protagonistImageBase64,
           protagonistPronoun,
           protagonistRole,
+          needsSupportingCharacter,
         })
 
         saveStoryResult('DB Pipeline', dir, chosenSynopsis, result)

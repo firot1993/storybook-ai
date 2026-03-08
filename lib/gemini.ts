@@ -340,10 +340,12 @@ export async function generateStoryWithAssets(params: {
   characterImageBase64?: string
   protagonistPronoun?: string
   protagonistRole?: string
+  needsSupportingCharacter?: boolean
 }): Promise<{
   story: string
   choices: string[]
   npcs: Array<{ name: string; description: string }>
+  supporting?: { name: string; description: string }
   coverImage?: { data: string; mimeType: string }
   npcImages: Map<string, { data: string; mimeType: string }>
   _debug?: {
@@ -365,6 +367,7 @@ export async function generateStoryWithAssets(params: {
     characterImageBase64,
     protagonistPronoun,
     protagonistRole,
+    needsSupportingCharacter,
   } = params
 
   const debugTag = '[generateStoryWithAssets]'
@@ -383,6 +386,7 @@ export async function generateStoryWithAssets(params: {
     hasCharacterImageRef,
     protagonistPronoun,
     protagonistRole,
+    needsSupportingCharacter,
   })
 
   console.log(`${debugTag} Start`, {
@@ -481,9 +485,25 @@ export async function generateStoryWithAssets(params: {
     }
   }
 
+  const supportingMatch = rawText.match(/<!--SUPPORTING:(.*?)-->/)
+  let supporting: { name: string; description: string } | undefined
+  if (supportingMatch) {
+    try {
+      const parsed = JSON.parse(supportingMatch[1]) as { name?: string; description?: string }
+      const name = (parsed?.name ?? '').trim()
+      const description = (parsed?.description ?? '').trim()
+      if (name) {
+        supporting = { name, description }
+      }
+    } catch {
+      // ignore malformed SUPPORTING payload
+    }
+  }
+
   let story = rawText
     .replace(/<!--CHOICES:.*?-->/g, '')
     .replace(/<!--NPCS:.*?-->/g, '')
+    .replace(/<!--SUPPORTING:.*?-->/g, '')
 
   story = stripInterleavedStorySections(story)
   console.log(`${debugTag} ParsedText`, {
@@ -569,6 +589,7 @@ export async function generateStoryWithAssets(params: {
     story,
     choices,
     npcs,
+    supporting,
     coverImage,
     npcImages,
     _debug: { rawResponse: response, rawText: allText, imageSectionLabels, responseParts: debugParts },

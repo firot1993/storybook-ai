@@ -32,6 +32,7 @@ interface StoryWithAssetsPromptParams {
   hasCharacterImageRef: boolean
   protagonistPronoun?: string
   protagonistRole?: string
+  needsSupportingCharacter?: boolean
 }
 
 interface DirectorScriptPromptParams {
@@ -267,6 +268,7 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
     hasCharacterImageRef,
     protagonistPronoun,
     protagonistRole,
+    needsSupportingCharacter,
   } = params
   const styleLabel = styleDesc || DEFAULT_STORY_STYLE_LABEL
   const themeLabel = theme || 'exploration and friendship'
@@ -298,13 +300,22 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
     6. Mark natural scene breaks with [Scene 1], [Scene 2], and so on. Use 3 to 4 scenes total.
     7. ${getOutputLanguageRequirement(locale, 'All story prose, dialogue, NPC descriptions, and choice text')}
     8. If the story introduces any NEW named character other than the protagonist or supporting character, list them as NPCs.
-
-    Immediately after the story body, output these two markers exactly as written, one per line:
+    ${needsSupportingCharacter ? `
+    [Supporting Character Invention]
+    The supporting character slot is currently unnamed. You MUST invent a memorable, named supporting character for the story (an animal, magical creature, or child-friendly fantasy companion).
+    - Give them a proper name (not "Companion" or generic labels).
+    - Weave them naturally into the story as the protagonist's companion.
+    - Immediately after the story body, output this marker on its own line:
+    <!--SUPPORTING:{"name":"<invented character name>","description":"<short visual traits, ${getCompanionDescriptionInstruction(locale)}>"}-->
+    - Then generate a full-body portrait for this character in the [CHARACTER - <Name>] section below (same as NPCs).
+    - Do NOT list this invented supporting character in the NPCS marker.
+    ` : ''}
+    Immediately after the story body${needsSupportingCharacter ? ' and the SUPPORTING marker' : ''}, output these two markers exactly as written, one per line:
     <!--NPCS:[{"name":"<new character name>","description":"<short traits, ${getNpcDescriptionInstruction(locale)}>"}]-->
     <!--CHOICES:["<next-episode choice 1, ${getChoiceLengthInstruction(locale)}>","<choice 2, ${getChoiceLengthInstruction(locale)}>","<choice 3, ${getChoiceLengthInstruction(locale)}>"]-->
     If there are no new NPCs, return [] for NPCS.
 
-    Then, for each NPC listed in NPCS, output:
+    Then, ${needsSupportingCharacter ? 'for the invented supporting character AND ' : ''}for each NPC listed in NPCS, output:
     [CHARACTER - <Character Name>]
     Name: <Character Name>
     Personality: <brief personality note>

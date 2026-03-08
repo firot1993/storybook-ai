@@ -88,6 +88,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { protagonistName, supportingName, protagonistChar, protagonistPronoun, protagonistRole } = await resolveStorybookCharacters(storybook, locale)
     const styleDesc = resolveStorybookStyle(storybook)
 
+    // Check if the storybook already has a named supporting character
+    const hasSupportingCharacter = storybook.characters.some(
+      (c) => c.role === 'supporting' && !c.isNpc
+    )
+    const needsSupportingCharacter = !hasSupportingCharacter
+
     const title = storyName?.trim() || storybook.name
 
     // Single interleaved call: story text + cover image + NPC portraits
@@ -104,6 +110,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       npcs,
       coverImage,
       npcImages,
+      supporting,
     } = await generateStoryWithAssets({
       storyName: title,
       protagonistName,
@@ -116,6 +123,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       characterImageBase64: protagonistImageBase64,
       protagonistPronoun,
       protagonistRole,
+      needsSupportingCharacter,
     })
 
     const mainImage = coverImage
@@ -139,6 +147,63 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .map((n) => n.trim().toLowerCase())
       .filter(Boolean)
       .forEach((n) => existingNames.add(n))
+
+    // Persist AI-invented supporting character if one was generated
+    let supportingCharacterAddition: NpcWithImage | undefined
+    if (needsSupportingCharacter && supporting?.name) {
+      const supName = supporting.name.trim().slice(0, 30)
+      const supDescription = (supporting.description ?? '').trim().slice(0, 120)
+
+      // Add supporting name to existingNames so NPC processing won't duplicate it
+      existingNames.add(supName.toLowerCase())
+
+      // Look up portrait from npcImages (the AI generated it via [CHARACTER - Name])
+      const supImage = npcImages.get(supName)
+        ?? Array.from(npcImages.entries()).find(
+          ([k]) => k.toLowerCase() === supName.toLowerCase()
+        )?.[1]
+
+      let supCharacterId = ''
+      let supImageUrl: string | undefined
+
+      if (supImage) {
+        supImageUrl = `data:${supImage.mimeType};base64,${supImage.data}`
+        // Remove from npcImages so it's not also treated as an NPC
+        npcImages.delete(supName)
+        // Also try case-insensitive delete
+        for (const key of npcImages.keys()) {
+          if (key.toLowerCase() === supName.toLowerCase()) {
+            npcImages.delete(key)
+          }
+        }
+
+        try {
+          const created = await createCharacter({
+            name: supName,
+            cartoonImage: supImageUrl,
+            styleImages: { [storybook.styleId]: supImageUrl },
+            style: styleDesc,
+          })
+          supCharacterId = created.id
+        } catch (error) {
+          console.warn(`[Story Supporting] Failed to save character for ${supName}:`, error)
+        }
+      }
+
+      supportingCharacterAddition = {
+        id: supCharacterId,
+        name: supName,
+        role: 'supporting',
+        description: supDescription,
+        image: supImageUrl,
+      }
+
+      await updateStorybook(id, {
+        characters: [...storybook.characters, supportingCharacterAddition],
+      })
+      // Refresh storybook characters for NPC processing below
+      storybook.characters = [...storybook.characters, supportingCharacterAddition]
+    }
 
     const npcCharacterAdditions = await buildNpcCharactersWithAssets(
       npcs,
