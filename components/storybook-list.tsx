@@ -46,6 +46,10 @@ export default function StorybookList({
         const panelId = `storybook-panel-${book.id}`
         const chapters = book.chapters ?? []
         const chapterCount = chapters.length
+        const latestChapterId = chapters[chapterCount - 1]?.id
+        const continueParams = new URLSearchParams({ bookId: book.id })
+        if (latestChapterId) continueParams.set('fromStoryId', latestChapterId)
+        const continueHref = `${createHref}${createHref.includes('?') ? '&' : '?'}${continueParams.toString()}`
 
         return (
           <div key={book.id} className="card p-0 overflow-hidden transition-all">
@@ -95,7 +99,7 @@ export default function StorybookList({
                   <div className="px-4 py-6 text-center">
                     <p className="text-sm text-gray-400 mb-3">{t('storybook.emptyBook')}</p>
                     <Link
-                      href={createHref}
+                      href={continueHref}
                       className="text-xs font-bold text-forest-600 hover:text-forest-800 underline"
                     >
                       {t('storybook.createFirst')}
@@ -141,7 +145,7 @@ export default function StorybookList({
 
                     <div className="px-4 py-3 bg-gray-50/50">
                       <Link
-                        href={createHref}
+                        href={continueHref}
                         className="flex items-center gap-2 text-xs font-bold text-forest-500 hover:text-forest-700 transition-colors"
                       >
                         <span className="w-6 h-6 rounded-lg border-2 border-dashed border-forest-300 flex items-center justify-center text-forest-400">+</span>

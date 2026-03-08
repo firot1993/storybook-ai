@@ -886,16 +886,26 @@ function PlayStoryContent() {
                   ? storyChoices
                   : [t('storyPlay.defaultChoice1'), t('storyPlay.defaultChoice2'), t('storyPlay.defaultChoice3')]
                 ).map((choice, i) => (
-                  <Link
-                    key={i}
-                    href={`/story/create?hint=${encodeURIComponent(choice)}`}
-                    className="flex items-center justify-between p-4 rounded-xl bg-white border-2 border-forest-100 hover:border-forest-400 hover:bg-forest-50 transition-all text-left shadow-sm group"
-                  >
-                    <span className="font-bold text-sm text-gray-800 group-hover:text-forest-700 transition-colors">{choice}</span>
-                    <svg className="w-4 h-4 text-gray-300 group-hover:text-forest-500 group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </Link>
+                  (() => {
+                    const params = new URLSearchParams()
+                    if (story.storybookId) params.set('bookId', story.storybookId)
+                    params.set('fromStoryId', story.id)
+                    params.set('choice', choice)
+                    const href = `/story/create?${params.toString()}`
+
+                    return (
+                      <Link
+                        key={i}
+                        href={href}
+                        className="flex items-center justify-between p-4 rounded-xl bg-white border-2 border-forest-100 hover:border-forest-400 hover:bg-forest-50 transition-all text-left shadow-sm group"
+                      >
+                        <span className="font-bold text-sm text-gray-800 group-hover:text-forest-700 transition-colors">{choice}</span>
+                        <svg className="w-4 h-4 text-gray-300 group-hover:text-forest-500 group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </Link>
+                    )
+                  })()
                 ))}
               </div>
 

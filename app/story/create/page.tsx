@@ -8,6 +8,7 @@ import { Character, Story, Storybook, StorybookCharacter, SynopsisOption, Compan
 import { STYLES } from '@/lib/styles'
 import { showToast } from '@/components/toast'
 import { useLanguage } from '@/lib/i18n'
+import { extractStoryChoices } from '@/lib/story-scenes'
 
 const AGE_OPTION_VALUES = ['2-4', '4-6', '6-8'] as const
 const AGE_OPTION_EMOJIS: Record<string, string> = { '2-4': '🍼', '4-6': '⭐', '6-8': '🚀' }
@@ -38,6 +39,9 @@ function CreateStoryWizard() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { locale, t } = useLanguage()
+  const preselectedBookId = searchParams.get('bookId')?.trim() || ''
+  const previousStoryId = searchParams.get('fromStoryId')?.trim() || ''
+  const selectedChoice = searchParams.get('choice')?.trim() || ''
 
   // ── Main step ─────────────────────────────────────────────
   const [step, setStep] = useState(0)
@@ -66,6 +70,8 @@ function CreateStoryWizard() {
   // ── Step 1 — Episode creation ("灵感种子") ───────────────
   const [keywords, setKeywords] = useState('')
   const [episodeAge, setEpisodeAge] = useState<'2-4' | '4-6' | '6-8'>('4-6')
+  const [previousEpisodeChoices, setPreviousEpisodeChoices] = useState<string[]>([])
+  const [loadingPreviousChoices, setLoadingPreviousChoices] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -99,6 +105,10 @@ function CreateStoryWizard() {
           setStorybooks(books)
           if (books.length === 0) {
             setCreatingNew(true)
+          } else if (preselectedBookId && books.some((book) => book.id === preselectedBookId)) {
+            setSelectedStorybookId(preselectedBookId)
+            setCreatingNew(false)
+            setStep(1)
           } else {
             setSelectedStorybookId(books[0].id)
           }
@@ -112,7 +122,7 @@ function CreateStoryWizard() {
       }
     }
     fetchData()
-  }, [])
+  }, [preselectedBookId])
 
   // Sync episodeAge when selecting existing book
   useEffect(() => {
@@ -120,11 +130,54 @@ function CreateStoryWizard() {
     if (book) setEpisodeAge(book.ageRange as '2-4' | '4-6' | '6-8')
   }, [selectedStorybookId, storybooks])
 
-  // Pre-fill keywords from ?hint= query param (e.g. from 命运抉择 choices)
+  // Pre-fill keywords from query params:
+  // - choice: locked continuation choice
+  // - hint: legacy free-form hint (fallback)
   useEffect(() => {
+    if (selectedChoice) {
+      setKeywords(selectedChoice)
+      return
+    }
     const hint = searchParams.get('hint')
-    if (hint) setKeywords(hint)
-  }, [searchParams])
+    if (hint) {
+      setKeywords(hint)
+      return
+    }
+    if (previousStoryId) setKeywords('')
+  }, [searchParams, selectedChoice, previousStoryId])
+
+  // Load previous episode choices when entering from "Continue next episode"
+  useEffect(() => {
+    let cancelled = false
+
+    const loadPreviousChoices = async () => {
+      if (!previousStoryId) {
+        setPreviousEpisodeChoices([])
+        setLoadingPreviousChoices(false)
+        return
+      }
+
+      setLoadingPreviousChoices(true)
+      try {
+        const res = await fetch(`/api/story/${previousStoryId}`)
+        if (!res.ok) throw new Error()
+        const data = await res.json() as { story?: { content?: string } }
+        const content = typeof data.story?.content === 'string' ? data.story.content : ''
+        const choices = extractStoryChoices(content)
+          .map((choice) => choice.trim())
+          .filter(Boolean)
+        if (!cancelled) setPreviousEpisodeChoices(choices)
+      } catch {
+        if (!cancelled) setPreviousEpisodeChoices([])
+      } finally {
+        if (!cancelled) setLoadingPreviousChoices(false)
+      }
+    }
+
+    loadPreviousChoices()
+
+    return () => { cancelled = true }
+  }, [previousStoryId])
 
   // ── Derived ──────────────────────────────────────────────
   const currentBook = storybooks.find((b) => b.id === selectedStorybookId)
@@ -149,6 +202,14 @@ function CreateStoryWizard() {
   const bookProtagonistImage = bookProtagonist
     ? (bookProtagonist.styleImages?.[currentBook?.styleId ?? ''] ?? bookProtagonist.cartoonImage)
     : null
+  const showPreviousChoices =
+    !!previousStoryId &&
+    (loadingPreviousChoices || previousEpisodeChoices.length > 0 || !!selectedChoice)
+  const choiceSelectionRequired =
+    !!previousStoryId &&
+    !selectedChoice &&
+    (loadingPreviousChoices || previousEpisodeChoices.length > 0)
+  const lockInspirationInput = !!selectedChoice || choiceSelectionRequired
 
   useEffect(() => {
     if (!newProtagonistId) return
@@ -255,6 +316,7 @@ function CreateStoryWizard() {
   // ── Step 1: Episode creation helpers ─────────────────────
 
   const handleMicClick = async () => {
+    if (lockInspirationInput) return
     if (isRecording) {
       mediaRecorderRef.current?.stop()
       setIsRecording(false)
@@ -318,6 +380,15 @@ function CreateStoryWizard() {
     } finally {
       setGeneratingSynopsis(false)
     }
+  }
+
+  const handleUsePreviousChoice = (choice: string) => {
+    const params = new URLSearchParams()
+    const nextBookId = preselectedBookId || selectedStorybookId || ''
+    if (nextBookId) params.set('bookId', nextBookId)
+    if (previousStoryId) params.set('fromStoryId', previousStoryId)
+    params.set('choice', choice)
+    router.push(`/story/create?${params.toString()}`)
   }
 
   const handleSelectSynopsis = async (synopsis: SynopsisOption) => {
@@ -524,7 +595,9 @@ function CreateStoryWizard() {
                   <p className="font-extrabold text-forest-800 text-sm truncate">{currentBook.name}</p>
                   <p className="text-[10px] text-gray-400">{STYLES.find(s => s.id === currentBook.styleId)?.emoji} {t(`styles.${currentBook.styleId}.label`)} · {currentBook.ageRange}{t('storyCreate.ageYearsUnit')}</p>
                 </div>
-                <button onClick={() => setStep(0)} className="ml-auto text-xs text-forest-500 font-bold hover:text-forest-700 shrink-0">{t('storyCreate.switchBook')}</button>
+                {!previousStoryId && (
+                  <button onClick={() => setStep(0)} className="ml-auto text-xs text-forest-500 font-bold hover:text-forest-700 shrink-0">{t('storyCreate.switchBook')}</button>
+                )}
               </div>
             )}
 
@@ -535,6 +608,40 @@ function CreateStoryWizard() {
                   <h2 className="text-base font-extrabold text-forest-800 mb-1">{t('storyCreate.inspirationTitle')}</h2>
                   <p className="text-xs text-gray-400 mb-4">{t('storyCreate.inspirationHint')}</p>
 
+                  {showPreviousChoices && (
+                    <div className="mb-3 rounded-2xl border border-forest-100 bg-forest-50/70 px-3 py-2.5">
+                      <p className="text-[11px] font-extrabold text-forest-700 mb-2">{t('storyCreate.previousChoicesTitle')}</p>
+                      {loadingPreviousChoices ? (
+                        <div className="flex gap-2">
+                          <div className="skeleton h-7 w-24 rounded-full" />
+                          <div className="skeleton h-7 w-24 rounded-full" />
+                        </div>
+                      ) : selectedChoice ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="px-2.5 py-1 rounded-full border border-forest-300 bg-white text-forest-700 text-[11px] font-bold">
+                            {selectedChoice}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {previousEpisodeChoices.map((choice, index) => (
+                            <button
+                              key={`${choice}-${index}`}
+                              type="button"
+                              onClick={() => handleUsePreviousChoice(choice)}
+                              className="px-2.5 py-1 rounded-full border border-forest-200 bg-white text-forest-700 text-[11px] font-bold hover:bg-forest-100 transition-colors"
+                            >
+                              {choice}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-[10px] text-gray-500 mt-1.5">
+                        {selectedChoice ? t('storyCreate.fixedChoiceHint') : t('storyCreate.previousChoicesHint')}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Keywords + mic */}
                   <div className="mb-3">
                     <label className="block text-xs font-bold text-forest-600 mb-1">{t('storyCreate.keywordsLabel')}</label>
@@ -542,17 +649,19 @@ function CreateStoryWizard() {
                       <textarea
                         value={keywords}
                         onChange={(e) => setKeywords(e.target.value)}
-                        placeholder={t('storyCreate.keywordsPlaceholder')}
+                        placeholder={lockInspirationInput ? t('storyCreate.choiceOnlyPlaceholder') : t('storyCreate.keywordsPlaceholder')}
                         className="input text-sm flex-1 resize-none"
                         rows={2}
+                        readOnly={lockInspirationInput}
+                        disabled={lockInspirationInput}
                       />
                       <button
                         type="button"
                         onClick={handleMicClick}
-                        disabled={transcribing}
+                        disabled={transcribing || lockInspirationInput}
                         className={`w-11 h-11 mt-0.5 rounded-xl border-2 flex items-center justify-center transition-all shrink-0 ${
                           isRecording ? 'border-red-500 bg-red-500 text-white animate-pulse' :
-                          transcribing ? 'border-gray-200 bg-gray-100 text-gray-400' :
+                          transcribing || lockInspirationInput ? 'border-gray-200 bg-gray-100 text-gray-400' :
                           'border-forest-300 bg-forest-50 text-forest-600 hover:bg-forest-100'
                         }`}
                         title={isRecording ? t('storyCreate.stopRecording') : t('storyCreate.startRecording')}
@@ -597,7 +706,7 @@ function CreateStoryWizard() {
 
                   <button
                     onClick={handleGenerateSynopsis}
-                    disabled={generatingSynopsis || !keywords.trim()}
+                    disabled={generatingSynopsis || !keywords.trim() || choiceSelectionRequired}
                     className="btn-primary w-full disabled:opacity-50 text-sm"
                   >
                     {generatingSynopsis ? (
