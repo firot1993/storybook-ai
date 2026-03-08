@@ -85,7 +85,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const storybook = await getStorybook(id)
     if (!storybook) return NextResponse.json({ error: 'Storybook not found' }, { status: 404 })
 
-    const { protagonistName, supportingName, protagonistChar } = await resolveStorybookCharacters(storybook, locale)
+    const { protagonistName, supportingName, protagonistChar, protagonistPronoun, protagonistRole } = await resolveStorybookCharacters(storybook, locale)
     const styleDesc = resolveStorybookStyle(storybook)
 
     const title = storyName?.trim() || storybook.name
@@ -114,6 +114,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       locale,
       theme: theme ?? (locale === 'zh' ? '探索与友谊' : 'exploration and friendship'),
       characterImageBase64: protagonistImageBase64,
+      protagonistPronoun,
+      protagonistRole,
     })
 
     const mainImage = coverImage

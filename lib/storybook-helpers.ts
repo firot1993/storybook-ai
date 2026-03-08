@@ -37,7 +37,15 @@ export async function resolveStorybookCharacters(
   const supportingName = supportingNames.filter(Boolean).join(locale === 'zh' ? '、' : ', ')
     || (locale === 'zh' ? '小伙伴' : 'Companion')
 
-  return { protagonistName, supportingName, protagonistChar }
+  // Resolve pronoun: StorybookCharacter override → Character record default
+  const protagonistPronoun =
+    protagonistEntry?.pronoun?.trim() || protagonistChar?.pronoun?.trim() || ''
+
+  // Resolve role: StorybookCharacter override → Character record default
+  const protagonistRole =
+    protagonistEntry?.characterRole?.trim() || protagonistChar?.role?.trim() || ''
+
+  return { protagonistName, supportingName, protagonistChar, protagonistPronoun, protagonistRole }
 }
 
 /**
