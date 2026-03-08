@@ -4,6 +4,19 @@ export function extractStoryChoices(content: string): string[] {
   try { return JSON.parse(match[1]) as string[] } catch { return [] }
 }
 
+export function normalizeStoryChoices(content: string, maxChoices = 3): string[] {
+  return extractStoryChoices(content)
+    .map((choice) => choice.trim())
+    .filter(Boolean)
+    .slice(0, maxChoices)
+}
+
+export function buildPreviousStoryExcerpt(content: string, maxChars = 2200): string {
+  const storyBody = content.replace(/<!--CHOICES:[\s\S]*?-->/g, '').trim()
+  if (!storyBody) return ''
+  return storyBody.length > maxChars ? storyBody.slice(-maxChars) : storyBody
+}
+
 export function splitStoryIntoScenes(content: string): string[] {
   // Strip the choices marker before parsing scenes
   const normalized = typeof content === 'string'

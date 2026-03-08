@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractStoryChoices, splitStoryIntoScenes } from '../story-scenes'
+import { buildPreviousStoryExcerpt, extractStoryChoices, normalizeStoryChoices, splitStoryIntoScenes } from '../story-scenes'
 
 describe('extractStoryChoices', () => {
   it('returns choices from a valid CHOICES marker', () => {
@@ -78,5 +78,29 @@ describe('splitStoryIntoScenes', () => {
     const content = '[Scene 1: The Forest] Trees everywhere\n\n[Scene 2: The Lake] Water glistens'
     const scenes = splitStoryIntoScenes(content)
     expect(scenes).toEqual(['Trees everywhere', 'Water glistens'])
+  })
+})
+
+describe('normalizeStoryChoices', () => {
+  it('trims, filters, and limits parsed choices', () => {
+    const content = '<!--CHOICES:["  Go left  ","","Stay still","Run","Extra"]-->'
+    expect(normalizeStoryChoices(content)).toEqual(['Go left', 'Stay still', 'Run'])
+  })
+
+  it('respects a custom max choice limit', () => {
+    const content = '<!--CHOICES:["A","B","C"]-->'
+    expect(normalizeStoryChoices(content, 2)).toEqual(['A', 'B'])
+  })
+})
+
+describe('buildPreviousStoryExcerpt', () => {
+  it('removes choices marker content before creating excerpt', () => {
+    const content = 'Story body\n<!--CHOICES:["A","B"]-->'
+    expect(buildPreviousStoryExcerpt(content)).toBe('Story body')
+  })
+
+  it('keeps the tail when content exceeds the max length', () => {
+    const content = '1234567890'
+    expect(buildPreviousStoryExcerpt(content, 4)).toBe('7890')
   })
 })

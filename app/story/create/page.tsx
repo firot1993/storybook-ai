@@ -25,6 +25,7 @@ const VIDEO_SCENE_RANGE_OPTIONS = [
   { id: '15-18', min: 15, max: 18 },
 ] as const
 type VideoSceneRangeOptionId = (typeof VIDEO_SCENE_RANGE_OPTIONS)[number]['id']
+type PreviousChoicesStatus = 'idle' | 'available' | 'unavailable' | 'load_failed' | 'mismatch'
 
 
 export default function CreateStoryPage() {
@@ -66,13 +67,14 @@ function CreateStoryWizard() {
 
   // All characters
   const [allCharacters, setAllCharacters] = useState<Character[]>([])
+  const continuationTargetBookId = preselectedBookId || selectedStorybookId || ''
 
   // ── Step 1 — Episode creation ("灵感种子") ───────────────
   const [keywords, setKeywords] = useState('')
   const [episodeAge, setEpisodeAge] = useState<'2-4' | '4-6' | '6-8'>('4-6')
   const [previousEpisodeChoices, setPreviousEpisodeChoices] = useState<string[]>([])
   const [loadingPreviousChoices, setLoadingPreviousChoices] = useState(false)
-  const [previousChoicesError, setPreviousChoicesError] = useState<string | null>(null)
+  const [previousChoicesStatus, setPreviousChoicesStatus] = useState<PreviousChoicesStatus>('idle')
   const [previousChoicesReloadTick, setPreviousChoicesReloadTick] = useState(0)
   const [isRecording, setIsRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
@@ -156,19 +158,27 @@ function CreateStoryWizard() {
       if (!previousStoryId || selectedChoice) {
         if (!cancelled) {
           setPreviousEpisodeChoices([])
-          setPreviousChoicesError(null)
+          setPreviousChoicesStatus('idle')
           setLoadingPreviousChoices(false)
         }
         return
       }
 
       setLoadingPreviousChoices(true)
-      setPreviousChoicesError(null)
+      setPreviousChoicesStatus('idle')
       setPreviousEpisodeChoices([])
       try {
         const res = await fetch(`/api/story/${previousStoryId}`)
         if (!res.ok) throw new Error()
-        const data = await res.json() as { story?: { content?: string } }
+        const data = await res.json() as { story?: { content?: string; storybookId?: string } }
+        const sourceStorybookId = typeof data.story?.storybookId === 'string' ? data.story.storybookId : ''
+        if (continuationTargetBookId && sourceStorybookId && sourceStorybookId !== continuationTargetBookId) {
+          if (!cancelled) {
+            setPreviousChoicesStatus('mismatch')
+            showToast(t('storyCreate.previousChoicesMismatch'), 'error')
+          }
+          return
+        }
         const content = typeof data.story?.content === 'string' ? data.story.content : ''
         const choices = extractStoryChoices(content)
           .map((choice) => choice.trim())
@@ -176,15 +186,16 @@ function CreateStoryWizard() {
         if (!cancelled) {
           setPreviousEpisodeChoices(choices)
           if (choices.length === 0) {
-            setPreviousChoicesError(t('storyCreate.previousChoicesUnavailable'))
+            setPreviousChoicesStatus('unavailable')
+          } else {
+            setPreviousChoicesStatus('available')
           }
         }
       } catch {
         if (!cancelled) {
-          const message = t('storyCreate.previousChoicesLoadFailed')
           setPreviousEpisodeChoices([])
-          setPreviousChoicesError(message)
-          showToast(message, 'error')
+          setPreviousChoicesStatus('load_failed')
+          showToast(t('storyCreate.previousChoicesLoadFailed'), 'error')
         }
       } finally {
         if (!cancelled) setLoadingPreviousChoices(false)
@@ -194,7 +205,7 @@ function CreateStoryWizard() {
     loadPreviousChoices()
 
     return () => { cancelled = true }
-  }, [previousStoryId, previousChoicesReloadTick, selectedChoice, t])
+  }, [continuationTargetBookId, previousStoryId, previousChoicesReloadTick, selectedChoice, t])
 
   // ── Derived ──────────────────────────────────────────────
   const currentBook = storybooks.find((b) => b.id === selectedStorybookId)
@@ -222,6 +233,14 @@ function CreateStoryWizard() {
   const showPreviousChoices = !!previousStoryId
   const choiceSelectionRequired = !!previousStoryId && !selectedChoice
   const lockInspirationInput = !!selectedChoice || choiceSelectionRequired
+  const previousChoicesErrorMessage = previousChoicesStatus === 'load_failed'
+    ? t('storyCreate.previousChoicesLoadFailed')
+    : previousChoicesStatus === 'unavailable'
+      ? t('storyCreate.previousChoicesUnavailable')
+      : previousChoicesStatus === 'mismatch'
+        ? t('storyCreate.previousChoicesMismatch')
+        : null
+  const canRetryPreviousChoices = previousChoicesStatus === 'load_failed'
 
   useEffect(() => {
     if (!newProtagonistId) return
@@ -636,16 +655,18 @@ function CreateStoryWizard() {
                             {selectedChoice}
                           </span>
                         </div>
-                      ) : previousChoicesError ? (
+                      ) : previousChoicesErrorMessage ? (
                         <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
-                          <p className="text-[11px] font-bold text-red-700">{previousChoicesError}</p>
-                          <button
-                            type="button"
-                            onClick={() => setPreviousChoicesReloadTick((prev) => prev + 1)}
-                            className="text-[11px] font-extrabold text-red-700 hover:text-red-800 underline shrink-0"
-                          >
-                            {t('storyCreate.retryPreviousChoices')}
-                          </button>
+                          <p className="text-[11px] font-bold text-red-700">{previousChoicesErrorMessage}</p>
+                          {canRetryPreviousChoices && (
+                            <button
+                              type="button"
+                              onClick={() => setPreviousChoicesReloadTick((prev) => prev + 1)}
+                              className="text-[11px] font-extrabold text-red-700 hover:text-red-800 underline shrink-0"
+                            >
+                              {t('storyCreate.retryPreviousChoices')}
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="flex flex-wrap gap-1.5">
@@ -664,8 +685,8 @@ function CreateStoryWizard() {
                       <p className="text-[10px] text-gray-500 mt-1.5">
                         {selectedChoice
                           ? t('storyCreate.fixedChoiceHint')
-                          : previousChoicesError
-                            ? t('storyCreate.previousChoicesLoadFailed')
+                          : previousChoicesErrorMessage
+                            ? previousChoicesErrorMessage
                             : t('storyCreate.previousChoicesHint')}
                       </p>
                     </div>

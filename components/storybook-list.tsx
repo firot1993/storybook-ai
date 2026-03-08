@@ -47,9 +47,16 @@ export default function StorybookList({
         const chapters = book.chapters ?? []
         const chapterCount = chapters.length
         const latestChapterId = chapters[chapterCount - 1]?.id
-        const continueParams = new URLSearchParams({ bookId: book.id })
-        if (latestChapterId) continueParams.set('fromStoryId', latestChapterId)
-        const continueHref = `${createHref}${createHref.includes('?') ? '&' : '?'}${continueParams.toString()}`
+        const [createPath, createSearch = ''] = createHref.split('?', 2)
+        const continueParams = new URLSearchParams(createSearch)
+        continueParams.set('bookId', book.id)
+        if (latestChapterId) {
+          continueParams.set('fromStoryId', latestChapterId)
+        } else {
+          continueParams.delete('fromStoryId')
+        }
+        const continueQuery = continueParams.toString()
+        const continueHref = continueQuery ? `${createPath}?${continueQuery}` : createPath
 
         return (
           <div key={book.id} className="card p-0 overflow-hidden transition-all">

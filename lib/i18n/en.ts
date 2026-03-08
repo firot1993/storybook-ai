@@ -168,6 +168,7 @@ const en = {
     previousChoicesHint: 'Select one choice to continue this storybook',
     previousChoicesLoadFailed: 'Unable to load previous choices. Please retry.',
     previousChoicesUnavailable: 'No choices were found in the previous episode.',
+    previousChoicesMismatch: 'This previous episode does not belong to the selected storybook.',
     retryPreviousChoices: 'Retry',
     fixedChoiceHint: 'This episode will continue from your selected choice',
     choiceOnlyPlaceholder: 'Choice-based continuation: keywords are fixed',

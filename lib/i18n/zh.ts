@@ -168,6 +168,7 @@ const zh = {
     previousChoicesHint: '请选择一个选项，继续本故事书剧情',
     previousChoicesLoadFailed: '加载上一集选项失败，请重试。',
     previousChoicesUnavailable: '上一集没有可用的剧情选项。',
+    previousChoicesMismatch: '上一集不属于当前故事书，请返回重新选择。',
     retryPreviousChoices: '重试',
     fixedChoiceHint: '本集将基于你已选择的剧情选项继续',
     choiceOnlyPlaceholder: '续写模式：关键词已固定',

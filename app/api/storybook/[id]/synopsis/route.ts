@@ -3,14 +3,8 @@ import { getStory, getStorybook } from '@/lib/db'
 import { generateSynopsisVersions } from '@/lib/gemini'
 import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters } from '@/lib/storybook-helpers'
-import { extractStoryChoices } from '@/lib/story-scenes'
+import { buildPreviousStoryExcerpt, normalizeStoryChoices } from '@/lib/story-scenes'
 import type { SynopsisOption } from '@/types'
-
-function buildPreviousStoryExcerpt(content: string, maxChars = 2200): string {
-  const storyBody = content.replace(/<!--CHOICES:[\s\S]*?-->/g, '').trim()
-  if (!storyBody) return ''
-  return storyBody.length > maxChars ? storyBody.slice(-maxChars) : storyBody
-}
 
 // POST /api/storybook/[id]/synopsis
 // 根据故事书配置 + 背景关键词，生成 A/B/C 三版梗概
@@ -29,6 +23,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     let previousStoryContext: { title: string; content: string; choices: string[] } | undefined
     const previousStoryId = typeof fromStoryId === 'string' ? fromStoryId.trim() : ''
+    const normalizedKeywords = backgroundKeywords.trim()
     if (previousStoryId) {
       const previousStory = await getStory(previousStoryId)
       if (!previousStory) {
@@ -41,10 +36,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       previousStoryContext = {
         title: previousStory.title || '',
         content: buildPreviousStoryExcerpt(previousStory.content || ''),
-        choices: extractStoryChoices(previousStory.content || '')
-          .map((choice) => choice.trim())
-          .filter(Boolean)
-          .slice(0, 3),
+        choices: normalizeStoryChoices(previousStory.content || ''),
+      }
+
+      if (previousStoryContext.choices.length === 0) {
+        return NextResponse.json({ error: 'Previous story has no continuation choices' }, { status: 400 })
+      }
+
+      const matchesPreviousChoice = previousStoryContext.choices.some(
+        (choice) => choice.toLocaleLowerCase() === normalizedKeywords.toLocaleLowerCase()
+      )
+      if (!matchesPreviousChoice) {
+        return NextResponse.json({ error: 'Background keywords must match a previous episode choice' }, { status: 400 })
       }
     }
 
@@ -54,7 +57,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       storyName: storyName?.trim() || storybook.name,
       protagonistName,
       supportingName,
-      backgroundKeywords: backgroundKeywords.trim(),
+      backgroundKeywords: normalizedKeywords,
       ageRange: ageRange || storybook.ageRange,
       locale,
       protagonistPronoun,

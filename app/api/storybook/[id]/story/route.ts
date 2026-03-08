@@ -3,16 +3,10 @@ import { createCharacter, createStory, getCharacter, getStory, getStorybook, upd
 import { generateStoryWithAssets } from '@/lib/gemini'
 import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
-import { extractStoryChoices } from '@/lib/story-scenes'
+import { buildPreviousStoryExcerpt, normalizeStoryChoices } from '@/lib/story-scenes'
 import type { Story, StorybookCharacter } from '@/types'
 
 type NpcWithImage = StorybookCharacter & { image?: string }
-
-function buildPreviousStoryExcerpt(content: string, maxChars = 2200): string {
-  const storyBody = content.replace(/<!--CHOICES:[\s\S]*?-->/g, '').trim()
-  if (!storyBody) return ''
-  return storyBody.length > maxChars ? storyBody.slice(-maxChars) : storyBody
-}
 
 async function buildNpcCharactersWithAssets(
   npcs: Array<{ name: string; description: string }>,
@@ -107,10 +101,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       previousStoryContext = {
         title: previousStory.title || '',
         content: buildPreviousStoryExcerpt(previousStory.content || ''),
-        choices: extractStoryChoices(previousStory.content || '')
-          .map((choice) => choice.trim())
-          .filter(Boolean)
-          .slice(0, 3),
+        choices: normalizeStoryChoices(previousStory.content || ''),
       }
     }
 
