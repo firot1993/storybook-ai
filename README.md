@@ -95,6 +95,75 @@ npm run build
 npm run start
 ```
 
+## Manual Integration Tests
+
+Manual tests hit the real Gemini API and are excluded from CI. They test the full
+story generation pipeline (synopsis → story + NPC portraits + cover image) and
+save all artifacts to `lib/__tests__/test-output/<timestamp>/` for inspection.
+
+### Prerequisites
+
+- `GEMINI_API_KEY` set in `.env.local`
+- `DATABASE_URL` set in `.env.local` (only for the `db` test)
+- Dev server running at `localhost:3000` (only to look up storybook IDs)
+
+### Run all manual tests
+
+```bash
+npm run test:manual
+```
+
+### Run a single locale
+
+```bash
+npm run test:manual -- -t en    # English only
+npm run test:manual -- -t zh    # Chinese only
+```
+
+### Run with a real storybook from the database
+
+First, find your storybook ID:
+
+```bash
+curl http://localhost:3000/api/storybook | jq '.storybooks[] | {id, name}'
+```
+
+Then run the `db` test with that ID:
+
+```bash
+STORYBOOK_ID=<id> npm run test:manual -- -t db
+STORYBOOK_ID=cmmh7h4zz00012cqt7ecg7pkn TEST_LOCALE=en TEST_KEYWORDS="adverture" npm run test:manual -- -t db
+```
+
+This reads the storybook's characters, protagonist image, art style, and age
+range from the database — exactly like the production API route does.
+
+Optional env vars for the `db` test:
+
+| Variable | Default | Description |
+|---|---|---|
+| `TEST_LOCALE` | `zh` | Story locale (`en` or `zh`) |
+| `TEST_KEYWORDS` | `冒险, 友谊, 魔法` / `adventure, friendship, magic` | Synopsis background keywords |
+| `TEST_THEME` | `探索与友谊` / `exploration and friendship` | Story theme |
+
+### Output
+
+Each run creates a timestamped folder:
+
+```
+lib/__tests__/test-output/<timestamp>/
+  en/  (or zh/ or db/)
+    all-synopses.json    # 3 generated synopsis options (A/B/C)
+    synopsis.txt         # the one used
+    raw-response.json    # raw Gemini API response
+    debug.txt            # response part sequence + image section labels
+    story.txt            # final story text
+    npc-<Name>.jpg       # NPC portrait images
+    cover.jpg            # cover image
+    storybook.json       # (db test only) resolved storybook metadata
+    protagonist-ref.jpg  # (db test only) protagonist reference image
+```
+
 ## CI
 
 GitHub Actions workflow: `.github/workflows/basic-check.yml`

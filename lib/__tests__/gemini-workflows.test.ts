@@ -191,6 +191,142 @@ describe('gemini workflow prompt composition', () => {
     )
   })
 
+  it('maps NPC images when Gemini batches text and images separately', async () => {
+    generateContentMock.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text:
+                  '[STORY BODY]\n' +
+                  '[Scene 1] The forest glowed with fireflies.\n' +
+                  '<!--NPCS:[{"name":"Bramble","description":"a hedgehog scout"},{"name":"Fern","description":"a shy deer"}]-->\n' +
+                  '<!--CHOICES:["Enter the cave","Climb the tree","Rest by the river"]-->\n' +
+                  '[CHARACTER - Bramble]\n' +
+                  'Name: Bramble\n' +
+                  'Personality: Bold and curious\n' +
+                  'Appearance: A small hedgehog with a leaf hat.\n' +
+                  '[CHARACTER - Fern]\n' +
+                  'Name: Fern\n' +
+                  'Personality: Gentle and observant\n' +
+                  'Appearance: A young deer with soft brown eyes.\n',
+              },
+              // Two consecutive images with no text in between
+              {
+                inlineData: {
+                  data: Buffer.from('bramble-image').toString('base64'),
+                  mimeType: 'image/png',
+                },
+              },
+              {
+                inlineData: {
+                  data: Buffer.from('fern-image').toString('base64'),
+                  mimeType: 'image/png',
+                },
+              },
+              { text: '[COVER]\n' },
+              {
+                inlineData: {
+                  data: Buffer.from('cover-image').toString('base64'),
+                  mimeType: 'image/png',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })
+
+    const result = await generateStoryWithAssets({
+      storyName: 'Forest Friends',
+      protagonistName: 'Luna',
+      supportingName: 'Milo',
+      synopsis: 'A walk through a magical forest.',
+      ageRange: '4-6',
+      styleDesc: 'soft watercolor storybook',
+      locale: 'en',
+    })
+
+    const compressedBase64 = Buffer.from('compressed-image').toString('base64')
+
+    // First image gets the full text label containing both headers;
+    // extractInterleavedCharacterSectionName matches "Bramble" from the first [CHARACTER - Bramble] header.
+    // Second image gets empty label, so positional fallback assigns it to "Fern".
+    expect(result.npcImages.get('Bramble')).toEqual({
+      data: compressedBase64,
+      mimeType: 'image/jpeg',
+    })
+    expect(result.npcImages.get('Fern')).toEqual({
+      data: compressedBase64,
+      mimeType: 'image/jpeg',
+    })
+    expect(result.coverImage).toEqual({
+      data: compressedBase64,
+      mimeType: 'image/jpeg',
+    })
+    expect(result.npcs).toHaveLength(2)
+  })
+
+  it('maps NPC images with fuzzy header matching', async () => {
+    generateContentMock.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text:
+                  '[STORY BODY]\n' +
+                  '[Scene 1] The ocean sparkled.\n' +
+                  '<!--NPCS:[{"name":"Coral","description":"a friendly seahorse"}]-->\n' +
+                  '<!--CHOICES:["Dive deeper","Swim to shore","Follow the current"]-->\n' +
+                  '[Character: Coral]\n' +
+                  'Name: Coral\n' +
+                  'Personality: Cheerful\n' +
+                  'Appearance: A pink seahorse.\n',
+              },
+              {
+                inlineData: {
+                  data: Buffer.from('coral-image').toString('base64'),
+                  mimeType: 'image/png',
+                },
+              },
+              { text: '[COVER]\n' },
+              {
+                inlineData: {
+                  data: Buffer.from('cover-image').toString('base64'),
+                  mimeType: 'image/png',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })
+
+    const result = await generateStoryWithAssets({
+      storyName: 'Ocean Adventure',
+      protagonistName: 'Luna',
+      supportingName: 'Milo',
+      synopsis: 'An underwater journey.',
+      ageRange: '4-6',
+      styleDesc: 'soft watercolor storybook',
+      locale: 'en',
+    })
+
+    const compressedBase64 = Buffer.from('compressed-image').toString('base64')
+
+    // [Character: Coral] should be matched by the broadened regex
+    expect(result.npcImages.get('Coral')).toEqual({
+      data: compressedBase64,
+      mimeType: 'image/jpeg',
+    })
+    expect(result.coverImage).toEqual({
+      data: compressedBase64,
+      mimeType: 'image/jpeg',
+    })
+  })
+
   it('requests localized voice reasons and falls back with a localized default reason', async () => {
     generateContentMock.mockResolvedValueOnce({
       text: '{"voiceName":"Puck","reason":"活泼温暖，适合孩子。"}',
