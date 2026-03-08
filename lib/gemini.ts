@@ -142,7 +142,9 @@ function extractImageData(response: GeminiImageResponse): string | undefined {
 }
 
 function extractInterleavedCharacterSectionName(label: string): string | undefined {
-  const npcMatch = label.match(/(?:【角色\s*[-—–]\s*(.+?)】)|(?:\[CHARACTER\s*-\s*(.+?)\])/)
+  const npcMatch = label.match(
+    /(?:【角色\s*[-—–:：]\s*(.+?)】)|(?:\[(?:CHARACTER|NPC)\s*[-:]\s*(.+?)\])/i
+  )
   const name = npcMatch?.[1] ?? npcMatch?.[2]
   return name?.trim() || undefined
 }
@@ -155,7 +157,7 @@ function stripInterleavedStorySections(text: string): string {
   return text
     .replace(/^[\s\S]*?(?:【故事正文】|\[STORY BODY\])\s*/m, '')
     .replace(/(?:【故事正文】|\[STORY BODY\])/g, '')
-    .replace(/(?:【角色\s*[-—]\s*[\s\S]*$)|(?:\[CHARACTER\s*-\s*[\s\S]*$)/g, '')
+    .replace(/(?:【角色\s*[-—–:：]\s*[\s\S]*$)|(?:\[(?:CHARACTER|NPC)\s*[-:]\s*[\s\S]*$)/ig, '')
     .replace(/(?:【封面】|\[COVER\])[\s\S]*$/g, '')
     .trim()
 }
@@ -344,6 +346,12 @@ export async function generateStoryWithAssets(params: {
   npcs: Array<{ name: string; description: string }>
   coverImage?: { data: string; mimeType: string }
   npcImages: Map<string, { data: string; mimeType: string }>
+  _debug?: {
+    rawResponse: unknown
+    rawText: string
+    imageSectionLabels: string[]
+    responseParts: Array<{ type: 'text'; text: string } | { type: 'image'; mimeType: string }>
+  }
 }> {
   const {
     storyName,
@@ -431,17 +439,20 @@ export async function generateStoryWithAssets(params: {
   // matched against the first image that follows it.
   const imageSectionLabels: string[] = []
   let pendingTextSinceLastImage = ''
+  const debugParts: Array<{ type: 'text'; text: string } | { type: 'image'; mimeType: string }> = []
 
   for (const part of responseParts) {
     if (part.text) {
       allText += part.text
       pendingTextSinceLastImage += part.text
+      debugParts.push({ type: 'text', text: part.text })
     } else if (part.inlineData?.data) {
       const rawData = part.inlineData.data
       const compressed = await compressImage(rawData, 768, 80)
       images.push({ data: compressed.data, mimeType: compressed.mimeType })
       imageSectionLabels.push(pendingTextSinceLastImage)
       pendingTextSinceLastImage = ''
+      debugParts.push({ type: 'image', mimeType: part.inlineData.mimeType ?? 'unknown' })
     }
   }
 
@@ -487,20 +498,54 @@ export async function generateStoryWithAssets(params: {
   const npcImages = new Map<string, { data: string; mimeType: string }>()
   let coverImage: { data: string; mimeType: string } | undefined
 
+  // Track which image indices have been assigned
+  const assignedImageIndices = new Set<number>()
+
   for (let i = 0; i < images.length; i++) {
     const label = imageSectionLabels[i] || ''
     // Try NPC match first — more specific than cover
     const npcName = extractInterleavedCharacterSectionName(label)
     if (npcName) {
       npcImages.set(npcName, images[i])
+      assignedImageIndices.add(i)
     } else if (hasInterleavedCoverSection(label)) {
       coverImage = images[i]
+      assignedImageIndices.add(i)
     } else {
       if (i === images.length - 1 && !coverImage) {
         // Last image is likely the cover if not yet assigned
         coverImage = images[i]
+        assignedImageIndices.add(i)
       }
     }
+  }
+
+  // Fallback pass: try NPC-name-in-label matching for unmapped images
+  const npcNamesFromList = npcs.map((npc) => npc.name)
+  const mappedNpcNames = new Set(npcImages.keys())
+
+  for (let i = 0; i < images.length; i++) {
+    if (assignedImageIndices.has(i)) continue
+    const label = imageSectionLabels[i] || ''
+    if (!label) continue
+    for (const npcName of npcNamesFromList) {
+      if (!mappedNpcNames.has(npcName) && label.includes(npcName)) {
+        npcImages.set(npcName, images[i])
+        assignedImageIndices.add(i)
+        mappedNpcNames.add(npcName)
+        break
+      }
+    }
+  }
+
+  // Positional fallback: assign remaining unmapped images to unmapped NPCs in order
+  const unmappedNpcNames = npcNamesFromList.filter((name) => !mappedNpcNames.has(name))
+  const unmappedImageIndices = Array.from({ length: images.length }, (_, i) => i)
+    .filter((i) => !assignedImageIndices.has(i))
+
+  for (let j = 0; j < Math.min(unmappedNpcNames.length, unmappedImageIndices.length); j++) {
+    npcImages.set(unmappedNpcNames[j], images[unmappedImageIndices[j]])
+    assignedImageIndices.add(unmappedImageIndices[j])
   }
 
   const npcImageNames = Array.from(npcImages.keys())
@@ -516,10 +561,18 @@ export async function generateStoryWithAssets(params: {
   if (npcs.length > 0 && npcImages.size === 0) {
     console.warn(`${debugTag} NPCs parsed but no NPC images mapped`, {
       npcNames: npcs.map((npc) => npc.name),
+      imageSectionLabels,
     })
   }
 
-  return { story, choices, npcs, coverImage, npcImages }
+  return {
+    story,
+    choices,
+    npcs,
+    coverImage,
+    npcImages,
+    _debug: { rawResponse: response, rawText: allText, imageSectionLabels, responseParts: debugParts },
+  }
 }
 
 // ── Storybook v2: 动漫导演分镜脚本生成 ──────────────────────

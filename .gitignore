@@ -5,6 +5,7 @@
 
 # testing
 /coverage
+lib/__tests__/test-output/
 
 # next.js
 /.next/

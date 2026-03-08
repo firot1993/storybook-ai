@@ -312,6 +312,8 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
     Then generate that character as a full-body portrait in ${styleLabel} style with a clean white background.
     ${getOutputLanguageRequirement(locale, 'The Personality and Appearance lines')}
 
+    IMPORTANT: Output each NPC one at a time — write the [CHARACTER - Name] header, then immediately generate that character's portrait image, before moving to the next NPC or the [COVER] section. Do NOT output all character headers first and then all images.
+
     Finally output:
     [COVER]
     Generate the cover image for this storybook. Use a vertical composition with an approximate 3:4 aspect ratio, ${styleLabel} style, and show the story's core emotional scene. Do not include any text in the image.
