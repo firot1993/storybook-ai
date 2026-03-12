@@ -87,6 +87,64 @@ export function subtitlesContainCjk(subtitles: SubtitleCue[]): boolean {
   return subtitles.some((cue) => hasCjkGlyphs(cue.text))
 }
 
+// ── Narration splitting ──────────────────────────────────────
+
+/**
+ * Split a narration string into shorter lines suitable for subtitles and
+ * per-line TTS.  Splits on sentence-ending punctuation (. ! ? and CJK
+ * equivalents).  If a resulting segment is still longer than `maxChars`,
+ * it is further split on comma / clause boundaries.
+ */
+export function splitNarrationIntoLines(narration: string, maxChars = 60): string[] {
+  const trimmed = narration?.trim()
+  if (!trimmed) return []
+  if (trimmed.length <= maxChars) return [trimmed]
+
+  // Split on sentence-ending punctuation, keeping the punctuation with
+  // the preceding text.
+  const sentences = trimmed
+    .split(/(?<=[.!?。！？])\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const lines: string[] = []
+  for (const sentence of sentences) {
+    if (sentence.length <= maxChars) {
+      lines.push(sentence)
+      continue
+    }
+    // Further split long sentences on commas / semicolons / clause breaks
+    const clauses = sentence
+      .split(/(?<=[,;，；、])\s*/)
+      .map((c) => c.trim())
+      .filter(Boolean)
+
+    let buffer = ''
+    for (const clause of clauses) {
+      if (buffer && (buffer + ' ' + clause).length > maxChars) {
+        lines.push(buffer)
+        buffer = clause
+      } else {
+        buffer = buffer ? buffer + ' ' + clause : clause
+      }
+    }
+    if (buffer) lines.push(buffer)
+  }
+
+  return lines.length > 0 ? lines : [trimmed]
+}
+
+/**
+ * Build the per-line script for a scene: narration split into subtitle-
+ * friendly chunks, followed by dialogue lines.
+ */
+export function buildSceneLines(scene: ScriptScene): string[] {
+  return [
+    ...splitNarrationIntoLines(scene.narration),
+    ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
+  ].filter(Boolean)
+}
+
 // ── Core video operations ────────────────────────────────────
 
 /**
@@ -364,10 +422,7 @@ export function buildSubtitleCues(
     const scene = scenes[i]
     const totalMs = sceneDurationsMs[i] ?? scene.estimatedDuration * 1000
 
-    const lines = [
-      scene.narration,
-      ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
-    ].filter(Boolean)
+    const lines = buildSceneLines(scene)
 
     if (lines.length === 0) {
       timeMs += totalMs
@@ -390,8 +445,8 @@ export function buildSubtitleCues(
 
 /**
  * V2: Build subtitle cues from actual line-level audio durations.
- * sceneLineDurationsMs[i][j] matches line j in scene i:
- *   [scene.narration, ...scene.dialogue.map(d => `${d.speaker}: ${d.text}`)]
+ * sceneLineDurationsMs[i][j] matches line j in scene i (narration split
+ * into sentences via buildSceneLines()).
  */
 export function buildSubtitleCuesV2(
   scenes: ScriptScene[],
@@ -404,10 +459,7 @@ export function buildSubtitleCuesV2(
 
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i]
-    const lines = [
-      scene.narration,
-      ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
-    ].filter(Boolean)
+    const lines = buildSceneLines(scene)
 
     if (lines.length === 0) {
       timeMs += sceneDurationsMsFallback[i] ?? scene.estimatedDuration * 1000

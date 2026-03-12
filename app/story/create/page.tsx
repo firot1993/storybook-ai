@@ -96,6 +96,7 @@ function CreateStoryWizard() {
   const [selectedSynopsisOpt, setSelectedSynopsisOpt] = useState<SynopsisOption | null>(null)
   const [discoveredNpcs, setDiscoveredNpcs] = useState<Array<{ name: string; description?: string; image?: string }>>([])
   const [startingVideo, setStartingVideo] = useState(false)
+  const [videoPreparationStage, setVideoPreparationStage] = useState<'script' | 'pipeline' | null>(null)
   const clearContinuationParams = useCallback((nextStep?: number) => {
     const params = new URLSearchParams(searchParams.toString())
     params.delete('fromStoryId')
@@ -492,6 +493,7 @@ function CreateStoryWizard() {
     if (!generatedStoryId || startingVideo) return
 
     setStartingVideo(true)
+    setVideoPreparationStage('script')
     try {
       // Step 1: generate director storyboard script from story
       const scriptRes = await fetch('/api/story/director-script', {
@@ -506,6 +508,7 @@ function CreateStoryWizard() {
       const { script } = await scriptRes.json()
 
       // Step 2: kick off video pipeline
+      setVideoPreparationStage('pipeline')
       const videoRes = await fetch('/api/video/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -518,6 +521,7 @@ function CreateStoryWizard() {
     } catch {
       showToast(t('storyCreate.errors.videoFailed'), 'error')
       setStartingVideo(false)
+      setVideoPreparationStage(null)
     }
   }, [generatedStoryId, locale, router, startingVideo, t])
 
@@ -968,18 +972,29 @@ function CreateStoryWizard() {
                     className="btn-primary w-full disabled:opacity-60"
                   >
                     {startingVideo ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                        {t('storyCreate.preparingBtn')}
+                      <span className="flex flex-col items-center gap-1">
+                        <span className="flex items-center gap-2">
+                          <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                          {videoPreparationStage === 'script'
+                            ? t('storyCreate.preparingScript')
+                            : t('storyCreate.preparingBtn')}
+                        </span>
+                        {videoPreparationStage === 'script' && (
+                          <span className="text-[10px] text-white/70 font-normal">
+                            {t('storyCreate.preparingScriptHint')}
+                          </span>
+                        )}
                       </span>
                     ) : t('storyCreate.confirmVideoBtn')}
                   </button>
-                  <Link
-                    href={`/story/play?id=${generatedStoryId}`}
-                    className="btn-secondary w-full text-center block text-sm"
-                  >
-                    {t('storyCreate.readStoryBtn')}
-                  </Link>
+                  {!startingVideo && (
+                    <Link
+                      href={`/story/play?id=${generatedStoryId}`}
+                      className="btn-secondary w-full text-center block text-sm"
+                    >
+                      {t('storyCreate.readStoryBtn')}
+                    </Link>
+                  )}
                   <button
                     onClick={() => {
                       setStep(1)

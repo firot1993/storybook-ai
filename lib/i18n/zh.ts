@@ -192,6 +192,8 @@ const zh = {
     newCharactersLabel: '本集新角色',
     confirmVideoBtn: '确认并开始制作视频 🎬',
     preparingBtn: '正在准备视频...',
+    preparingScript: '正在生成分镜与场景插画...',
+    preparingScriptHint: '正在绘制场景插画，请耐心等待',
     readStoryBtn: '直接阅读故事 📖',
     createAnotherBtn: '再创作一集',
     backToLibrary: '返回故事书库',

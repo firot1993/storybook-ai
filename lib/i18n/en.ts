@@ -192,6 +192,8 @@ const en = {
     newCharactersLabel: 'New Characters',
     confirmVideoBtn: 'Confirm & Start Video Production 🎬',
     preparingBtn: 'Preparing video...',
+    preparingScript: 'Generating storyboard & scenes...',
+    preparingScriptHint: 'Drawing scene illustrations, this may take a moment',
     readStoryBtn: 'Read Story Now 📖',
     createAnotherBtn: 'Create Another Episode',
     backToLibrary: 'Back to Library',

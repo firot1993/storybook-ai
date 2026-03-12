@@ -4,6 +4,7 @@ import { createVideoProject, getScript, updateVideoProject } from '@/lib/db'
 import { generateSceneIllustration } from '@/lib/banana-img'
 import { generateSceneLineNarrationAudioUrlsV2, generateSceneNarrationAudioUrl } from '@/lib/gemini-tts'
 import {
+  buildSceneLines,
   buildSubtitleCues,
   buildSubtitleCuesV2,
   canRenderCjkSubtitles,
@@ -116,10 +117,7 @@ function resolveSceneCharacterReferences(
 }
 
 function debugLogSceneScript(projectId: string, scene: ScriptScene, sceneIndex: number): void {
-  const sceneLines = [
-    scene.narration,
-    ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
-  ].filter(Boolean)
+  const sceneLines = buildSceneLines(scene)
   console.log(
     `[Video Pipeline][${projectId}][Scene ${sceneIndex}] Script\n` +
     `title: ${scene.title || ''}\n` +
@@ -339,10 +337,7 @@ async function runPipeline(
 
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i]
-      const sceneLines = [
-        scene.narration,
-        ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
-      ].filter(Boolean)
+      const sceneLines = buildSceneLines(scene)
       const sceneText = sceneLines.join('\n')
       console.log(
         `[Video Pipeline][${projectId}][Scene ${i}] Audio generation input\n` +
