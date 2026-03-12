@@ -169,7 +169,7 @@ function VideoStartButton({
       <button
         onClick={handleStart}
         disabled={loading}
-        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-forest-500 hover:bg-forest-600 active:scale-95 text-white font-extrabold text-sm transition-all shadow-lg shadow-forest-500/25 disabled:opacity-70 disabled:cursor-not-allowed"
+        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-ember-500 hover:bg-ember-600 active:scale-95 text-white font-extrabold text-sm transition-all shadow-lg shadow-ember-500/25 disabled:opacity-70 disabled:cursor-not-allowed"
       >
         {loading ? (
           <>
@@ -191,7 +191,7 @@ export default function PlayStoryPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-4xl animate-bounce-star">&#10024;</div>
+        <div className="text-4xl animate-fade-in">&#10024;</div>
       </div>
     }>
       <PlayStoryContent />
@@ -684,7 +684,7 @@ function PlayStoryContent() {
   if (!story) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-4xl animate-bounce-star">&#10024;</div>
+        <div className="text-4xl animate-fade-in">&#10024;</div>
       </div>
     )
   }
@@ -758,10 +758,10 @@ function PlayStoryContent() {
             {isInProgress && (
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-6 h-6 rounded-full bg-forest-500 flex items-center justify-center shrink-0">
-                  <span className="text-white text-[10px] font-extrabold">3</span>
+                  <span className="text-white text-xs font-extrabold">3</span>
                 </div>
                 <span className="text-sm font-extrabold text-forest-700">{t('storyPlay.videoStepLabel')}</span>
-                <span className="text-[10px] text-gray-400 ml-1">{t('storyPlay.autoRefresh')}</span>
+                <span className="text-xs text-gray-500 ml-1">{t('storyPlay.autoRefresh')}</span>
               </div>
             )}
 
@@ -854,8 +854,8 @@ function PlayStoryContent() {
                 <span className="text-base">✨</span>
                 <span className="text-forest-700 text-xs font-extrabold tracking-wide">{t('storyPlay.destiniesTitle')}</span>
               </div>
-              <h2 className="text-lg font-extrabold text-gray-800 leading-snug">{t('storyPlay.destiniesSubtitle')}</h2>
-              <p className="text-xs text-gray-400 mt-1">{t('storyPlay.destiniesHint')}</p>
+              <h2 className="text-lg font-accent font-bold text-gray-800 leading-snug">{t('storyPlay.destiniesSubtitle')}</h2>
+              <p className="text-xs text-gray-500 mt-1">{t('storyPlay.destiniesHint')}</p>
             </div>
 
             {/* Choices */}
@@ -864,10 +864,10 @@ function PlayStoryContent() {
                 <Link
                   key={key}
                   href={href}
-                  className="flex items-center justify-between p-4 rounded-xl bg-white border-2 border-forest-100 hover:border-forest-400 hover:bg-forest-50 transition-all text-left shadow-sm group"
+                  className="flex items-center justify-between p-4 rounded-xl bg-white border-2 border-gray-200 hover:border-ember-400 hover:bg-ember-50 transition-all text-left shadow-sm group"
                 >
-                  <span className="font-bold text-sm text-gray-800 group-hover:text-forest-700 transition-colors">{choice}</span>
-                  <svg className="w-4 h-4 text-gray-300 group-hover:text-forest-500 group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <span className="font-bold text-sm text-gray-800 group-hover:text-ember-700 transition-colors">{choice}</span>
+                  <svg className="w-4 h-4 text-gray-300 group-hover:text-ember-500 group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                   </svg>
                 </Link>
@@ -903,8 +903,8 @@ function PlayStoryContent() {
                   <span className="text-base">✨</span>
                   <span className="text-forest-700 text-xs font-extrabold tracking-wide">{t('storyPlay.destiniesTitle')}</span>
                 </div>
-                <h2 className="text-lg font-extrabold text-gray-800 leading-snug">{t('storyPlay.destiniesSubtitle')}</h2>
-                <p className="text-xs text-gray-400 mt-1">{t('storyPlay.destiniesHint')}</p>
+                <h2 className="text-lg font-accent font-bold text-gray-800 leading-snug">{t('storyPlay.destiniesSubtitle')}</h2>
+                <p className="text-xs text-gray-500 mt-1">{t('storyPlay.destiniesHint')}</p>
               </div>
 
               {/* Choices */}
@@ -913,10 +913,10 @@ function PlayStoryContent() {
                   <Link
                     key={key}
                     href={href}
-                    className="flex items-center justify-between p-4 rounded-xl bg-white border-2 border-forest-100 hover:border-forest-400 hover:bg-forest-50 transition-all text-left shadow-sm group"
+                    className="flex items-center justify-between p-4 rounded-xl bg-white border-2 border-gray-200 hover:border-ember-400 hover:bg-ember-50 transition-all text-left shadow-sm group"
                   >
-                    <span className="font-bold text-sm text-gray-800 group-hover:text-forest-700 transition-colors">{choice}</span>
-                    <svg className="w-4 h-4 text-gray-300 group-hover:text-forest-500 group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <span className="font-bold text-sm text-gray-800 group-hover:text-ember-700 transition-colors">{choice}</span>
+                    <svg className="w-4 h-4 text-gray-300 group-hover:text-ember-500 group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                     </svg>
                   </Link>
@@ -926,7 +926,7 @@ function PlayStoryContent() {
               {/* Divider */}
               <div className="flex items-center gap-3 mb-4">
                 <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{t('storyPlay.orDivider')}</span>
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t('storyPlay.orDivider')}</span>
                 <div className="flex-1 h-px bg-gray-100" />
               </div>
 
@@ -972,7 +972,7 @@ function PlayStoryContent() {
                         : 'cursor-pointer opacity-0 sm:group-hover:opacity-100 bg-gradient-to-l from-black/15 to-transparent'
                     }`}
                   />
-                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] px-2 py-1 rounded-full bg-white/70 text-grape-700 font-semibold hidden sm:block">
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-xs px-2 py-1 rounded-full bg-white/70 text-grape-700 font-semibold hidden sm:block">
                     {t('storyPlay.navigationHint')}
                   </div>
                 </div>
@@ -1020,7 +1020,7 @@ function PlayStoryContent() {
                     } else {
                       return (
                         <p key={idx} className={`${dialogueTextClass} text-gray-900 font-semibold`}>
-                          <span className="inline-flex items-center rounded-full bg-candy-100 text-candy-700 px-2 py-0.5 mr-2 text-[10px] sm:text-xs font-extrabold tracking-wide uppercase align-middle">
+                          <span className="inline-flex items-center rounded-full bg-candy-100 text-candy-700 px-2 py-0.5 mr-2 text-xs sm:text-xs font-extrabold tracking-wide uppercase align-middle">
                             {line.speaker}
                           </span>
                           <span className="text-grape-700 italic">
@@ -1031,7 +1031,7 @@ function PlayStoryContent() {
                     }
                   })}
                 </div>
-                <div className="mt-8 pt-4 border-t border-amber-50 text-right text-[10px] text-amber-300 font-extrabold tracking-widest uppercase">
+                <div className="mt-8 pt-4 border-t border-amber-50 text-right text-xs text-amber-300 font-extrabold tracking-widest uppercase">
                   {t('storyPlay.pageOf', { page: currentScene + 1, total: totalScenes })}
                 </div>
               </div>

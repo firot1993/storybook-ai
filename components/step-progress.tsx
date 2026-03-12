@@ -3,14 +3,14 @@
 import { useLanguage } from '@/lib/i18n'
 
 const CHARACTER_COLORS = [
-  { bg: 'bg-candy-500', ring: 'ring-candy-200', text: 'text-candy-600', bar: 'bg-candy-400' },
-  { bg: 'bg-sun-500', ring: 'ring-sun-200', text: 'text-sun-600', bar: 'bg-sun-400' },
+  { bg: 'bg-forest-500', ring: 'ring-forest-200', text: 'text-forest-600', bar: 'bg-forest-400' },
+  { bg: 'bg-ember-500', ring: 'ring-ember-200', text: 'text-ember-600', bar: 'bg-ember-400' },
 ]
 
 const STORY_COLORS = [
-  { bg: 'bg-sky-500', ring: 'ring-sky-200', text: 'text-sky-600', bar: 'bg-sky-400' },
-  { bg: 'bg-grape-500', ring: 'ring-grape-200', text: 'text-grape-600', bar: 'bg-grape-400' },
-  { bg: 'bg-mint-500', ring: 'ring-mint-200', text: 'text-mint-600', bar: 'bg-mint-400' },
+  { bg: 'bg-forest-500', ring: 'ring-forest-200', text: 'text-forest-600', bar: 'bg-forest-400' },
+  { bg: 'bg-ember-500', ring: 'ring-ember-200', text: 'text-ember-600', bar: 'bg-ember-400' },
+  { bg: 'bg-honey-500', ring: 'ring-honey-200', text: 'text-honey-600', bar: 'bg-honey-400' },
 ]
 
 interface StepProgressProps {
@@ -60,7 +60,7 @@ export default function StepProgress({ currentStep, type = 'character' }: StepPr
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   ) : (
-                    <span className={isCurrent ? 'animate-bounce-in' : ''}>{step.emoji}</span>
+                    <span className={isCurrent ? 'animate-fade-in' : ''}>{step.emoji}</span>
                   )}
                 </div>
                 <span

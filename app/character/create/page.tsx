@@ -209,7 +209,7 @@ export default function CharacterCreatePage() {
       <div className="max-w-6xl mx-auto w-full flex flex-col flex-1 min-h-0">
 
         {/* Back */}
-        <Link href="/character" className="text-forest-400 hover:text-forest-600 mb-2 inline-flex items-center gap-1 text-sm font-bold shrink-0">
+        <Link href="/character" className="text-gray-400 hover:text-ember-600 mb-2 inline-flex items-center gap-1 text-sm font-bold shrink-0">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
@@ -224,7 +224,7 @@ export default function CharacterCreatePage() {
 
             {/* Style picker */}
             <div className="card !p-3">
-              <p className="text-xs font-extrabold text-forest-700 mb-2">{t('characterCreate.styleLabel')}</p>
+              <p className="text-xs font-accent font-bold text-forest-700 mb-2">{t('characterCreate.styleLabel')}</p>
               <div className="grid grid-cols-5 gap-1.5">
                 {STYLES.map((s) => {
                   const hasGenerated = !!(character?.styleImages?.[s.id])
@@ -262,14 +262,14 @@ export default function CharacterCreatePage() {
 
             {/* Form */}
             <div className="card !p-3 flex-1 flex flex-col gap-2.5">
-              <h1 className="text-sm font-extrabold text-forest-700">{t('characterCreate.formHeading')}</h1>
+              <h1 className="text-sm font-accent font-bold text-forest-700">{t('characterCreate.formHeading')}</h1>
 
               {/* Name */}
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-xs font-bold text-gray-600">{t('characterCreate.nameLabel')}</label>
                   <button type="button" onClick={() => setName(RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)])}
-                    className="text-[10px] font-bold text-forest-500 hover:text-forest-700">{t('characterCreate.randomBtn')}</button>
+                    className="text-xs font-bold text-ember-500 hover:text-ember-700">{t('characterCreate.randomBtn')}</button>
                 </div>
                 <input type="text" value={name} onChange={(e) => setName(e.target.value)}
                   placeholder={t('characterCreate.namePlaceholder')} className="input !py-1.5 !text-sm" />
@@ -282,7 +282,7 @@ export default function CharacterCreatePage() {
                   {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((a) => (
                     <button key={a} type="button" onClick={() => setAge(age === String(a) ? '' : String(a))}
                       className={`w-7 h-7 rounded-full text-xs font-bold border-2 transition-all ${
-                        age === String(a) ? 'border-forest-500 bg-forest-500 text-white shadow' : 'border-gray-200 text-gray-500 hover:border-forest-300'
+                        age === String(a) ? 'border-ember-500 bg-ember-500 text-white shadow' : 'border-gray-200 text-gray-500 hover:border-ember-300'
                       }`}>{a}</button>
                   ))}
                 </div>
@@ -300,7 +300,7 @@ export default function CharacterCreatePage() {
                     <button key={opt.value} type="button"
                       onClick={() => { setPronoun(pronoun === opt.value ? '' : opt.value); if (opt.value !== 'other') setCustomPronoun('') }}
                       className={`px-3 py-1 rounded-full text-xs font-bold border-2 transition-all ${
-                        pronoun === opt.value ? 'border-forest-500 bg-forest-500 text-white shadow' : 'border-gray-200 text-gray-500 hover:border-forest-300'
+                        pronoun === opt.value ? 'border-ember-500 bg-ember-500 text-white shadow' : 'border-gray-200 text-gray-500 hover:border-ember-300'
                       }`}>{opt.label}</button>
                   ))}
                 </div>
@@ -318,7 +318,7 @@ export default function CharacterCreatePage() {
                     <button key={chip} type="button"
                       onClick={() => setCharacterRole(characterRole === chip ? '' : chip)}
                       className={`px-2.5 py-1 rounded-full text-xs font-bold border-2 transition-all ${
-                        characterRole === chip ? 'border-forest-500 bg-forest-500 text-white shadow' : 'border-gray-200 text-gray-500 hover:border-forest-300'
+                        characterRole === chip ? 'border-ember-500 bg-ember-500 text-white shadow' : 'border-gray-200 text-gray-500 hover:border-ember-300'
                       }`}>{t(`characterCreate.roles.${chip}`)}</button>
                   ))}
                 </div>
@@ -332,25 +332,25 @@ export default function CharacterCreatePage() {
                 {!photoPreview ? (
                   <div onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
                     className={`border-2 border-dashed rounded-xl p-3 text-center transition-all ${
-                      isDragging ? 'border-forest-500 bg-forest-50' : 'border-gray-300 hover:border-forest-400 hover:bg-forest-50/40'
+                      isDragging ? 'border-ember-500 bg-ember-50' : 'border-gray-300 hover:border-ember-400 hover:bg-ember-50/40'
                     }`}>
                     <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" id="photo-upload" />
                     <label htmlFor="photo-upload" className="flex items-center justify-center gap-2 cursor-pointer">
                       <span className="text-lg">{isDragging ? '🌟' : '📸'}</span>
                       <div className="text-left">
                         <p className="text-xs font-bold text-gray-600">{isDragging ? t('characterCreate.dragRelease') : t('characterCreate.dragDefault')}</p>
-                        <p className="text-[10px] text-gray-400">{t('characterCreate.dragHint')}</p>
+                        <p className="text-xs text-gray-400">{t('characterCreate.dragHint')}</p>
                       </div>
                     </label>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <div className="relative w-10 h-10 rounded-lg overflow-hidden border-2 border-forest-200 shadow shrink-0">
+                    <div className="relative w-10 h-10 rounded-lg overflow-hidden border-2 border-gray-200 shadow shrink-0">
                       <Image src={photoPreview} alt="Preview" fill className="object-cover" />
                     </div>
                     <div>
                       <p className="text-xs font-bold text-gray-700">{t('characterCreate.photoUploaded')}</p>
-                      <label htmlFor="photo-change" className="text-[10px] text-forest-500 hover:text-forest-700 font-bold cursor-pointer underline underline-offset-2">{t('characterCreate.changePhoto')}</label>
+                      <label htmlFor="photo-change" className="text-xs text-ember-500 hover:text-ember-700 font-bold cursor-pointer underline underline-offset-2">{t('characterCreate.changePhoto')}</label>
                       <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" id="photo-change" />
                     </div>
                   </div>
@@ -373,10 +373,10 @@ export default function CharacterCreatePage() {
             {/* Idle */}
             {!generating && !character && (
               <div className="card page-enter h-full flex flex-col !p-0 overflow-hidden">
-                <div className="relative flex-1 bg-gradient-to-br from-forest-50 to-honey-50 min-h-[200px]">
+                <div className="relative flex-1 bg-gradient-to-br from-gray-50 to-honey-50/30 min-h-[200px]">
                   <Image src={activeStyle.exampleImageUrl} alt={t(`styles.${activeStyle.id}.label`)}
                     fill className="object-contain p-8" sizes="(max-width:1024px) 100vw, 600px" priority />
-                  <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full shadow border border-forest-100 flex items-center gap-1">
+                  <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full shadow border border-gray-200 flex items-center gap-1">
                     <span className="text-sm">{activeStyle.emoji}</span>
                     <span className="font-bold text-forest-700 text-xs">{t(`styles.${activeStyle.id}.label`)}</span>
                   </div>
@@ -384,7 +384,7 @@ export default function CharacterCreatePage() {
                 <div className="p-3 border-t border-gray-100 shrink-0">
                   <p className="text-xs font-bold text-forest-700 mb-0.5">{t(`styles.${activeStyle.id}.label`)}</p>
                   <p className="text-xs text-gray-400">{t(`styles.${activeStyle.id}.description`)}</p>
-                  <p className="text-[10px] text-gray-400 mt-2 text-center">{t('characterCreate.idleHint')}</p>
+                  <p className="text-xs text-gray-400 mt-2 text-center">{t('characterCreate.idleHint')}</p>
                 </div>
               </div>
             )}
@@ -392,17 +392,17 @@ export default function CharacterCreatePage() {
             {/* Generating */}
             {generating && (
               <div className="card page-enter h-full flex flex-col items-center justify-center text-center py-6">
-                <div className="text-4xl mb-3 animate-bounce-star">
+                <div className="text-4xl mb-3 animate-fade-in">
                   {progressStep === 0 ? '🔍' : progressStep === 1 ? '🎨' : progressStep === 2 ? '✨' : '🌟'}
                 </div>
                 <p className="font-extrabold text-forest-700 mb-1">{t(`characterCreate.progressSteps.${progressStep as 0 | 1 | 2 | 3}`)}</p>
                 <p className="text-xs text-gray-400 mb-5">{t('characterCreate.generatingSubtext')}</p>
                 <div className="w-full max-w-xs">
                   <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-forest-400 to-forest-600 rounded-full transition-all duration-1000 ease-out"
+                    <div className="h-full bg-gradient-to-r from-ember-400 to-ember-600 rounded-full transition-all duration-1000 ease-out"
                       style={{ width: `${((progressStep + 1) / PROGRESS_STEP_KEYS.length) * 100}%` }} />
                   </div>
-                  <p className="text-[10px] text-gray-400 mt-1.5">{t('characterCreate.timeEstimate')}</p>
+                  <p className="text-xs text-gray-400 mt-1.5">{t('characterCreate.timeEstimate')}</p>
                 </div>
               </div>
             )}
@@ -410,7 +410,7 @@ export default function CharacterCreatePage() {
             {/* Result */}
             {character && !generating && (
               <div className="card page-enter flex flex-col gap-3 h-full">
-                <h2 className="text-sm font-extrabold text-center text-forest-700 shrink-0">{t('characterCreate.doneHeading')}</h2>
+                <h2 className="text-sm font-accent font-bold text-center text-forest-700 shrink-0">{t('characterCreate.doneHeading')}</h2>
 
                 {/* Portrait + style strip */}
                 <div className="flex gap-3 items-start shrink-0">
@@ -420,14 +420,14 @@ export default function CharacterCreatePage() {
                         width={180} height={180}
                         className="w-32 h-32 sm:w-40 sm:h-40 rounded-xl object-cover bg-white" />
                     </div>
-                    <span className="text-[10px] font-bold text-forest-500">
+                    <span className="text-xs font-bold text-forest-500">
                       {activeStyle.emoji} {t(`styles.${activeStyle.id}.label`)}
                       {name && <span className="text-gray-400 font-normal"> · {name}</span>}
                     </span>
                   </div>
 
                   <div className="flex flex-col gap-1.5 shrink-0">
-                    <p className="text-[10px] font-bold text-gray-400 text-center">{t('characterCreate.switchStyleLabel')}</p>
+                    <p className="text-xs font-bold text-gray-400 text-center">{t('characterCreate.switchStyleLabel')}</p>
                     {STYLES.map((s) => {
                       const img = character.styleImages?.[s.id]
                       const isActive = activeStyleId === s.id
@@ -436,7 +436,7 @@ export default function CharacterCreatePage() {
                           onClick={() => { if (img) setActiveStyleId(s.id) }}
                           className={`relative w-12 h-12 rounded-xl overflow-hidden border-2 transition-all ${
                             isActive ? 'border-forest-500 shadow-md ring-1 ring-forest-300 scale-105'
-                            : img ? 'border-gray-200 hover:border-forest-300' : 'border-gray-100 opacity-30 cursor-not-allowed'
+                            : img ? 'border-gray-200 hover:border-ember-300' : 'border-gray-100 opacity-30 cursor-not-allowed'
                           }`}>
                           <Image src={img ?? s.exampleImageUrl} alt={t(`styles.${s.id}.label`)} fill className="object-cover" sizes="48px" />
                           {isActive && (
@@ -454,21 +454,21 @@ export default function CharacterCreatePage() {
                 </button>
 
                 {/* Voice */}
-                <div className="bg-gradient-to-br from-forest-50 to-honey-50 rounded-xl p-3 border border-forest-100 shrink-0">
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-200 shrink-0">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-bold text-gray-700">{t('characterCreate.voiceLabel')}</p>
                     <button type="button" onClick={handleAssignVoice} disabled={assigningVoice}
-                      className="text-xs font-bold px-3 py-1 bg-forest-500 text-white rounded-full hover:bg-forest-600 disabled:opacity-60 transition-colors">
+                      className="text-xs font-bold px-3 py-1 bg-ember-500 text-white rounded-full hover:bg-ember-600 disabled:opacity-60 transition-colors">
                       {assigningVoice
                         ? <span className="flex items-center gap-1"><span className="animate-spin w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full" />{t('characterCreate.assigningVoice')}</span>
                         : voiceName ? t('characterCreate.changeVoice') : t('characterCreate.assignVoice')}
                     </button>
                   </div>
                   {voiceName ? (
-                    <div className="bg-white rounded-lg p-2.5 border border-forest-100 flex items-center gap-2.5">
+                    <div className="bg-white rounded-lg p-2.5 border border-gray-200 flex items-center gap-2.5">
                       <button type="button" onClick={handlePlayVoicePreview} disabled={previewLoading}
                         className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all shadow-sm ${
-                          previewPlaying ? 'bg-ember-500 hover:bg-ember-600' : 'bg-forest-500 hover:bg-forest-600'
+                          previewPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-ember-500 hover:bg-ember-600'
                         } text-white disabled:opacity-60`}>
                         {previewLoading
                           ? <span className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
@@ -478,19 +478,19 @@ export default function CharacterCreatePage() {
                       </button>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-forest-700">{voiceName}</p>
-                        <p className="text-[10px] text-gray-400">{t(`voices.${voiceName}`) || t('characterCreate.defaultVoiceDesc')}{voiceReason && ` · ${voiceReason}`}</p>
+                        <p className="text-xs text-gray-400">{t(`voices.${voiceName}`) || t('characterCreate.defaultVoiceDesc')}{voiceReason && ` · ${voiceReason}`}</p>
                       </div>
                       {previewPlaying && (
                         <div className="flex items-center gap-0.5 shrink-0">
                           {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="w-0.5 bg-forest-400 rounded-full animate-bounce-star"
+                            <div key={i} className="w-0.5 bg-forest-400 rounded-full animate-pulse"
                               style={{ height: `${6 + (i % 3) * 5}px`, animationDelay: `${i * 0.12}s` }} />
                           ))}
                         </div>
                       )}
                     </div>
                   ) : (
-                    <p className="text-[10px] text-gray-400 text-center py-1">{t('characterCreate.noVoice')}</p>
+                    <p className="text-xs text-gray-400 text-center py-1">{t('characterCreate.noVoice')}</p>
                   )}
                 </div>
 
@@ -500,7 +500,7 @@ export default function CharacterCreatePage() {
                   {saving ? t('characterCreate.saving') : t('characterCreate.saveBtn')}
                 </button>
                 {!name.trim() && (
-                  <p className="text-center text-[10px] text-gray-400 -mt-2">{t('characterCreate.saveHint')}</p>
+                  <p className="text-center text-xs text-gray-400 -mt-2">{t('characterCreate.saveHint')}</p>
                 )}
               </div>
             )}

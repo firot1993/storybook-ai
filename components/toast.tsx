@@ -44,8 +44,8 @@ export default function ToastContainer() {
           key={toast.id}
           className={`animate-slide-in rounded-2xl p-4 shadow-lg flex items-start gap-3 border-2 ${
             toast.type === 'error'
-              ? 'bg-candy-50 border-candy-300 text-candy-800'
-              : 'bg-mint-50 border-mint-300 text-mint-800'
+              ? 'bg-red-50 border-red-300 text-red-800'
+              : 'bg-forest-50 border-forest-300 text-forest-800'
           }`}
         >
           <span className="text-2xl flex-shrink-0">
