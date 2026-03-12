@@ -190,9 +190,6 @@ const zh = {
     generatingNote: '正在为「{title}」创作中，请稍候',
     storyContentLabel: '本集故事',
     newCharactersLabel: '本集新角色',
-    videoScenesLabel: '视频场景数范围',
-    selectedScenes: '当前选择：{n} 场景',
-    sceneUnit: '场景',
     confirmVideoBtn: '确认并开始制作视频 🎬',
     preparingBtn: '正在准备视频...',
     readStoryBtn: '直接阅读故事 📖',
@@ -309,9 +306,6 @@ const zh = {
     theEnd: '故事结束',
     pageOf: '第 {page} 页 · 共 {total} 页',
     navigationHint: '滑动、点击图片边缘或使用方向键翻页',
-    videoScenesLabel: '视频场景数范围',
-    selectedScenes: '当前选择：{n} 场景',
-    sceneUnit: '场景',
     stages: {
       pending: '脚本设计中',
       generating_images: '分镜绘制中',
@@ -351,11 +345,6 @@ const zh = {
     '2-4': { label: '2-4岁' },
     '4-6': { label: '4-6岁' },
     '6-8': { label: '6-8岁' },
-  },
-  videoSceneRange: {
-    '3': { eta: '预计制作 2-3 分钟' },
-    '5': { eta: '预计制作 4-6 分钟' },
-    '7': { eta: '预计制作 6-9 分钟' },
   },
   common: {
     loading: '加载中...',

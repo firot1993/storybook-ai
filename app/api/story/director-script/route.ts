@@ -49,13 +49,13 @@ export async function POST(request: NextRequest) {
 
     const minSceneCount =
       minSceneCountRaw === undefined
-        ? 3
+        ? 4
         : Number.isFinite(minSceneCountRaw)
           ? Math.trunc(minSceneCountRaw)
           : NaN
     const maxSceneCount =
       maxSceneCountRaw === undefined
-        ? 3
+        ? 4
         : Number.isFinite(maxSceneCountRaw)
           ? Math.trunc(maxSceneCountRaw)
           : NaN
@@ -201,21 +201,26 @@ export async function POST(request: NextRequest) {
       const script = await createScript({ storyId, scenes, totalDuration })
       scriptId = script.id
 
-      // Save pre-generated scene images to storage
+      // Save pre-generated scene frame images to storage
       const imageEntries = Array.from(result.sceneImages.entries())
+      let totalFramesSaved = 0
       if (imageEntries.length > 0) {
-        console.log(`[Director Script] Saving ${imageEntries.length} pre-generated scene images for script ${scriptId}`)
         await Promise.all(
-          imageEntries.map(async ([idx, img]) => {
-            const relPath = `videos/pre-${scriptId}/scene-${idx}.jpg`
-            await saveFile(Buffer.from(img.data, 'base64'), relPath)
-          })
+          imageEntries.flatMap(([idx, frames]) =>
+            frames.map(async (img, frameIdx) => {
+              const relPath = `videos/pre-${scriptId}/scene-${idx}-frame-${frameIdx}.jpg`
+              await saveFile(Buffer.from(img.data, 'base64'), relPath)
+              totalFramesSaved++
+            })
+          )
         )
+        console.log(`[Director Script] Saved ${totalFramesSaved} pre-generated frame images for script ${scriptId}`)
       }
 
       console.log('[Director Script] Interleaved generation succeeded', {
         sceneCount: scenes.length,
-        imagesGenerated: result.sceneImages.size,
+        scenesWithImages: result.sceneImages.size,
+        totalFrames: totalFramesSaved,
         scriptId,
       })
 

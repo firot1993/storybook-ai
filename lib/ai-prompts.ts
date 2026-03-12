@@ -551,7 +551,9 @@ export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirector
     1. The scene metadata as a comment marker:
     <!--SCENE_META:{"index":1,"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
 
-    2. Then IMMEDIATELY generate a 16:9 children's anime illustration based on the openingFramePrompt above. The illustration should be in ${styleLabel} style, bright and warm.
+    2. Then IMMEDIATELY generate a 16:9 illustration for the OPENING frame based on the openingFramePrompt. Style: ${styleLabel}, bright and warm.
+    3. Then generate a 16:9 illustration for the MID-ACTION frame based on the midActionFramePrompt. Same style and characters.
+    4. Then generate a 16:9 illustration for the ENDING frame based on the endingFramePrompt. Same style and characters.
 
     Continue with the next scene until all ${sceneCount} scenes are complete.
 
