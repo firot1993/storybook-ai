@@ -1,4 +1,4 @@
-import { getCharacter } from '@/lib/db'
+import { getCharacter, getStory, getStorybook } from '@/lib/db'
 import type { Locale } from '@/lib/i18n/shared'
 import type { StorybookCharacter } from '@/types'
 
@@ -61,4 +61,101 @@ export function resolveStorybookStyle(storybook: { styleId: string }): string {
   }
 
   return styleDescriptions[storybook.styleId] || 'dreamlike watercolor, macaron palette, sparkling starlit atmosphere'
+}
+
+// ── Character reference resolution (shared by director-script & video/start) ──
+
+function extractBase64(raw: string | null | undefined): string {
+  if (!raw) return ''
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+  const marker = 'base64,'
+  const markerIndex = trimmed.indexOf(marker)
+  if (markerIndex >= 0) {
+    return trimmed.slice(markerIndex + marker.length).trim()
+  }
+  return trimmed
+}
+
+function parseStyleImages(raw: unknown): Record<string, string> {
+  if (!raw) return {}
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (parsed && typeof parsed === 'object') {
+        return parsed as Record<string, string>
+      }
+    } catch {
+      return {}
+    }
+    return {}
+  }
+  if (typeof raw === 'object') return raw as Record<string, string>
+  return {}
+}
+
+/**
+ * Resolve all character reference images for a story (protagonist + supporting characters).
+ * Returns parallel arrays of base64 images, names, and descriptions.
+ */
+export async function resolveStoryCharacterReferences(storyId: string): Promise<{
+  imagesBase64: string[]
+  names: string[]
+  descriptions: string[]
+}> {
+  const story = await getStory(storyId)
+  if (!story) return { imagesBase64: [], names: [], descriptions: [] }
+
+  const resolvedImages: string[] = []
+  const resolvedNames: string[] = []
+  const resolvedDescriptions: string[] = []
+  const seen = new Set<string>()
+
+  const pushReference = (
+    imageRaw: string | null | undefined,
+    nameRaw: string | null | undefined,
+    descriptionRaw?: string | null
+  ) => {
+    const imageBase64 = extractBase64(imageRaw)
+    if (!imageBase64 || seen.has(imageBase64)) return
+    seen.add(imageBase64)
+    resolvedImages.push(imageBase64)
+    resolvedNames.push(nameRaw?.trim() || `Character ${resolvedImages.length}`)
+    resolvedDescriptions.push(descriptionRaw?.trim() || '')
+  }
+
+  if (story.storybookId) {
+    const storybook = await getStorybook(story.storybookId)
+    if (storybook) {
+      const orderedChars = [...storybook.characters].sort((a, b) => {
+        if (a.role === b.role) return 0
+        return a.role === 'protagonist' ? -1 : 1
+      })
+      const records = await Promise.all(
+        orderedChars.map((entry) => (entry.id ? getCharacter(entry.id) : Promise.resolve(null)))
+      )
+
+      orderedChars.forEach((entry, index) => {
+        const character = records[index]
+        if (!character) return
+        const styleImages = parseStyleImages(character.styleImages)
+        const preferredImage = styleImages[storybook.styleId] || character.cartoonImage
+        pushReference(preferredImage, character.name || entry.name || undefined, entry.description || undefined)
+      })
+    }
+  }
+
+  if (resolvedImages.length === 0 && story.characterIds.length > 0) {
+    const records = await Promise.all(story.characterIds.map((id) => getCharacter(id)))
+    records.forEach((character, index) => {
+      if (!character) return
+      pushReference(character.cartoonImage, character.name || `Character ${index + 1}`)
+    })
+  }
+
+  if (resolvedImages.length === 0) {
+    pushReference(story.mainImage, story.title || '主角')
+  }
+
+  return { imagesBase64: resolvedImages, names: resolvedNames, descriptions: resolvedDescriptions }
 }

@@ -479,6 +479,87 @@ export function buildDirectorScriptPrompt(params: DirectorScriptPromptParams): s
   `)
 }
 
+interface InterleavedDirectorScriptPromptParams {
+  storyName: string
+  protagonistName: string
+  supportingName: string
+  storyContent: string
+  ageRange: string
+  styleDesc: string
+  locale: Locale
+  characterPoolText: string
+  characterProfileText: string
+  sceneCount: number
+  protagonistPronoun?: string
+  protagonistRole?: string
+}
+
+export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirectorScriptPromptParams): string {
+  const {
+    storyName,
+    protagonistName,
+    supportingName,
+    storyContent,
+    ageRange,
+    styleDesc,
+    locale,
+    characterPoolText,
+    characterProfileText,
+    sceneCount,
+    protagonistPronoun,
+    protagonistRole,
+  } = params
+  const roleList = [protagonistName, supportingName]
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .join(', ')
+  const styleLabel = styleDesc || DEFAULT_DIRECTOR_STYLE_LABEL
+  const englishStyleLabel = styleDesc || DEFAULT_DIRECTOR_STYLE_LABEL
+
+  return dedentPrompt(`
+    [System Role]
+    You are an elite children's animation director and storyboard designer. You transform warm fairy tales into visually rich, emotionally clear animated storyboards with strong pacing. You also illustrate each scene directly.
+
+    [Creative Task]
+    Design a storyboard with exactly ${sceneCount} scenes based on the parameters below.
+    For EACH scene, output the scene metadata then IMMEDIATELY generate the scene illustration.
+
+    Core rules:
+    1. Each scene should support roughly 8-12 seconds of animation and avoid static staging.
+    2. Use concrete, visual language instead of abstract wording.
+    3. Clearly specify shot type, camera movement, and action focus.
+    4. Keep the emotional interaction child-friendly and age-appropriate for ${ageRange}-year-old viewers.
+    5. Maintain a consistent visual style: ${styleLabel}.
+    6. Ensure opening frames connect visually from one scene to the next.
+    7. If charactersUsed is non-empty, every frame prompt must explicitly include all charactersUsed names.
+    8. ${getOutputLanguageRequirement(locale, 'sceneDescription, cameraDesign, animationAction, voiceOver, and dialogue text values')}
+    9. openingFramePrompt, midActionFramePrompt, and endingFramePrompt must always stay in English for downstream image generation.
+
+    [Story Parameters]
+    Story title: ${storyName}
+    Main roles: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}, ${supportingName}
+    Available character pool: ${characterPoolText || roleList}
+    Character notes:
+    ${characterProfileText || 'None'}
+    Story text:
+    ${storyContent}
+    Target audience age: ${ageRange}
+
+    [Output Format]
+    For each scene, output in this exact order:
+
+    1. The scene metadata as a comment marker:
+    <!--SCENE_META:{"index":1,"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
+
+    2. Then IMMEDIATELY generate a 16:9 children's anime illustration based on the openingFramePrompt above. The illustration should be in ${styleLabel} style, bright and warm.
+
+    Continue with the next scene until all ${sceneCount} scenes are complete.
+
+    [Character Consistency]
+    Keep all characters visually consistent across every illustration — same face shape, hairstyle, hair color, outfit, and proportions in every scene.
+  `)
+}
+
 export function buildStoryImagePrompt(params: StoryImagePromptParams): string {
   const { sceneDescription, hasMultipleReferences, multiRefLabel = '', textHint } = params
 
