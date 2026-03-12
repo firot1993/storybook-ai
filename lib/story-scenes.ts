@@ -27,14 +27,18 @@ export function splitStoryIntoScenes(content: string): string[] {
   // Preferred format from prompts: [Scene 1], [Scene 2], ...
   const markerPattern = /\*{0,2}\[Scene\s*\d+[^\]]*\]\*{0,2}\s*/i
   if (markerPattern.test(normalized)) {
+    // Check if there's text before the first [Scene N] marker (a preamble)
+    const firstMarkerIndex = normalized.search(markerPattern)
+    const hasPreamble = firstMarkerIndex > 0
+
     const markerScenes = normalized
       .split(/\*{0,2}\[Scene\s*\d+[^\]]*\]\*{0,2}\s*/i)
       .map((part) => part.trim())
       .filter((part) => part.length > 0)
 
-    // The first segment before [Scene 1] is often just the story title —
-    // discard it if it's short (< 80 chars) and at least 2 real scenes follow.
-    if (markerScenes.length >= 3 && markerScenes[0].length < 80) {
+    // If there's a preamble before [Scene 1] (e.g. a story title), discard it
+    // when it's short (< 80 chars) and at least 2 real scenes follow.
+    if (hasPreamble && markerScenes.length >= 3 && markerScenes[0].length < 80) {
       markerScenes.shift()
     }
 
