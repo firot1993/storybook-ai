@@ -13,9 +13,9 @@ Protagonist portraits (5 style variants) + Character record
   ↓
 3 companion suggestions → user picks / names companions
   ↓
-  ↓  generateCompanionCharacterCartoon() [IMAGE_MODEL, image only] (per companion)
+  ↓  generateCompanionCharacterCartoon() [Banana primary, Gemini IMAGE_MODEL fallback] (per companion)
   ↓
-Storybook created (protagonist + companions linked)
+Storybook created (protagonist + companion entries saved)
   ↓
 Keywords
   ↓
@@ -27,8 +27,8 @@ Keywords
   ↓
   ↓  generateStoryWithAssets() [IMAGE_MODEL, text+image interleaved]
   ↓
-Story text + cover + NPC portraits + choices
-  ↓  (NPCs auto-saved as Characters + linked to storybook)
+Story text + cover + NPC/supporting portraits + choices
+  ↓  (New character entries are linked to the storybook; Character records are only created when a portrait image is successfully mapped)
   ↓
   ↓  generateInterleavedDirectorScript() [IMAGE_MODEL, text+image interleaved]
   ↓  (fallback: generateStorybookDirectorScript() [TEXT_MODEL, text only])
@@ -36,7 +36,7 @@ Story text + cover + NPC portraits + choices
 Director script + scene images (all-or-partial)
   ↓
   ├─ Images: use pre-generated from interleaved call
-  │          ↳ missing scenes only: generateStoryImage() [IMAGE_MODEL, image only]
+  │          ↳ missing scenes only: generateSceneIllustration() [Banana primary, Gemini IMAGE_MODEL fallback]
   ├─ Audio:  TTS per line [Gemini TTS]
   ├─ Clips:  FFmpeg (image + audio → mp4)
   ├─ Concat: FFmpeg (merge clips)
@@ -83,7 +83,7 @@ Results are stored as a `styleImages` map on the Character record:
 }
 ```
 
-The primary `cartoonImage` is set to `styleImages[requestedStyleId]`.
+The primary `cartoonImage` is set to `styleImages[requestedStyleId]` when that style succeeded, otherwise the first successfully generated style is used.
 
 ### 2. Pick art style
 
@@ -95,7 +95,8 @@ User chooses one of the 5 styles. No API call — stored in frontend state.
 
 - **Model:** `TEXT_MODEL` (gemini-3-flash-preview)
 - **Modalities:** Text only
-- **Input:** Protagonist name/pronoun/role, background keywords, age range
+- **Route input:** `protagonistId`, optional `backgroundKeywords`, `ageRange`, `locale`
+- **Prompt input:** Resolved protagonist name/pronoun/role, background keywords, age range
 - **Output:** JSON array of 3 `CompanionSuggestion` objects: `[{"emoji":"🐱","name":"...","description":"..."}]`
 - **Parsing:** `safeParseJsonArray()` — strips markdown fences, finds first `[...]` block, fixes trailing commas
 
@@ -109,12 +110,14 @@ No Character records are created yet — these are name suggestions only.
 
 For each supporting character without an existing Character record (AI-suggested companions with `id: ""`):
 - Generates a cartoon portrait via `generateCompanionCharacterCartoon()` in `lib/banana-img.ts`
-- **Model:** `IMAGE_MODEL` (with Banana API as primary, Gemini as fallback)
-- **Prompt:** `buildCompanionCharacterCartoonPrompt()` — character name + traits, children's picture-book style. Infers species from name semantics (human child vs animal vs fantasy creature).
-- Creates a Character record with `cartoonImage` and `styleImages: { [styleId]: dataUrl }`
+- **Model:** Banana image generation (configured by `BANANA_MODEL_KEY`), with Gemini `IMAGE_MODEL` as fallback
+- **Prompt:** `buildCompanionCharacterCartoonPrompt()` — the current call site passes the character name, a generic `"Friendly supporting companion in a children's story."` description, and the selected style prompt. The prompt builder still infers human/animal/fantasy presentation from name/description semantics.
+- Creates a Character record with `cartoonImage` and `styleImages: { [styleId]: dataUrl }` when generation succeeds
 - Links the new Character ID back to the StorybookCharacter entry
 
-Saves the Storybook with all characters linked.
+If supporting-character image generation fails, the storybook entry is still saved, but it remains unlinked with `id: ""`.
+
+Saves the Storybook with protagonist plus supporting entries. Successfully generated companions are linked to Character records; failed generations stay as unlinked named entries.
 
 ### Character data model
 
@@ -143,18 +146,19 @@ StorybookCharacter {
 
 ### Step 1 — Synopsis generation
 
-User enters background keywords (theme, setting). If continuing from a previous episode, the previous story's ending choices are loaded.
+User enters background keywords (theme, setting). If continuing from a previous episode, the previous story's ending choices are loaded and the selected background keywords must match one of those choices.
 
 → `POST /api/storybook/{id}/synopsis` → `generateSynopsisVersions()`
 
 - **Model:** `TEXT_MODEL` (gemini-3-flash-preview)
 - **Modalities:** Text only
-- **Input:** Single text prompt with story name, protagonist (with pronoun/role label), supporting character, keywords, age range. If continuing, includes previous story excerpt + ending choices.
+- **Route input:** `backgroundKeywords` (required), optional `storyName`, `ageRange`, `fromStoryId`, `locale`
+- **Prompt input:** Single text prompt with story name, protagonist (with pronoun/role label), supporting character, keywords, age range. If continuing, includes previous story excerpt + ending choices.
 - **Output format:** Strict JSON object — `{"A":{"title":"...","content":"..."},"B":{...},"C":{...}}`
 - **Parsing:** `safeParseJsonObject()` with regex fallback if JSON parse fails
 - **Locale-aware:** Title length instruction differs (4-6 Chinese chars vs 2-5 English words)
 
-Returns 3 synopsis options (A/B/C) with different emotional angles: sensory wonder, companionship, courage.
+The route transforms that object into `SynopsisOption[]` and returns `{ options }` with three versions (A/B/C): sensory wonder, companionship, and courage.
 
 ### Step 2 — Full story + assets (single interleaved Gemini call)
 
@@ -171,7 +175,7 @@ User picks one synopsis.
   1. `[STORY BODY]` — the story text with `[Scene 1]`, `[Scene 2]` markers
   2. `<!--NPCS:[...]-->` and `<!--CHOICES:[...]-->` markers
   3. Optional `<!--SUPPORTING:{...}-->` if supporting character was invented
-  4. `[CHARACTER - Name]` + portrait image for each NPC (one at a time)
+  4. `[CHARACTER - Name]` + portrait image for each listed NPC, and also for the invented supporting character when `needsSupportingCharacter` is true
   5. `[COVER]` + cover image
 - **Response parsing:** Walks `response.candidates[0].content.parts` sequentially:
   - Text parts: accumulated into `allText`, also tracked per-image as `pendingTextSinceLastImage`
@@ -182,21 +186,22 @@ This single call produces:
 - The full story text (with `[Scene 1]`, `[Scene 2]` markers)
 - A cover image
 - NPC character portraits (if new characters appear)
+- An invented supporting character payload when the storybook is considered to have no named non-NPC companion
 - End-of-episode choices
 - NPC metadata
 
 **NPC auto-discovery and persistence:**
 
 After the interleaved call, the endpoint:
-1. For invented supporting characters (`<!--SUPPORTING:{...}-->`): creates a Character record with the generated portrait, links to storybook
-2. For each NPC in `<!--NPCS:[...]-->`: creates a Character record with the generated portrait (if image was mapped), adds to storybook with `isNpc: true`
-3. Updates the storybook's characters array with all newly discovered characters
+1. For invented supporting characters (`<!--SUPPORTING:{...}-->`): adds a supporting entry to the storybook, and creates a Character record only if a portrait image was successfully mapped
+2. For each NPC in `<!--NPCS:[...]-->`: adds a storybook entry with `isNpc: true`, and creates a Character record only if a portrait image was successfully mapped
+3. Updates the storybook's characters array, then creates the chapter record and returns `{ story, synopsisVersion, discoveredNpcs }`
 
 ## Phase 3: Video Pipeline
 
 ### Step 3 — Director script + scene images (single interleaved Gemini call)
 
-User picks scene count (3 / 5 / 7).
+User picks scene count (3 / 5 / 7). The frontend sends this as equal `minLength`/`maxLength` values.
 
 → `POST /api/story/director-script` → `generateInterleavedDirectorScript()`
 
@@ -221,13 +226,13 @@ User picks scene count (3 / 5 / 7).
 
 | Stage | What happens | Gemini? |
 |-------|-------------|---------|
-| **1. Images** | Use pre-generated images from Step 3. Only call `generateStoryImage()` (`IMAGE_MODEL`, image only) for scenes missing an image. | Only for missing |
+| **1. Images** | Use pre-generated images from Step 3. Only call `generateSceneIllustration()` for scenes missing an image. That image helper uses Banana first and falls back to Gemini `generateStoryImage()`. | Only for missing |
 | **2. Audio** | Per-line TTS via Gemini for narration + dialogue, concatenated per scene via FFmpeg. Fallback: single TTS call for entire scene. | Yes (TTS) |
 | **3. Clips** | FFmpeg combines each scene's image + audio into an MP4 clip. | No |
 | **4. Concat** | FFmpeg merges all clips into `raw.mp4`. | No |
 | **5. Subtitles** | Build SRT from line-level timings, burn into video → `final.mp4`. | No |
 
-The frontend polls `GET /api/video/{projectId}` for progress (0-100%) until `status: 'complete'`.
+The play page polls `GET /api/story/{storyId}` every 3 seconds and reads the embedded `videoProject` payload until `status` becomes `complete` or `failed`.
 
 ## All Gemini Calls
 
@@ -235,11 +240,11 @@ The frontend polls `GET /api/video/{projectId}` for progress (0-100%) until `sta
 |---|----------|-------|------------|------|
 | 1 | `generateCharacterWithStyleRef` × 5 | IMAGE_MODEL | image | Storybook setup (parallel) |
 | 2 | `generateCompanionSuggestions` | TEXT_MODEL | text | Storybook setup |
-| 3 | `generateCompanionCharacterCartoon` | IMAGE_MODEL | image | Storybook creation (per companion) |
+| 3 | `generateCompanionCharacterCartoon` | Banana primary, Gemini IMAGE_MODEL fallback | image | Storybook creation (per companion) |
 | 4 | `generateSynopsisVersions` | TEXT_MODEL | text | Chapter creation |
 | 5 | `generateStoryWithAssets` | IMAGE_MODEL | text+image | Chapter creation |
 | 6 | `generateInterleavedDirectorScript` | IMAGE_MODEL | text+image | Video pipeline |
 | 7 | `generateStorybookDirectorScript` | TEXT_MODEL | text | Video pipeline (fallback for #6) |
-| 8 | `generateStoryImage` | IMAGE_MODEL | image | Video Stage 1 (fallback for missing images) |
+| 8 | `generateSceneIllustration` | Banana primary, Gemini IMAGE_MODEL fallback | image | Video Stage 1 for scenes missing a pre-generated image |
 | 9 | TTS calls | Gemini TTS | audio | Video Stage 2 |
 | 10 | `assignCharacterVoice` | TEXT_MODEL | text | Character voice setup |

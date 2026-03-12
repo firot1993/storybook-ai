@@ -1,13 +1,14 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import type { Character, Story, Storybook } from '@/types'
 import { STYLES } from '@/lib/styles'
 import { CharacterAvatar } from '@/components/character-avatar'
 import { useLanguage } from '@/lib/i18n'
 import { normalizeStoryChoices } from '@/lib/story-scenes'
 
-export type StorybookChapterItem = Pick<Story, 'id' | 'title' | 'synopsis' | 'status' | 'createdAt' | 'content'>
+export type StorybookChapterItem = Pick<Story, 'id' | 'title' | 'synopsis' | 'status' | 'createdAt' | 'content' | 'mainImage'>
 export type StorybookListItem = Pick<Storybook, 'id' | 'name' | 'ageRange' | 'styleId' | 'characters'> & {
   chapters?: StorybookChapterItem[]
 }
@@ -123,9 +124,21 @@ export default function StorybookList({
                         href={`/story/play?id=${chapter.id}`}
                         className="flex items-start gap-3 px-4 py-3.5 hover:bg-forest-50/60 transition-colors group"
                       >
-                        <div className="shrink-0 w-8 h-8 rounded-xl bg-forest-100 flex items-center justify-center mt-0.5">
-                          <span className="text-xs font-extrabold text-forest-600">{idx + 1}</span>
-                        </div>
+                        {chapter.mainImage ? (
+                          <div className="shrink-0 w-10 h-10 rounded-xl overflow-hidden mt-0.5">
+                            <Image
+                              src={chapter.mainImage}
+                              alt={chapter.title || `Episode ${idx + 1}`}
+                              width={40}
+                              height={40}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="shrink-0 w-10 h-10 rounded-xl bg-forest-100 flex items-center justify-center mt-0.5">
+                            <span className="text-xs font-extrabold text-forest-600">{idx + 1}</span>
+                          </div>
+                        )}
 
                         <div className="flex-1 min-w-0">
                           <p className="font-bold text-sm text-gray-800 truncate group-hover:text-forest-700 transition-colors">

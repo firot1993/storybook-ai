@@ -87,6 +87,64 @@ export function subtitlesContainCjk(subtitles: SubtitleCue[]): boolean {
   return subtitles.some((cue) => hasCjkGlyphs(cue.text))
 }
 
+// ── Narration splitting ──────────────────────────────────────
+
+/**
+ * Split a narration string into shorter lines suitable for subtitles and
+ * per-line TTS.  Splits on sentence-ending punctuation (. ! ? and CJK
+ * equivalents).  If a resulting segment is still longer than `maxChars`,
+ * it is further split on comma / clause boundaries.
+ */
+export function splitNarrationIntoLines(narration: string, maxChars = 60): string[] {
+  const trimmed = narration?.trim()
+  if (!trimmed) return []
+  if (trimmed.length <= maxChars) return [trimmed]
+
+  // Split on sentence-ending punctuation, keeping the punctuation with
+  // the preceding text.
+  const sentences = trimmed
+    .split(/(?<=[.!?。！？])\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const lines: string[] = []
+  for (const sentence of sentences) {
+    if (sentence.length <= maxChars) {
+      lines.push(sentence)
+      continue
+    }
+    // Further split long sentences on commas / semicolons / clause breaks
+    const clauses = sentence
+      .split(/(?<=[,;，；、])\s*/)
+      .map((c) => c.trim())
+      .filter(Boolean)
+
+    let buffer = ''
+    for (const clause of clauses) {
+      if (buffer && (buffer + ' ' + clause).length > maxChars) {
+        lines.push(buffer)
+        buffer = clause
+      } else {
+        buffer = buffer ? buffer + ' ' + clause : clause
+      }
+    }
+    if (buffer) lines.push(buffer)
+  }
+
+  return lines.length > 0 ? lines : [trimmed]
+}
+
+/**
+ * Build the per-line script for a scene: narration split into subtitle-
+ * friendly chunks, followed by dialogue lines.
+ */
+export function buildSceneLines(scene: ScriptScene): string[] {
+  return [
+    ...splitNarrationIntoLines(scene.narration),
+    ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
+  ].filter(Boolean)
+}
+
 // ── Core video operations ────────────────────────────────────
 
 /**
@@ -122,6 +180,95 @@ export function createSceneVideoClip(
       .output(outputPath)
       .on('end', () => resolve())
       .on('error', (err) => reject(new Error(`FFmpeg scene clip error: ${err.message}`)))
+      .run()
+  })
+}
+
+/**
+ * Create a video clip from multiple still images (frames) + audio file.
+ * Splits audio duration equally among frames and crossfades between them.
+ * Falls back to single-image behavior if only 1 frame is provided.
+ */
+export async function createMultiFrameSceneVideoClip(
+  imagePaths: string[],
+  audioPath: string,
+  outputPath: string,
+  options: { resolution?: string; fps?: number; crossfadeDuration?: number } = {}
+): Promise<void> {
+  if (imagePaths.length <= 1) {
+    return createSceneVideoClip(imagePaths[0], audioPath, outputPath, options)
+  }
+
+  const { resolution = '1280x720', fps = 24, crossfadeDuration = 0.5 } = options
+  const [w, h] = resolution.split('x')
+  const frameCount = imagePaths.length
+
+  // Get audio duration to calculate per-frame display time
+  const audioDurationMs = await getVideoDuration(audioPath)
+  const audioDurationSec = audioDurationMs / 1000
+
+  // Each frame gets equal time, accounting for crossfade overlaps
+  // Total overlap time = (frameCount - 1) * crossfadeDuration
+  // Sum of segment durations = audioDuration + (frameCount - 1) * crossfadeDuration
+  const totalOverlap = (frameCount - 1) * crossfadeDuration
+  const segmentDuration = (audioDurationSec + totalOverlap) / frameCount
+  // Ensure minimum segment duration is at least 2x crossfade
+  const safeSegmentDuration = Math.max(segmentDuration, crossfadeDuration * 2 + 0.1)
+
+  return new Promise((resolve, reject) => {
+    const cmd = ffmpeg()
+
+    // Add each image as a looping input with its segment duration
+    for (let i = 0; i < frameCount; i++) {
+      cmd.input(imagePaths[i])
+      cmd.inputOptions(['-loop 1', `-t ${safeSegmentDuration}`])
+    }
+
+    // Add audio input
+    cmd.input(audioPath)
+
+    // Build the complex filtergraph:
+    // 1. Scale each image to target resolution
+    // 2. Apply xfade transitions between consecutive streams
+    // 3. Map the final video + audio
+    const scaleFilters: string[] = []
+    for (let i = 0; i < frameCount; i++) {
+      scaleFilters.push(
+        `[${i}:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=${fps}[v${i}]`
+      )
+    }
+
+    // Chain xfade filters between consecutive streams
+    const xfadeFilters: string[] = []
+    let prevLabel = 'v0'
+    for (let i = 1; i < frameCount; i++) {
+      const offset = i * safeSegmentDuration - i * crossfadeDuration
+      const safeOffset = Math.max(0, offset)
+      const outLabel = i < frameCount - 1 ? `xf${i}` : 'vout'
+      xfadeFilters.push(
+        `[${prevLabel}][v${i}]xfade=transition=fade:duration=${crossfadeDuration}:offset=${safeOffset.toFixed(3)}[${outLabel}]`
+      )
+      prevLabel = outLabel
+    }
+
+    const filterComplex = [...scaleFilters, ...xfadeFilters].join(';')
+
+    cmd
+      .complexFilter(filterComplex)
+      .outputOptions([
+        '-map', '[vout]',
+        '-map', `${frameCount}:a`,
+        '-c:v libx264',
+        '-preset fast',
+        '-c:a aac',
+        '-b:a 192k',
+        '-pix_fmt yuv420p',
+        '-shortest',
+        '-movflags +faststart',
+      ])
+      .output(outputPath)
+      .on('end', () => resolve())
+      .on('error', (err) => reject(new Error(`FFmpeg multi-frame clip error: ${err.message}`)))
       .run()
   })
 }
@@ -275,10 +422,7 @@ export function buildSubtitleCues(
     const scene = scenes[i]
     const totalMs = sceneDurationsMs[i] ?? scene.estimatedDuration * 1000
 
-    const lines = [
-      scene.narration,
-      ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
-    ].filter(Boolean)
+    const lines = buildSceneLines(scene)
 
     if (lines.length === 0) {
       timeMs += totalMs
@@ -301,8 +445,8 @@ export function buildSubtitleCues(
 
 /**
  * V2: Build subtitle cues from actual line-level audio durations.
- * sceneLineDurationsMs[i][j] matches line j in scene i:
- *   [scene.narration, ...scene.dialogue.map(d => `${d.speaker}: ${d.text}`)]
+ * sceneLineDurationsMs[i][j] matches line j in scene i (narration split
+ * into sentences via buildSceneLines()).
  */
 export function buildSubtitleCuesV2(
   scenes: ScriptScene[],
@@ -315,10 +459,7 @@ export function buildSubtitleCuesV2(
 
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i]
-    const lines = [
-      scene.narration,
-      ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
-    ].filter(Boolean)
+    const lines = buildSceneLines(scene)
 
     if (lines.length === 0) {
       timeMs += sceneDurationsMsFallback[i] ?? scene.estimatedDuration * 1000

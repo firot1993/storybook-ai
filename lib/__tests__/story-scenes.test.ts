@@ -41,14 +41,14 @@ describe('splitStoryIntoScenes', () => {
     expect(scenes[1]).toBe('World')
   })
 
-  it('returns full text as single scene when no scene markers (marker split returns original)', () => {
+  it('falls back to paragraph splitting when no scene markers exist', () => {
     const content = 'Paragraph one.\n\nParagraph two.\n\nParagraph three.'
     const scenes = splitStoryIntoScenes(content)
-    // When no [Scene N] markers exist, regex split returns the whole string as one element.
-    // Since markerScenes.length > 0, the fallback branch is not reached.
-    expect(scenes).toHaveLength(1)
-    expect(scenes[0]).toContain('Paragraph one.')
-    expect(scenes[0]).toContain('Paragraph three.')
+    // Without [Scene N] markers, falls back to splitting on double newlines.
+    expect(scenes).toHaveLength(3)
+    expect(scenes[0]).toBe('Paragraph one.')
+    expect(scenes[1]).toBe('Paragraph two.')
+    expect(scenes[2]).toBe('Paragraph three.')
   })
 
   it('returns empty array for empty string', () => {

@@ -4,10 +4,12 @@ import { createVideoProject, getScript, updateVideoProject } from '@/lib/db'
 import { generateSceneIllustration } from '@/lib/banana-img'
 import { generateSceneLineNarrationAudioUrlsV2, generateSceneNarrationAudioUrl } from '@/lib/gemini-tts'
 import {
+  buildSceneLines,
   buildSubtitleCues,
   buildSubtitleCuesV2,
   canRenderCjkSubtitles,
   createSceneVideoClip,
+  createMultiFrameSceneVideoClip,
   concatenateAudiosV2,
   concatenateVideos,
   burnSubtitles,
@@ -115,10 +117,7 @@ function resolveSceneCharacterReferences(
 }
 
 function debugLogSceneScript(projectId: string, scene: ScriptScene, sceneIndex: number): void {
-  const sceneLines = [
-    scene.narration,
-    ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
-  ].filter(Boolean)
+  const sceneLines = buildSceneLines(scene)
   console.log(
     `[Video Pipeline][${projectId}][Scene ${sceneIndex}] Script\n` +
     `title: ${scene.title || ''}\n` +
@@ -231,36 +230,60 @@ async function runPipeline(
     // ── Stage 1: Generate scene images (use pre-generated if available) ─
     await updateVideoProject(projectId, { status: 'generating_images', progress: 5 })
     const imageLocalPaths: string[] = []
+    // Multi-frame image paths per scene (up to 3 frames: opening, mid-action, ending)
+    const sceneFramePaths: string[][] = []
 
-    // Check which scenes have pre-generated images from interleaved director script
+    // Check which scenes have pre-generated frame images from interleaved director script
     const preGenPrefix = `videos/pre-${scriptId}`
-    const preGenAvailable: boolean[] = await Promise.all(
-      scenes.map((_, idx) => fileExists(`${preGenPrefix}/scene-${idx}.jpg`))
+    const FRAME_COUNT = 3
+
+    // Check for multi-frame pre-generated images (scene-{idx}-frame-{0,1,2}.jpg)
+    const preGenFrameAvailable: boolean[][] = await Promise.all(
+      scenes.map(async (_, idx) => {
+        const checks = await Promise.all(
+          Array.from({ length: FRAME_COUNT }, (__, fi) =>
+            fileExists(`${preGenPrefix}/scene-${idx}-frame-${fi}.jpg`)
+          )
+        )
+        return checks
+      })
     )
-    const preGenCount = preGenAvailable.filter(Boolean).length
-    if (preGenCount > 0) {
-      console.log(`[Video Pipeline][${projectId}] Found ${preGenCount}/${scenes.length} pre-generated scene images`)
+    const preGenFrameCount = preGenFrameAvailable
+      .flat()
+      .filter(Boolean).length
+    if (preGenFrameCount > 0) {
+      console.log(`[Video Pipeline][${projectId}] Found ${preGenFrameCount} pre-generated frame images across ${scenes.length} scenes`)
     }
 
-    // Copy pre-generated images to project dir; generate missing ones
+    // Copy pre-generated frame images to project dir; generate missing ones
     for (let i = 0; i < scenes.length; i += 3) {
       const batch = scenes.slice(i, i + 3)
       const results = await Promise.allSettled(
         batch.map(async (scene, bi) => {
           const idx = i + bi
+          const framePaths: string[] = []
 
-          // Use pre-generated image if available
-          if (preGenAvailable[idx]) {
-            const preRelPath = `${preGenPrefix}/scene-${idx}.jpg`
-            const destRelPath = `${base}/scene-${idx}.jpg`
-            const preLocalPath = getLocalPath(preRelPath)
-            const preData = await fs.readFile(preLocalPath)
-            await saveFile(preData, destRelPath)
-            console.log(`[Video Pipeline][${projectId}][Scene ${idx}] Using pre-generated image`)
-            return { idx, localPath: getLocalPath(destRelPath) }
+          // Load all available pre-generated frames for this scene
+          const frameAvailability = preGenFrameAvailable[idx] ?? []
+          const hasAnyFrame = frameAvailability.some(Boolean)
+
+          if (hasAnyFrame) {
+            for (let fi = 0; fi < FRAME_COUNT; fi++) {
+              if (frameAvailability[fi]) {
+                const preRelPath = `${preGenPrefix}/scene-${idx}-frame-${fi}.jpg`
+                const destRelPath = `${base}/scene-${idx}-frame-${fi}.jpg`
+                const preLocalPath = getLocalPath(preRelPath)
+                const preData = await fs.readFile(preLocalPath)
+                await saveFile(preData, destRelPath)
+                framePaths.push(getLocalPath(destRelPath))
+              }
+            }
+            console.log(`[Video Pipeline][${projectId}][Scene ${idx}] Using ${framePaths.length} pre-generated frame images`)
+            // Use the first frame as the primary image for fallback/compatibility
+            return { idx, localPath: framePaths[0], framePaths }
           }
 
-          // Generate image for this scene
+          // No pre-generated frames — generate a single image for this scene
           const sceneRefs = resolveSceneCharacterReferences(
             scene,
             characterImagesBase64,
@@ -284,7 +307,8 @@ async function runPipeline(
           )
           const relPath = `${base}/scene-${idx}.jpg`
           await saveFile(Buffer.from(result.data, 'base64'), relPath)
-          return { idx, localPath: getLocalPath(relPath) }
+          const localPath = getLocalPath(relPath)
+          return { idx, localPath, framePaths: [localPath] }
         })
       )
 
@@ -292,10 +316,12 @@ async function runPipeline(
         const idx = i + bi
         if (r.status === 'fulfilled') {
           imageLocalPaths[r.value.idx] = r.value.localPath
+          sceneFramePaths[r.value.idx] = r.value.framePaths
           return
         }
         console.warn(`[Pipeline] Scene image ${idx} failed:`, r.reason)
         imageLocalPaths[idx] = imageLocalPaths[idx - 1] ?? imageLocalPaths[0] ?? ''
+        sceneFramePaths[idx] = [imageLocalPaths[idx]]
       })
 
       const done = Math.min(i + 3, scenes.length)
@@ -311,10 +337,7 @@ async function runPipeline(
 
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i]
-      const sceneLines = [
-        scene.narration,
-        ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
-      ].filter(Boolean)
+      const sceneLines = buildSceneLines(scene)
       const sceneText = sceneLines.join('\n')
       console.log(
         `[Video Pipeline][${projectId}][Scene ${i}] Audio generation input\n` +
@@ -390,6 +413,7 @@ async function runPipeline(
     for (let i = 0; i < scenes.length; i++) {
       const imgPath = imageLocalPaths[i]
       const audPath = audioLocalPaths[i]
+      const framePaths = sceneFramePaths[i] ?? (imgPath ? [imgPath] : [])
 
       if (!imgPath || !audPath) {
         console.warn(`[Pipeline] Scene ${i}: missing image or audio, skipping`)
@@ -400,10 +424,18 @@ async function runPipeline(
       const clipRelPath = `${base}/scene-${i}.mp4`
       const clipLocalPath = getLocalPath(clipRelPath)
 
-      await createSceneVideoClip(imgPath, audPath, clipLocalPath, {
-        resolution: settings.resolution,
-        fps: settings.fps,
-      })
+      if (framePaths.length > 1) {
+        console.log(`[Video Pipeline][${projectId}][Scene ${i}] Creating multi-frame clip with ${framePaths.length} frames`)
+        await createMultiFrameSceneVideoClip(framePaths, audPath, clipLocalPath, {
+          resolution: settings.resolution,
+          fps: settings.fps,
+        })
+      } else {
+        await createSceneVideoClip(imgPath, audPath, clipLocalPath, {
+          resolution: settings.resolution,
+          fps: settings.fps,
+        })
+      }
 
       const duration = await getVideoDuration(clipLocalPath)
       sceneDurationsMs.push(duration)

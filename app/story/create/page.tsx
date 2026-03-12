@@ -19,12 +19,6 @@ const SYNOPSIS_STYLE = {
   C: { gradient: 'from-emerald-400 to-teal-400', bg: 'bg-emerald-50', border: 'border-emerald-200', ring: 'ring-emerald-300' },
 }
 
-const VIDEO_SCENE_RANGE_OPTIONS = [
-  { id: '3', min: 3, max: 3 },
-  { id: '5', min: 5, max: 5 },
-  { id: '7', min: 7, max: 7 },
-] as const
-type VideoSceneRangeOptionId = (typeof VIDEO_SCENE_RANGE_OPTIONS)[number]['id']
 type PreviousChoicesStatus = 'idle' | 'available' | 'unavailable' | 'load_failed' | 'mismatch'
 
 async function getApiErrorMessage(res: Response): Promise<string | null> {
@@ -102,7 +96,7 @@ function CreateStoryWizard() {
   const [selectedSynopsisOpt, setSelectedSynopsisOpt] = useState<SynopsisOption | null>(null)
   const [discoveredNpcs, setDiscoveredNpcs] = useState<Array<{ name: string; description?: string; image?: string }>>([])
   const [startingVideo, setStartingVideo] = useState(false)
-  const [videoSceneRange, setVideoSceneRange] = useState<VideoSceneRangeOptionId>('3')
+  const [videoPreparationStage, setVideoPreparationStage] = useState<'script' | 'pipeline' | null>(null)
   const clearContinuationParams = useCallback((nextStep?: number) => {
     const params = new URLSearchParams(searchParams.toString())
     params.delete('fromStoryId')
@@ -497,13 +491,9 @@ function CreateStoryWizard() {
   // ── Start video production pipeline ──────────────────────
   const handleStartVideo = useCallback(async () => {
     if (!generatedStoryId || startingVideo) return
-    const selectedRange =
-      VIDEO_SCENE_RANGE_OPTIONS.find((option) => option.id === videoSceneRange) ??
-      VIDEO_SCENE_RANGE_OPTIONS[0]
-    const minLength = selectedRange.min
-    const maxLength = selectedRange.max
 
     setStartingVideo(true)
+    setVideoPreparationStage('script')
     try {
       // Step 1: generate director storyboard script from story
       const scriptRes = await fetch('/api/story/director-script', {
@@ -511,8 +501,6 @@ function CreateStoryWizard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storyId: generatedStoryId,
-          minLength,
-          maxLength,
           locale,
         }),
       })
@@ -520,6 +508,7 @@ function CreateStoryWizard() {
       const { script } = await scriptRes.json()
 
       // Step 2: kick off video pipeline
+      setVideoPreparationStage('pipeline')
       const videoRes = await fetch('/api/video/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -532,8 +521,9 @@ function CreateStoryWizard() {
     } catch {
       showToast(t('storyCreate.errors.videoFailed'), 'error')
       setStartingVideo(false)
+      setVideoPreparationStage(null)
     }
-  }, [generatedStoryId, locale, router, startingVideo, videoSceneRange, t])
+  }, [generatedStoryId, locale, router, startingVideo, t])
 
   // ── Render ────────────────────────────────────────────────
 
@@ -976,52 +966,35 @@ function CreateStoryWizard() {
 
                 {/* Actions */}
                 <div className="space-y-3">
-                  <div className="rounded-2xl border border-forest-100 bg-forest-50/60 p-3">
-                    <p className="text-[11px] font-bold text-forest-700 mb-2">{t('storyCreate.videoScenesLabel')}</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {VIDEO_SCENE_RANGE_OPTIONS.map((option) => {
-                        const active = videoSceneRange === option.id
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => setVideoSceneRange(option.id)}
-                            className={`rounded-xl border px-2.5 py-2 text-left transition-all ${
-                              active
-                                ? 'bg-forest-500 border-forest-500 text-white shadow-md'
-                                : 'bg-white border-forest-100 text-gray-700 hover:border-forest-300'
-                            }`}
-                          >
-                            <p className="text-xs font-extrabold">{option.id} {t('storyCreate.sceneUnit')}</p>
-                            <p className={`text-[10px] mt-0.5 ${active ? 'text-white/80' : 'text-gray-500'}`}>
-                              {t(`videoSceneRange.${option.id}.eta`)}
-                            </p>
-                          </button>
-                        )
-                      })}
-                    </div>
-                    <p className="text-[10px] text-forest-700 mt-2">
-                      {t('storyCreate.selectedScenes', { n: videoSceneRange })}
-                    </p>
-                  </div>
                   <button
                     onClick={handleStartVideo}
                     disabled={startingVideo}
                     className="btn-primary w-full disabled:opacity-60"
                   >
                     {startingVideo ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                        {t('storyCreate.preparingBtn')}
+                      <span className="flex flex-col items-center gap-1">
+                        <span className="flex items-center gap-2">
+                          <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                          {videoPreparationStage === 'script'
+                            ? t('storyCreate.preparingScript')
+                            : t('storyCreate.preparingBtn')}
+                        </span>
+                        {videoPreparationStage === 'script' && (
+                          <span className="text-[10px] text-white/70 font-normal">
+                            {t('storyCreate.preparingScriptHint')}
+                          </span>
+                        )}
                       </span>
                     ) : t('storyCreate.confirmVideoBtn')}
                   </button>
-                  <Link
-                    href={`/story/play?id=${generatedStoryId}`}
-                    className="btn-secondary w-full text-center block text-sm"
-                  >
-                    {t('storyCreate.readStoryBtn')}
-                  </Link>
+                  {!startingVideo && (
+                    <Link
+                      href={`/story/play?id=${generatedStoryId}`}
+                      className="btn-secondary w-full text-center block text-sm"
+                    >
+                      {t('storyCreate.readStoryBtn')}
+                    </Link>
+                  )}
                   <button
                     onClick={() => {
                       setStep(1)

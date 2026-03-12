@@ -815,7 +815,7 @@ export async function generateInterleavedDirectorScript(params: {
   characterNames?: string[]
 }): Promise<{
   scenes: import('@/types').DirectorStoryboardScene[]
-  sceneImages: Map<number, { data: string; mimeType: string }>
+  sceneImages: Map<number, Array<{ data: string; mimeType: string }>>
 }> {
   const {
     storyName,
@@ -939,7 +939,8 @@ export async function generateInterleavedDirectorScript(params: {
     midActionFramePrompt: string
     endingFramePrompt: string
   }> = []
-  const sceneImages = new Map<number, { data: string; mimeType: string }>()
+  const sceneImages = new Map<number, Array<{ data: string; mimeType: string }>>()
+  const MAX_FRAMES_PER_SCENE = 3
 
   // Track the last parsed scene index so the next image can be mapped to it
   let lastParsedSceneIndex = -1
@@ -959,17 +960,24 @@ export async function generateInterleavedDirectorScript(params: {
         }
       }
     } else if (part.inlineData?.data && lastParsedSceneIndex >= 0) {
-      // Map this image to the most recently parsed scene
-      if (!sceneImages.has(lastParsedSceneIndex)) {
+      // Collect up to 3 images per scene (opening, mid-action, ending)
+      const frames = sceneImages.get(lastParsedSceneIndex) ?? []
+      if (frames.length < MAX_FRAMES_PER_SCENE) {
         const compressed = await compressImage(part.inlineData.data, 768, 80)
-        sceneImages.set(lastParsedSceneIndex, compressed)
+        frames.push(compressed)
+        sceneImages.set(lastParsedSceneIndex, frames)
       }
     }
   }
 
+  const sceneImageCounts = Array.from(sceneImages.entries())
+    .map(([idx, frames]) => `scene ${idx}: ${frames.length}`)
+    .join(', ')
   console.log(`${debugTag} Parsed`, {
     sceneMetaCount: sceneMetaList.length,
     sceneImageCount: sceneImages.size,
+    sceneImageCounts,
+    totalImages: Array.from(sceneImages.values()).reduce((sum, frames) => sum + frames.length, 0),
   })
 
   if (sceneMetaList.length === 0) {
