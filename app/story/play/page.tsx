@@ -832,19 +832,60 @@ function PlayStoryContent() {
               </div>
             )}
 
-            {/* Start / retry / regenerate video CTA */}
-            {urlStoryId && !isInProgress && (
+            {/* Start / retry video CTA — hide when video is already complete */}
+            {urlStoryId && !isInProgress && !videoProject?.finalVideoUrl && (
               <VideoStartButton
                 storyId={urlStoryId}
                 onStarted={(vp) => setVideoProject(vp)}
-                label={isFailed || Boolean(videoProject?.finalVideoUrl) ? t('storyPlay.retryVideo') : t('storyPlay.startVideo')}
+                label={isFailed ? t('storyPlay.retryVideo') : t('storyPlay.startVideo')}
               />
             )}
           </div>
         )
       })()}
 
-      {/* Storybook card */}
+      {/* Choose Your Path — shown below video when video is complete */}
+      {videoProject?.finalVideoUrl && (
+        <div className="max-w-2xl mx-auto w-full mb-4">
+          <div className="bg-white rounded-3xl shadow-xl border-3 border-candy-400 bg-gradient-to-br from-candy-50 to-white p-6">
+            {/* Header */}
+            <div className="text-center mb-5">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-forest-100 rounded-full mb-3">
+                <span className="text-base">✨</span>
+                <span className="text-forest-700 text-xs font-extrabold tracking-wide">{t('storyPlay.destiniesTitle')}</span>
+              </div>
+              <h2 className="text-lg font-extrabold text-gray-800 leading-snug">{t('storyPlay.destiniesSubtitle')}</h2>
+              <p className="text-xs text-gray-400 mt-1">{t('storyPlay.destiniesHint')}</p>
+            </div>
+
+            {/* Choices */}
+            <div className="space-y-2.5 mb-5">
+              {endingChoiceLinks.map(({ key, choice, href }) => (
+                <Link
+                  key={key}
+                  href={href}
+                  className="flex items-center justify-between p-4 rounded-xl bg-white border-2 border-forest-100 hover:border-forest-400 hover:bg-forest-50 transition-all text-left shadow-sm group"
+                >
+                  <span className="font-bold text-sm text-gray-800 group-hover:text-forest-700 transition-colors">{choice}</span>
+                  <svg className="w-4 h-4 text-gray-300 group-hover:text-forest-500 group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              ))}
+            </div>
+
+            {/* Secondary actions */}
+            <div className="flex gap-3">
+              <Link href="/storybook" className="btn-secondary flex-1 py-3 text-sm text-center">
+                {t('storyPlay.libraryBtn')}
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Storybook card — hidden when video is complete */}
+      {!videoProject?.finalVideoUrl && (
       <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full">
         <div
           key={sceneKey}
@@ -1194,6 +1235,7 @@ function PlayStoryContent() {
           </button>
         </div>
       </div>
+      )}
     </div>
   )
 }

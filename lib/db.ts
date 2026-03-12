@@ -127,7 +127,7 @@ export async function listStorybooks() {
     orderBy: { createdAt: 'desc' },
     include: {
       chapters: {
-        select: { id: true, title: true, synopsis: true, status: true, createdAt: true, content: true },
+        select: { id: true, title: true, synopsis: true, status: true, createdAt: true, content: true, mainImage: true },
         orderBy: { createdAt: 'asc' },
       },
     },
