@@ -353,9 +353,9 @@ const en = {
     '6-8': { label: '6-8 yrs' },
   },
   videoSceneRange: {
-    '3-4': { eta: 'Est. 3-5 min' },
-    '7-10': { eta: 'Est. 6-10 min' },
-    '15-18': { eta: 'Est. 12-18 min' },
+    '3': { eta: 'Est. 2-3 min' },
+    '5': { eta: 'Est. 4-6 min' },
+    '7': { eta: 'Est. 6-9 min' },
   },
   common: {
     loading: 'Loading...',

@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStory, getStorybook, createScript, getCharacter } from '@/lib/db'
-import { generateStorybookDirectorScript, getGeminiErrorResponse } from '@/lib/gemini'
+import { generateInterleavedDirectorScript, generateStorybookDirectorScript, getGeminiErrorResponse } from '@/lib/gemini'
 import { normalizeLocale } from '@/lib/i18n/shared'
-import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
+import { resolveStorybookCharacters, resolveStorybookStyle, resolveStoryCharacterReferences } from '@/lib/storybook-helpers'
+import { saveFile } from '@/lib/storage'
 
 /**
  * POST /api/story/director-script
  *
- * Generates an anime-director storyboard script (15-18 scenes) from a completed story.
- * Each scene contains voiceOver, dialogue, cameraDesign, animationAction, and 3 key-frame
- * image prompts (opening / midAction / ending) for multi-frame video generation.
+ * Generates an anime-director storyboard script from a completed story.
+ * Uses interleaved Gemini generation to produce both scene metadata and
+ * scene illustrations in a single call. Falls back to text-only generation
+ * if the interleaved call fails.
  *
  * Request body:
  *   storyId        — required
@@ -17,8 +19,8 @@ import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybo
  *   supportingName  — (optional) overrides auto-resolved supporting name
  *   ageRange        — (optional) overrides storybook ageRange
  *   styleDesc       — (optional) overrides storybook style description
- *   minLength       — (optional) minimum number of scenes, default 15
- *   maxLength       — (optional) maximum number of scenes, default 18
+ *   minLength       — (optional) minimum number of scenes, default 3
+ *   maxLength       — (optional) maximum number of scenes, default 3
  *
  * Character names, ageRange, and styleDesc are auto-resolved from the storybook when omitted.
  */
@@ -47,13 +49,13 @@ export async function POST(request: NextRequest) {
 
     const minSceneCount =
       minSceneCountRaw === undefined
-        ? 15
+        ? 3
         : Number.isFinite(minSceneCountRaw)
           ? Math.trunc(minSceneCountRaw)
           : NaN
     const maxSceneCount =
       maxSceneCountRaw === undefined
-        ? 18
+        ? 3
         : Number.isFinite(maxSceneCountRaw)
           ? Math.trunc(maxSceneCountRaw)
           : NaN
@@ -160,7 +162,78 @@ export async function POST(request: NextRequest) {
         pushCharacterProfile(name, undefined)
       })
 
+    // Resolve character reference images for interleaved generation
+    const charRefs = await resolveStoryCharacterReferences(storyId)
+
+    // Use the sceneCount from the request (min === max for new 3/5/7 options)
+    const sceneCount = minSceneCount
+
     let scenes: import('@/types').DirectorStoryboardScene[]
+    let scriptId: string
+
+    // Try interleaved generation first (script + images in one call)
+    try {
+      console.log('[Director Script] Attempting interleaved generation', { sceneCount })
+      const result = await generateInterleavedDirectorScript({
+        storyName: story.title,
+        protagonistName,
+        supportingName,
+        storyContent: story.content,
+        ageRange,
+        styleDesc,
+        locale,
+        characterPool,
+        characterProfiles,
+        sceneCount,
+        protagonistPronoun,
+        protagonistRole,
+        characterImagesBase64: charRefs.imagesBase64,
+        characterNames: charRefs.names,
+      })
+
+      scenes = result.scenes
+
+      if (!scenes.length) {
+        throw new Error('Interleaved generation returned no scenes')
+      }
+
+      const totalDuration = scenes.reduce((sum, s) => sum + (s.estimatedDuration ?? 10), 0)
+      const script = await createScript({ storyId, scenes, totalDuration })
+      scriptId = script.id
+
+      // Save pre-generated scene images to storage
+      const imageEntries = Array.from(result.sceneImages.entries())
+      if (imageEntries.length > 0) {
+        console.log(`[Director Script] Saving ${imageEntries.length} pre-generated scene images for script ${scriptId}`)
+        await Promise.all(
+          imageEntries.map(async ([idx, img]) => {
+            const relPath = `videos/pre-${scriptId}/scene-${idx}.jpg`
+            await saveFile(Buffer.from(img.data, 'base64'), relPath)
+          })
+        )
+      }
+
+      console.log('[Director Script] Interleaved generation succeeded', {
+        sceneCount: scenes.length,
+        imagesGenerated: result.sceneImages.size,
+        scriptId,
+      })
+
+      return NextResponse.json({
+        script: {
+          id: scriptId,
+          storyId: script.storyId,
+          scenes,
+          totalDuration,
+          sceneCount: scenes.length,
+          createdAt: script.createdAt,
+        },
+      })
+    } catch (interleavedError) {
+      console.warn('[Director Script] Interleaved generation failed, falling back to text-only:', interleavedError)
+    }
+
+    // Fallback: text-only director script generation
     try {
       scenes = await generateStorybookDirectorScript({
         storyName: story.title,

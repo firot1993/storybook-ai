@@ -20,9 +20,9 @@ const SYNOPSIS_STYLE = {
 }
 
 const VIDEO_SCENE_RANGE_OPTIONS = [
-  { id: '3-4', min: 3, max: 4 },
-  { id: '7-10', min: 7, max: 10 },
-  { id: '15-18', min: 15, max: 18 },
+  { id: '3', min: 3, max: 3 },
+  { id: '5', min: 5, max: 5 },
+  { id: '7', min: 7, max: 7 },
 ] as const
 type VideoSceneRangeOptionId = (typeof VIDEO_SCENE_RANGE_OPTIONS)[number]['id']
 type PreviousChoicesStatus = 'idle' | 'available' | 'unavailable' | 'load_failed' | 'mismatch'
@@ -102,7 +102,7 @@ function CreateStoryWizard() {
   const [selectedSynopsisOpt, setSelectedSynopsisOpt] = useState<SynopsisOption | null>(null)
   const [discoveredNpcs, setDiscoveredNpcs] = useState<Array<{ name: string; description?: string; image?: string }>>([])
   const [startingVideo, setStartingVideo] = useState(false)
-  const [videoSceneRange, setVideoSceneRange] = useState<VideoSceneRangeOptionId>('15-18')
+  const [videoSceneRange, setVideoSceneRange] = useState<VideoSceneRangeOptionId>('3')
   const clearContinuationParams = useCallback((nextStep?: number) => {
     const params = new URLSearchParams(searchParams.toString())
     params.delete('fromStoryId')
@@ -499,7 +499,7 @@ function CreateStoryWizard() {
     if (!generatedStoryId || startingVideo) return
     const selectedRange =
       VIDEO_SCENE_RANGE_OPTIONS.find((option) => option.id === videoSceneRange) ??
-      VIDEO_SCENE_RANGE_OPTIONS[2]
+      VIDEO_SCENE_RANGE_OPTIONS[0]
     const minLength = selectedRange.min
     const maxLength = selectedRange.max
 

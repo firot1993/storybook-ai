@@ -4,6 +4,7 @@ import type { CompanionSuggestion } from '@/types'
 import {
   buildCharacterWithStyleRefPrompt,
   buildCompanionSuggestionsPrompt,
+  buildInterleavedDirectorScriptPrompt,
   buildReferenceImageLabel,
   buildDirectorScriptPrompt,
   buildProtagonistReferencePrompt,
@@ -786,6 +787,260 @@ export async function generateStorybookDirectorScript(params: {
     console.error('[generateStorybookDirectorScript] Parse error:', e, '\nRaw:', response.text?.slice(0, 500))
     return []
   }
+}
+
+// ── Interleaved director script + scene image generation ──────
+
+/**
+ * Single interleaved Gemini call that generates both the director storyboard
+ * script AND scene illustration images in one pass using
+ * `responseModalities: ['TEXT', 'IMAGE']`.
+ *
+ * Falls back to text-only `generateStorybookDirectorScript()` on failure.
+ */
+export async function generateInterleavedDirectorScript(params: {
+  storyName: string
+  protagonistName: string
+  supportingName: string
+  storyContent: string
+  ageRange: string
+  styleDesc: string
+  locale?: Locale
+  characterPool?: string[]
+  characterProfiles?: Array<{ name: string; description?: string }>
+  sceneCount?: number
+  protagonistPronoun?: string
+  protagonistRole?: string
+  characterImagesBase64?: string[]
+  characterNames?: string[]
+}): Promise<{
+  scenes: import('@/types').DirectorStoryboardScene[]
+  sceneImages: Map<number, { data: string; mimeType: string }>
+}> {
+  const {
+    storyName,
+    protagonistName,
+    supportingName,
+    storyContent,
+    ageRange,
+    styleDesc,
+    locale = 'zh',
+    characterPool = [],
+    characterProfiles = [],
+    sceneCount = 3,
+    protagonistPronoun,
+    protagonistRole,
+    characterImagesBase64 = [],
+    characterNames = [],
+  } = params
+
+  const debugTag = '[generateInterleavedDirectorScript]'
+
+  // Build character name normalization maps (same as generateStorybookDirectorScript)
+  const normalizeName = (name: string) => name.replace(/\s+/g, '').toLowerCase()
+  const canonicalByKey = new Map<string, string>()
+  const detailsByKey = new Map<string, string>()
+  for (const rawName of characterPool) {
+    const trimmed = rawName.trim()
+    if (!trimmed) continue
+    const key = normalizeName(trimmed)
+    if (!canonicalByKey.has(key)) canonicalByKey.set(key, trimmed)
+  }
+  for (const profile of characterProfiles) {
+    const name = profile.name?.trim() || ''
+    if (!name) continue
+    const key = normalizeName(name)
+    if (!canonicalByKey.has(key)) canonicalByKey.set(key, name)
+    const description = profile.description?.trim() || ''
+    if (description && !detailsByKey.has(key)) {
+      detailsByKey.set(key, description.slice(0, 120))
+    }
+  }
+  if (!canonicalByKey.has(normalizeName(protagonistName))) {
+    canonicalByKey.set(normalizeName(protagonistName), protagonistName)
+  }
+  const characterPoolText = Array.from(canonicalByKey.values()).join(', ')
+  const characterProfileText = Array.from(canonicalByKey.entries())
+    .map(([key, name]) => {
+      const detail = detailsByKey.get(key)
+      return detail ? `${name}: ${detail}` : name
+    })
+    .join('\n')
+
+  const prompt = buildInterleavedDirectorScriptPrompt({
+    storyName,
+    protagonistName,
+    supportingName,
+    storyContent,
+    ageRange,
+    styleDesc,
+    locale,
+    characterPoolText,
+    characterProfileText,
+    sceneCount,
+    protagonistPronoun,
+    protagonistRole,
+  })
+
+  console.log(`${debugTag} Start`, {
+    storyName,
+    protagonistName,
+    supportingName,
+    ageRange,
+    sceneCount,
+    characterImageCount: characterImagesBase64.length,
+    promptChars: prompt.length,
+  })
+
+  // Build content parts: text prompt + optional character reference images
+  const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
+    { text: prompt },
+  ]
+
+  for (let i = 0; i < characterImagesBase64.length; i++) {
+    const imgBase64 = characterImagesBase64[i]
+    const name = characterNames[i] || `Character ${i + 1}`
+    parts.push({ text: `Reference image for ${name}:` })
+    const isJpeg = imgBase64.startsWith('/9j/')
+    parts.push({
+      inlineData: {
+        data: imgBase64,
+        mimeType: isJpeg ? 'image/jpeg' : 'image/png',
+      },
+    })
+  }
+
+  const response = (await genAI.models.generateContent({
+    model: IMAGE_MODEL,
+    contents: [{ role: 'user', parts }],
+    config: { responseModalities: ['TEXT', 'IMAGE'] },
+  })) as GeminiImageResponse
+
+  // Walk response parts sequentially: extract SCENE_META from text, map images to scenes
+  const responseParts = response.candidates?.[0]?.content?.parts ?? []
+  const textPartCount = responseParts.filter((part) => Boolean(part.text)).length
+  const imagePartCount = responseParts.filter((part) => Boolean(part.inlineData?.data)).length
+  console.log(`${debugTag} Response`, {
+    totalParts: responseParts.length,
+    textPartCount,
+    imagePartCount,
+  })
+
+  const sceneMetaList: Array<{
+    index: number
+    sceneDescription: string
+    cameraDesign: string
+    animationAction: string
+    voiceOver: string
+    dialogue: { speaker: string; text: string }[]
+    charactersUsed?: unknown
+    estimatedDuration: number
+    openingFramePrompt: string
+    midActionFramePrompt: string
+    endingFramePrompt: string
+  }> = []
+  const sceneImages = new Map<number, { data: string; mimeType: string }>()
+
+  // Track the last parsed scene index so the next image can be mapped to it
+  let lastParsedSceneIndex = -1
+
+  for (const part of responseParts) {
+    if (part.text) {
+      // Extract all SCENE_META markers from this text part
+      const metaRegex = /<!--SCENE_META:(.*?)-->/g
+      let match: RegExpExecArray | null
+      while ((match = metaRegex.exec(part.text)) !== null) {
+        try {
+          const meta = JSON.parse(match[1])
+          sceneMetaList.push(meta)
+          lastParsedSceneIndex = sceneMetaList.length - 1
+        } catch (e) {
+          console.warn(`${debugTag} Failed to parse SCENE_META:`, e)
+        }
+      }
+    } else if (part.inlineData?.data && lastParsedSceneIndex >= 0) {
+      // Map this image to the most recently parsed scene
+      if (!sceneImages.has(lastParsedSceneIndex)) {
+        const compressed = await compressImage(part.inlineData.data, 768, 80)
+        sceneImages.set(lastParsedSceneIndex, compressed)
+      }
+    }
+  }
+
+  console.log(`${debugTag} Parsed`, {
+    sceneMetaCount: sceneMetaList.length,
+    sceneImageCount: sceneImages.size,
+  })
+
+  if (sceneMetaList.length === 0) {
+    throw new Error('Interleaved director script returned no scene metadata')
+  }
+
+  // Convert raw scene metadata to DirectorStoryboardScene (same logic as generateStorybookDirectorScript)
+  const scenes: import('@/types').DirectorStoryboardScene[] = sceneMetaList.map((s) => {
+    const usedList: string[] = []
+    const seen = new Set<string>()
+    const rawList = Array.isArray(s.charactersUsed)
+      ? s.charactersUsed
+      : typeof s.charactersUsed === 'string'
+        ? s.charactersUsed.split(/[、,，/|]/)
+        : []
+
+    const pushName = (raw: unknown) => {
+      if (typeof raw !== 'string') return
+      const trimmed = raw.trim()
+      if (!trimmed) return
+      const key = normalizeName(trimmed)
+      const canonical = canonicalByKey.get(key) ?? trimmed
+      const canonicalKey = normalizeName(canonical)
+      if (seen.has(canonicalKey)) return
+      seen.add(canonicalKey)
+      usedList.push(canonical)
+    }
+
+    rawList.forEach(pushName)
+    s.dialogue?.forEach((line) => pushName(line?.speaker))
+
+    const withCharacters = (promptText: string | undefined) => {
+      const base = (promptText ?? '').trim()
+      if (usedList.length === 0) return base
+      const label = usedList
+        .map((name) => {
+          const detail = detailsByKey.get(normalizeName(name))
+          return detail ? `${name}(${detail})` : name
+        })
+        .join(', ')
+      const lc = base.toLowerCase()
+      if (lc.includes('must include all characters') || lc.includes('characters in this frame')) {
+        return base
+      }
+      return `${base} Characters in this frame: ${label}. Must include all characters, keep each one clearly visible, consistent, and recognizable.`
+    }
+
+    const openingFramePrompt = withCharacters(s.openingFramePrompt)
+    const midActionFramePrompt = withCharacters(s.midActionFramePrompt)
+    const endingFramePrompt = withCharacters(s.endingFramePrompt)
+
+    return {
+      charactersUsed: usedList,
+      index: s.index - 1, // convert to 0-based
+      title: s.sceneDescription?.slice(0, 40) ?? (locale === 'zh' ? `分镜 ${s.index}` : `Scene ${s.index}`),
+      narration: s.voiceOver ?? '',
+      dialogue: s.dialogue ?? [],
+      imagePrompt: openingFramePrompt,
+      imagePrompts: [
+        openingFramePrompt,
+        midActionFramePrompt,
+        endingFramePrompt,
+      ],
+      estimatedDuration: s.estimatedDuration ?? 10,
+      sceneDescription: s.sceneDescription ?? '',
+      cameraDesign: s.cameraDesign ?? '',
+      animationAction: s.animationAction ?? '',
+    }
+  })
+
+  return { scenes, sceneImages }
 }
 
 // ── Story image (original, kept for fallback) ─────────────────

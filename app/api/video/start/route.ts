@@ -1,6 +1,6 @@
 import fs from 'fs/promises'
 import { NextRequest, NextResponse } from 'next/server'
-import { createVideoProject, getCharacter, getScript, getStory, getStorybook, updateVideoProject } from '@/lib/db'
+import { createVideoProject, getScript, updateVideoProject } from '@/lib/db'
 import { generateSceneIllustration } from '@/lib/banana-img'
 import { generateSceneLineNarrationAudioUrlsV2, generateSceneNarrationAudioUrl } from '@/lib/gemini-tts'
 import {
@@ -15,7 +15,8 @@ import {
   subtitlesContainCjk,
   writeSrtFile,
 } from '@/lib/ffmpeg'
-import { saveFile, getLocalPath } from '@/lib/storage'
+import { saveFile, getLocalPath, fileExists } from '@/lib/storage'
+import { resolveStoryCharacterReferences } from '@/lib/storybook-helpers'
 import type { ScriptScene, VideoSettings } from '@/types'
 
 const DEFAULT_SETTINGS: VideoSettings = {
@@ -175,97 +176,6 @@ function buildImagePromptWithCharacterGuard(
   return `${base} Characters in this frame: ${required}. Must include all characters, keep each one clearly visible, consistent, and recognizable.`
 }
 
-function extractBase64(raw: string | null | undefined): string {
-  if (!raw) return ''
-  const trimmed = raw.trim()
-  if (!trimmed) return ''
-  const marker = 'base64,'
-  const markerIndex = trimmed.indexOf(marker)
-  if (markerIndex >= 0) {
-    return trimmed.slice(markerIndex + marker.length).trim()
-  }
-  return trimmed
-}
-
-function parseStyleImages(raw: unknown): Record<string, string> {
-  if (!raw) return {}
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw) as unknown
-      if (parsed && typeof parsed === 'object') {
-        return parsed as Record<string, string>
-      }
-    } catch {
-      return {}
-    }
-    return {}
-  }
-  if (typeof raw === 'object') return raw as Record<string, string>
-  return {}
-}
-
-async function resolveStoryCharacterReferences(storyId: string): Promise<{
-  imagesBase64: string[]
-  names: string[]
-  descriptions: string[]
-}> {
-  const story = await getStory(storyId)
-  if (!story) return { imagesBase64: [], names: [], descriptions: [] }
-
-  const resolvedImages: string[] = []
-  const resolvedNames: string[] = []
-  const resolvedDescriptions: string[] = []
-  const seen = new Set<string>()
-
-  const pushReference = (
-    imageRaw: string | null | undefined,
-    nameRaw: string | null | undefined,
-    descriptionRaw?: string | null
-  ) => {
-    const imageBase64 = extractBase64(imageRaw)
-    if (!imageBase64 || seen.has(imageBase64)) return
-    seen.add(imageBase64)
-    resolvedImages.push(imageBase64)
-    resolvedNames.push(nameRaw?.trim() || `Character ${resolvedImages.length}`)
-    resolvedDescriptions.push(descriptionRaw?.trim() || '')
-  }
-
-  if (story.storybookId) {
-    const storybook = await getStorybook(story.storybookId)
-    if (storybook) {
-      const orderedChars = [...storybook.characters].sort((a, b) => {
-        if (a.role === b.role) return 0
-        return a.role === 'protagonist' ? -1 : 1
-      })
-      const records = await Promise.all(
-        orderedChars.map((entry) => (entry.id ? getCharacter(entry.id) : Promise.resolve(null)))
-      )
-
-      orderedChars.forEach((entry, index) => {
-        const character = records[index]
-        if (!character) return
-        const styleImages = parseStyleImages(character.styleImages)
-        const preferredImage = styleImages[storybook.styleId] || character.cartoonImage
-        pushReference(preferredImage, character.name || entry.name || undefined, entry.description || undefined)
-      })
-    }
-  }
-
-  if (resolvedImages.length === 0 && story.characterIds.length > 0) {
-    const records = await Promise.all(story.characterIds.map((id) => getCharacter(id)))
-    records.forEach((character, index) => {
-      if (!character) return
-      pushReference(character.cartoonImage, character.name || `Character ${index + 1}`)
-    })
-  }
-
-  if (resolvedImages.length === 0) {
-    pushReference(story.mainImage, story.title || '主角')
-  }
-
-  return { imagesBase64: resolvedImages, names: resolvedNames, descriptions: resolvedDescriptions }
-}
-
 // POST /api/video/start — Start async video production pipeline
 export async function POST(request: NextRequest) {
   try {
@@ -285,7 +195,7 @@ export async function POST(request: NextRequest) {
     const { imagesBase64, names, descriptions } = await resolveStoryCharacterReferences(storyId)
 
     // Fire-and-forget: run pipeline in background
-    runPipeline(project.id, script.scenes, settings, imagesBase64, names, descriptions).catch((err) => {
+    runPipeline(project.id, scriptId, script.scenes, settings, imagesBase64, names, descriptions).catch((err) => {
       console.error(`[Video Pipeline] Project ${project.id} crashed:`, err)
     })
 
@@ -302,6 +212,7 @@ export async function POST(request: NextRequest) {
 
 async function runPipeline(
   projectId: string,
+  scriptId: string,
   scenes: ScriptScene[],
   settings: VideoSettings,
   characterImagesBase64: string[],
@@ -317,15 +228,39 @@ async function runPipeline(
     console.log(`[Video Pipeline][${projectId}] Start generation with ${scenes.length} scenes`)
     scenes.forEach((scene, index) => debugLogSceneScript(projectId, scene, index))
 
-    // ── Stage 1: Generate scene images (parallel, max 3 concurrent) ─
+    // ── Stage 1: Generate scene images (use pre-generated if available) ─
     await updateVideoProject(projectId, { status: 'generating_images', progress: 5 })
     const imageLocalPaths: string[] = []
 
+    // Check which scenes have pre-generated images from interleaved director script
+    const preGenPrefix = `videos/pre-${scriptId}`
+    const preGenAvailable: boolean[] = await Promise.all(
+      scenes.map((_, idx) => fileExists(`${preGenPrefix}/scene-${idx}.jpg`))
+    )
+    const preGenCount = preGenAvailable.filter(Boolean).length
+    if (preGenCount > 0) {
+      console.log(`[Video Pipeline][${projectId}] Found ${preGenCount}/${scenes.length} pre-generated scene images`)
+    }
+
+    // Copy pre-generated images to project dir; generate missing ones
     for (let i = 0; i < scenes.length; i += 3) {
       const batch = scenes.slice(i, i + 3)
       const results = await Promise.allSettled(
         batch.map(async (scene, bi) => {
           const idx = i + bi
+
+          // Use pre-generated image if available
+          if (preGenAvailable[idx]) {
+            const preRelPath = `${preGenPrefix}/scene-${idx}.jpg`
+            const destRelPath = `${base}/scene-${idx}.jpg`
+            const preLocalPath = getLocalPath(preRelPath)
+            const preData = await fs.readFile(preLocalPath)
+            await saveFile(preData, destRelPath)
+            console.log(`[Video Pipeline][${projectId}][Scene ${idx}] Using pre-generated image`)
+            return { idx, localPath: getLocalPath(destRelPath) }
+          }
+
+          // Generate image for this scene
           const sceneRefs = resolveSceneCharacterReferences(
             scene,
             characterImagesBase64,
