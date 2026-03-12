@@ -25,12 +25,21 @@ export function splitStoryIntoScenes(content: string): string[] {
   if (!normalized) return []
 
   // Preferred format from prompts: [Scene 1], [Scene 2], ...
-  const markerScenes = normalized
-    .split(/\*{0,2}\[Scene\s*\d+[^\]]*\]\*{0,2}\s*/i)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0)
+  const markerPattern = /\*{0,2}\[Scene\s*\d+[^\]]*\]\*{0,2}\s*/i
+  if (markerPattern.test(normalized)) {
+    const markerScenes = normalized
+      .split(/\*{0,2}\[Scene\s*\d+[^\]]*\]\*{0,2}\s*/i)
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
 
-  if (markerScenes.length > 0) return markerScenes
+    // The first segment before [Scene 1] is often just the story title —
+    // discard it if it's short (< 80 chars) and at least 2 real scenes follow.
+    if (markerScenes.length >= 3 && markerScenes[0].length < 80) {
+      markerScenes.shift()
+    }
+
+    if (markerScenes.length > 0) return markerScenes
+  }
 
   // Fallback for malformed model output.
   return normalized
