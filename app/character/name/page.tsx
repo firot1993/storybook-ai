@@ -252,18 +252,7 @@ function NameCharacterContent() {
               {t('characterName.detailsSubtitle')}
             </p>
 
-            <div className="flex items-center justify-center gap-5 mb-8">
-              {character.originalImage && (
-                <>
-                  <div className="flex flex-col items-center">
-                    <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-gray-200 shadow opacity-60">
-                      <Image src={character.originalImage} alt="Original" width={80} height={80} className="w-full h-full object-cover" />
-                    </div>
-                    <span className="text-xs text-gray-500 mt-1.5 font-medium">{t('characterName.photo')}</span>
-                  </div>
-                  <div className="text-gray-300 -mt-4 text-lg font-bold">→</div>
-                </>
-              )}
+            <div className="flex items-center justify-center mb-8">
               <div className="flex flex-col items-center">
                 <div className="rounded-full p-1.5 bg-gradient-to-r from-forest-400 to-forest-600 shadow-xl inline-block">
                   <Image
@@ -369,18 +358,7 @@ function NameCharacterContent() {
           </p>
 
           {/* Portrait display */}
-          <div className="flex items-center justify-center gap-5 mb-8">
-            {character.originalImage && (
-              <>
-                <div className="flex flex-col items-center">
-                  <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-gray-200 shadow opacity-60">
-                    <Image src={character.originalImage} alt="Original" width={80} height={80} className="w-full h-full object-cover" />
-                  </div>
-                  <span className="text-xs text-gray-500 mt-1.5 font-medium">{t('characterName.photo')}</span>
-                </div>
-                <div className="text-gray-300 -mt-4 text-lg font-bold">→</div>
-              </>
-            )}
+          <div className="flex items-center justify-center mb-8">
             <div className="flex flex-col items-center">
               <div className="rounded-full p-1.5 bg-gradient-to-r from-forest-400 to-forest-600 shadow-xl inline-block">
                 <Image

@@ -4,6 +4,7 @@ import { generateStoryWithAssets } from '@/lib/gemini'
 import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
 import { buildPreviousStoryExcerpt, normalizeStoryChoices } from '@/lib/story-scenes'
+import { imageToBase64, saveImageFromBase64 } from '@/lib/storage'
 import type { Story, StorybookCharacter } from '@/types'
 
 type NpcWithImage = StorybookCharacter & { image?: string }
@@ -36,13 +37,17 @@ async function buildNpcCharactersWithAssets(
       )?.[1]
 
     if (preGenImage) {
-      const dataUrl = `data:${preGenImage.mimeType};base64,${preGenImage.data}`
-      npcImage = dataUrl
+      const npcPathId = crypto.randomUUID()
       try {
+        const imageUrl = await saveImageFromBase64(
+          preGenImage.data,
+          `characters/${npcPathId}/${styleId}.jpg`
+        )
+        npcImage = imageUrl
         const created = await createCharacter({
           name,
-          cartoonImage: dataUrl,
-          styleImages: { [styleId]: dataUrl },
+          cartoonImage: imageUrl,
+          styleImages: { [styleId]: imageUrl },
           style: styleDesc,
         })
         npcCharacterId = created.id
@@ -121,7 +126,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const protagonistImageUrl =
       protagonistStyleImages[storybook.styleId] || protagonistChar?.cartoonImage || ''
     const protagonistImageBase64 = protagonistImageUrl
-      ? protagonistImageUrl.replace(/^data:[^;]+;base64,/, '')
+      ? await imageToBase64(protagonistImageUrl)
       : undefined
 
     const {
@@ -149,8 +154,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       previousStoryChoices: previousStoryContext?.choices,
     })
 
+    const storyPathId = crypto.randomUUID()
     const mainImage = coverImage
-      ? `data:${coverImage.mimeType};base64,${coverImage.data}`
+      ? await saveImageFromBase64(coverImage.data, `stories/${storyPathId}/cover.jpg`)
       : ''
 
     const existingNames = new Set<string>()
@@ -190,7 +196,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       let supImageUrl: string | undefined
 
       if (supImage) {
-        supImageUrl = `data:${supImage.mimeType};base64,${supImage.data}`
         // Remove from npcImages so it's not also treated as an NPC
         npcImages.delete(supName)
         // Also try case-insensitive delete
@@ -200,7 +205,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           }
         }
 
+        const supPathId = crypto.randomUUID()
         try {
+          supImageUrl = await saveImageFromBase64(
+            supImage.data,
+            `characters/${supPathId}/${storybook.styleId}.jpg`
+          )
           const created = await createCharacter({
             name: supName,
             cartoonImage: supImageUrl,

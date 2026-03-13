@@ -1,4 +1,5 @@
 import { getCharacter, getStory, getStorybook } from '@/lib/db'
+import { imageToBase64 } from '@/lib/storage'
 import type { Locale } from '@/lib/i18n/shared'
 import type { StorybookCharacter } from '@/types'
 
@@ -111,12 +112,14 @@ export async function resolveStoryCharacterReferences(storyId: string): Promise<
   const resolvedDescriptions: string[] = []
   const seen = new Set<string>()
 
-  const pushReference = (
+  const pushReference = async (
     imageRaw: string | null | undefined,
     nameRaw: string | null | undefined,
     descriptionRaw?: string | null
   ) => {
-    const imageBase64 = extractBase64(imageRaw)
+    if (!imageRaw?.trim()) return
+    // Use imageToBase64 which handles data URIs, local API URLs, and GCS URLs
+    const imageBase64 = await imageToBase64(imageRaw.trim()) ?? extractBase64(imageRaw)
     if (!imageBase64 || seen.has(imageBase64)) return
     seen.add(imageBase64)
     resolvedImages.push(imageBase64)
@@ -135,26 +138,28 @@ export async function resolveStoryCharacterReferences(storyId: string): Promise<
         orderedChars.map((entry) => (entry.id ? getCharacter(entry.id) : Promise.resolve(null)))
       )
 
-      orderedChars.forEach((entry, index) => {
+      for (let index = 0; index < orderedChars.length; index++) {
+        const entry = orderedChars[index]
         const character = records[index]
-        if (!character) return
+        if (!character) continue
         const styleImages = parseStyleImages(character.styleImages)
         const preferredImage = styleImages[storybook.styleId] || character.cartoonImage
-        pushReference(preferredImage, character.name || entry.name || undefined, entry.description || undefined)
-      })
+        await pushReference(preferredImage, character.name || entry.name || undefined, entry.description || undefined)
+      }
     }
   }
 
   if (resolvedImages.length === 0 && story.characterIds.length > 0) {
     const records = await Promise.all(story.characterIds.map((id) => getCharacter(id)))
-    records.forEach((character, index) => {
-      if (!character) return
-      pushReference(character.cartoonImage, character.name || `Character ${index + 1}`)
-    })
+    for (let index = 0; index < records.length; index++) {
+      const character = records[index]
+      if (!character) continue
+      await pushReference(character.cartoonImage, character.name || `Character ${index + 1}`)
+    }
   }
 
   if (resolvedImages.length === 0) {
-    pushReference(story.mainImage, story.title || '主角')
+    await pushReference(story.mainImage, story.title || '主角')
   }
 
   return { imagesBase64: resolvedImages, names: resolvedNames, descriptions: resolvedDescriptions }

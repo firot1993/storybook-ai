@@ -304,13 +304,25 @@ function PlayStoryContent() {
   }, [router, searchParams])
 
   // Poll video project status while generation is in progress
+  const pollStartRef = useRef<number>(0)
   useEffect(() => {
     const urlStoryId = searchParams.get('id')
     if (!urlStoryId || !videoProject) return
     const isTerminal = videoProject.status === 'complete' || videoProject.status === 'failed'
     if (isTerminal) return
 
+    // Record when polling started; stop after 15 minutes as a safety net
+    if (!pollStartRef.current) pollStartRef.current = Date.now()
+    const MAX_POLL_MS = 15 * 60 * 1000
+
     const interval = setInterval(async () => {
+      if (Date.now() - pollStartRef.current > MAX_POLL_MS) {
+        clearInterval(interval)
+        setVideoProject((prev) =>
+          prev ? { ...prev, status: 'failed' as const, errorMessage: 'Video generation timed out. Please try again.' } : prev
+        )
+        return
+      }
       try {
         const res = await fetch(`/api/story/${urlStoryId}`)
         if (res.ok) {

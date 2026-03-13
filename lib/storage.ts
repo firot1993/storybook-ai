@@ -81,6 +81,55 @@ export function getLocalPath(relativePath: string): string {
 }
 
 /**
+ * Decode a base64 string (with or without data-URL prefix) and save to storage.
+ * Returns the public URL for the saved file.
+ */
+export async function saveImageFromBase64(
+  base64Data: string,
+  relativePath: string
+): Promise<string> {
+  // Strip data-URL prefix if present (e.g. "data:image/jpeg;base64,...")
+  const raw = base64Data.replace(/^data:[^;]+;base64,/, '')
+  const buffer = Buffer.from(raw, 'base64')
+  return saveFile(buffer, relativePath)
+}
+
+/**
+ * Read an image and return its base64-encoded content.
+ * Accepts either a data URL (returned as-is without prefix) or a storage URL
+ * (reads the file from storage and encodes it).
+ */
+export async function imageToBase64(urlOrDataUrl: string): Promise<string | undefined> {
+  if (!urlOrDataUrl) return undefined
+
+  // Already a data URL — strip prefix and return raw base64
+  if (urlOrDataUrl.startsWith('data:')) {
+    return urlOrDataUrl.replace(/^data:[^;]+;base64,/, '')
+  }
+
+  // Extract relative path from our API URL pattern: /api/files/<relativePath>
+  const apiPrefix = '/api/files/'
+  const idx = urlOrDataUrl.indexOf(apiPrefix)
+  if (idx !== -1) {
+    const relativePath = urlOrDataUrl.slice(idx + apiPrefix.length)
+    const buf = await readFile(relativePath)
+    return buf.toString('base64')
+  }
+
+  // GCS URL — extract relative path after bucket name
+  if (urlOrDataUrl.includes('storage.googleapis.com') && GCS_BUCKET) {
+    const gcsPrefix = `https://storage.googleapis.com/${GCS_BUCKET}/`
+    if (urlOrDataUrl.startsWith(gcsPrefix)) {
+      const relativePath = urlOrDataUrl.slice(gcsPrefix.length)
+      const buf = await readFile(relativePath)
+      return buf.toString('base64')
+    }
+  }
+
+  return undefined
+}
+
+/**
  * Check if a file exists locally or in GCS.
  */
 export async function fileExists(relativePath: string): Promise<boolean> {
