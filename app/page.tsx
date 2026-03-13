@@ -50,8 +50,8 @@ export default function Home() {
           <div className="flex flex-col gap-5">
 
             {/* Step 1 — full width, prominent */}
-            <div className="card flex flex-col sm:flex-row items-start gap-5 bg-gradient-to-r from-forest-50/60 to-white">
-              <div className="w-12 h-12 rounded-2xl bg-forest-500 text-white flex items-center justify-center font-accent font-bold text-xl shrink-0 shadow-md">
+            <div className="card flex flex-col sm:flex-row items-start gap-5">
+              <div className="w-12 h-12 rounded-xl bg-forest-500 text-white flex items-center justify-center font-accent font-bold text-xl shrink-0">
                 1
               </div>
               <div className="flex-1 min-w-0">
@@ -63,8 +63,8 @@ export default function Home() {
 
             {/* Steps 2+3 — side by side, smaller */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div className="card flex items-start gap-4 bg-gradient-to-br from-honey-50/40 to-white">
-                <div className="w-10 h-10 rounded-xl bg-honey-500 text-white flex items-center justify-center font-accent font-bold text-lg shrink-0 shadow-md">
+              <div className="card flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-honey-500 text-white flex items-center justify-center font-accent font-bold text-lg shrink-0">
                   2
                 </div>
                 <div className="flex-1 min-w-0">
@@ -73,8 +73,8 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="card flex items-start gap-4 bg-gradient-to-br from-ember-50/40 to-white">
-                <div className="w-10 h-10 rounded-xl bg-ember-500 text-white flex items-center justify-center font-accent font-bold text-lg shrink-0 shadow-md">
+              <div className="card flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-ember-500 text-white flex items-center justify-center font-accent font-bold text-lg shrink-0">
                   3
                 </div>
                 <div className="flex-1 min-w-0">

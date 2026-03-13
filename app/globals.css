@@ -11,27 +11,26 @@
 /* ── Component system ─────────────────────────────────────────── */
 @layer components {
 
-  /* Primary button: ember orange (action color) */
+  /* Primary button: simplified */
   .btn-primary {
     @apply bg-ember-500 hover:bg-ember-600
            active:scale-95 text-white font-bold
-           py-3.5 px-8 rounded-2xl transition-all duration-200
-           shadow-lg shadow-ember-500/25 hover:shadow-xl hover:shadow-ember-500/35
-           text-base;
+           py-3 px-6 rounded-xl transition-all duration-200
+           shadow-sm text-base;
   }
 
-  /* Secondary button: white with neutral border */
+  /* Secondary button: simplified */
   .btn-secondary {
-    @apply bg-white hover:bg-ember-50 active:scale-95
-           text-gray-700 font-bold py-3.5 px-8 rounded-2xl
-           border-2 border-gray-300 hover:border-ember-400
+    @apply bg-white hover:bg-gray-50 active:scale-95
+           text-gray-700 font-bold py-3 px-6 rounded-xl
+           border border-gray-200 hover:border-gray-300
            transition-all duration-200 text-base;
   }
 
-  /* Card: opaque white with neutral border */
+  /* Card: distilled */
   .card {
-    @apply bg-white rounded-2xl shadow-md p-6
-           border border-gray-200 transition-shadow duration-200;
+    @apply bg-white rounded-xl shadow-sm p-5
+           border border-gray-100 transition-shadow duration-200;
   }
 
   /* Interactive card: lifts on hover */
@@ -55,9 +54,9 @@
     animation: pageEnter 0.45s ease-out;
   }
 
-  /* Frosted header/nav */
+  /* Header/nav - simplified */
   .glass-header {
-    @apply bg-white/80 backdrop-blur-md border-b border-gray-200
+    @apply bg-white border-b border-gray-100
            shadow-sm sticky top-0 z-50;
   }
 
