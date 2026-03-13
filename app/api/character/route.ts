@@ -3,6 +3,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { generateCharacterWithStyleRef, getGeminiErrorResponse } from '@/lib/gemini'
 import { createCharacter, listCharacters } from '@/lib/db'
+import { saveImageFromBase64 } from '@/lib/storage'
 import { STYLES } from '@/lib/styles'
 import type { Character } from '@/types'
 
@@ -72,25 +73,41 @@ export async function POST(request: NextRequest) {
       })
     )
 
-    // Build styleImages map
-    const styleImages: Record<string, string> = {}
-    for (const r of generationResults) {
-      if (r.dataUrl) styleImages[r.styleId] = r.dataUrl
-    }
-
-    // Pick primary style for cartoonImage (requested styleId > first successful > error)
+    // Pick primary style (requested styleId > first successful > error)
     const primaryStyleId =
-      (styleId && styleImages[styleId]) ? styleId :
-      (STYLES.find((s) => styleImages[s.id])?.id ?? '')
+      (styleId && generationResults.find((r) => r.styleId === styleId && r.dataUrl)) ? styleId :
+      (STYLES.find((s) => generationResults.find((r) => r.styleId === s.id && r.dataUrl))?.id ?? '')
 
-    const cartoonImage = styleImages[primaryStyleId]
-
-    if (!cartoonImage) {
+    const primaryResult = generationResults.find((r) => r.styleId === primaryStyleId)
+    if (!primaryResult?.dataUrl) {
       const { status, message } = getGeminiErrorResponse(new Error('No image returned'))
       return NextResponse.json({ error: message }, { status })
     }
 
-    const originalImage = `data:image/jpeg;base64,${imageBase64}`
+    // Generate a unique ID for storage paths (DB will use its own cuid)
+    const charPathId = crypto.randomUUID()
+
+    // Save all generated style images to storage in parallel
+    const styleImages: Record<string, string> = {}
+    await Promise.all(
+      generationResults
+        .filter((r) => r.dataUrl)
+        .map(async (r) => {
+          const url = await saveImageFromBase64(
+            r.dataUrl!,
+            `characters/${charPathId}/${r.styleId}.jpg`
+          )
+          styleImages[r.styleId] = url
+        })
+    )
+
+    const cartoonImage = styleImages[primaryStyleId]
+
+    // Save original uploaded image to storage
+    const originalImage = await saveImageFromBase64(
+      imageBase64,
+      `characters/${charPathId}/original.jpg`
+    )
 
     const dbCharacter = await createCharacter({
       name: name.trim(),

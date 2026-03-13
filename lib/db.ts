@@ -364,12 +364,34 @@ export async function updateVideoProject(
   })
 }
 
+/** Max time (ms) a video project can stay in a non-terminal state before being auto-failed. */
+const VIDEO_STALE_TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
+
+const VIDEO_TERMINAL_STATUSES = new Set(['complete', 'failed'])
+
 export async function getVideoProjectByStoryId(storyId: string) {
   const vp = await prisma.videoProject.findFirst({
     where: { storyId },
     orderBy: { createdAt: 'desc' },
   })
   if (!vp) return null
+
+  // Auto-fail projects stuck in a non-terminal state (e.g. server restarted mid-generation)
+  if (
+    !VIDEO_TERMINAL_STATUSES.has(vp.status) &&
+    Date.now() - vp.updatedAt.getTime() > VIDEO_STALE_TIMEOUT_MS
+  ) {
+    await prisma.videoProject.update({
+      where: { id: vp.id },
+      data: {
+        status: 'failed',
+        errorMessage: 'Video generation timed out — the server may have restarted. Please try again.',
+      },
+    })
+    vp.status = 'failed'
+    vp.errorMessage = 'Video generation timed out — the server may have restarted. Please try again.'
+  }
+
   return {
     ...vp,
     sceneVideoUrls: vp.sceneVideoUrls as unknown as string[],
