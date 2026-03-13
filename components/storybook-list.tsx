@@ -84,14 +84,14 @@ export default function StorybookList({
               </div>
 
               <div className="flex-1 min-w-0">
-                <p className="font-extrabold text-forest-800 truncate">{book.name}</p>
+                <p className="font-accent font-bold text-forest-800 truncate">{book.name}</p>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[10px] bg-forest-100 text-forest-600 px-1.5 py-0.5 rounded-full font-bold">{book.ageRange}{t('storybook.ageUnit')}</span>
+                  <span className="text-xs bg-forest-100 text-forest-600 px-1.5 py-0.5 rounded-full font-bold">{book.ageRange}{t('storybook.ageUnit')}</span>
                   {styleConfig && (
-                    <span className="text-[10px] text-gray-400 font-medium">{t(`styles.${styleConfig.id}.label`)}</span>
+                    <span className="text-xs text-gray-500 font-medium">{t(`styles.${styleConfig.id}.label`)}</span>
                   )}
-                  <span className="text-[10px] text-gray-400">·</span>
-                  <span className="text-[10px] text-gray-400 font-medium">
+                  <span className="text-xs text-gray-400">·</span>
+                  <span className="text-xs text-gray-500 font-medium">
                     {chapterCount === 0 ? t('storybook.noStories') : t('storybook.episodeCount', { count: chapterCount })}
                   </span>
                 </div>
@@ -108,10 +108,10 @@ export default function StorybookList({
               {isExpanded && (
                 chapterCount === 0 ? (
                   <div className="px-4 py-6 text-center">
-                    <p className="text-sm text-gray-400 mb-3">{t('storybook.emptyBook')}</p>
+                    <p className="text-sm text-gray-500 mb-3">{t('storybook.emptyBook')}</p>
                     <Link
                       href={continueHref}
-                      className="text-xs font-bold text-forest-600 hover:text-forest-800 underline"
+                      className="text-xs font-bold text-ember-600 hover:text-ember-800 underline"
                     >
                       {t('storybook.createFirst')}
                     </Link>
@@ -122,7 +122,7 @@ export default function StorybookList({
                       <Link
                         key={chapter.id}
                         href={`/story/play?id=${chapter.id}`}
-                        className="flex items-start gap-3 px-4 py-3.5 hover:bg-forest-50/60 transition-colors group"
+                        className="flex items-start gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors group"
                       >
                         {chapter.mainImage ? (
                           <div className="shrink-0 w-10 h-10 rounded-xl overflow-hidden mt-0.5">
@@ -145,7 +145,7 @@ export default function StorybookList({
                             {chapter.title || t('storybook.episodeLabel', { num: idx + 1 })}
                           </p>
                           {chapter.synopsis && (
-                            <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">
+                            <p className="text-xs text-gray-500 mt-0.5 line-clamp-2 leading-relaxed">
                               {chapter.synopsis}
                             </p>
                           )}
@@ -153,13 +153,13 @@ export default function StorybookList({
 
                         <div className="shrink-0 flex items-center gap-2 mt-0.5">
                           {chapter.status === 'complete' ? (
-                            <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold">{t('storybook.statusComplete')}</span>
+                            <span className="text-xs bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold">{t('storybook.statusComplete')}</span>
                           ) : chapter.status === 'generating' ? (
-                            <span className="text-[10px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full font-bold">{t('storybook.statusGenerating')}</span>
+                            <span className="text-xs bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full font-bold">{t('storybook.statusGenerating')}</span>
                           ) : (
-                            <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-bold">{t('storybook.statusDraft')}</span>
+                            <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-bold">{t('storybook.statusDraft')}</span>
                           )}
-                          <svg className="w-4 h-4 text-gray-300 group-hover:text-forest-500 group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <svg className="w-4 h-4 text-gray-300 group-hover:text-ember-500 group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                           </svg>
                         </div>
@@ -169,9 +169,9 @@ export default function StorybookList({
                     <div className="px-4 py-3 bg-gray-50/50">
                       <Link
                         href={continueHref}
-                        className="flex items-center gap-2 text-xs font-bold text-forest-500 hover:text-forest-700 transition-colors"
+                        className="flex items-center gap-2 text-xs font-bold text-ember-500 hover:text-ember-700 transition-colors"
                       >
-                        <span className="w-6 h-6 rounded-lg border-2 border-dashed border-forest-300 flex items-center justify-center text-forest-400">+</span>
+                        <span className="w-6 h-6 rounded-lg border-2 border-dashed border-ember-300 flex items-center justify-center text-ember-400">+</span>
                         {t('storybook.continueBtn')}
                       </Link>
                     </div>

@@ -27,9 +27,9 @@ export default function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full border-3 border-candy-200 animate-bounce-in">
-        <h2 className="text-xl font-extrabold text-grape-700 mb-2">{title}</h2>
-        <p className="text-grape-500 mb-6">{message}</p>
+      <div className="relative bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full border-3 border-gray-200 animate-fade-in">
+        <h2 className="text-xl font-extrabold text-forest-800 mb-2">{title}</h2>
+        <p className="text-gray-600 mb-6">{message}</p>
         <div className="flex gap-3">
           <button
             onClick={onCancel}

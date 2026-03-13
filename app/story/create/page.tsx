@@ -540,7 +540,7 @@ function CreateStoryWizard() {
 
         {/* Top nav: only show home link on step 0 */}
         {step === 0 && (
-          <Link href="/" className="inline-flex items-center gap-1 text-sm font-bold text-forest-500 hover:text-forest-700 mb-5">
+          <Link href="/" className="inline-flex items-center gap-1 text-sm font-bold text-ember-500 hover:text-ember-700 mb-5">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
@@ -565,7 +565,7 @@ function CreateStoryWizard() {
                   }`}>
                     {isDone ? '✓' : i + 1}
                   </div>
-                  <span className={`text-[10px] font-bold hidden sm:block ${isActive ? 'text-forest-700' : 'text-gray-400'}`}>
+                  <span className={`text-xs font-bold hidden sm:block ${isActive ? 'text-forest-700' : 'text-gray-400'}`}>
                     {label}
                   </span>
                   {i < EPISODE_STEPS.length - 1 && <div className="flex-1 h-px bg-gray-200 mx-1" />}
@@ -633,15 +633,15 @@ function CreateStoryWizard() {
           <div className="page-enter">
             {/* Book context mini-header */}
             {currentBook && (
-              <div className="flex items-center gap-3 mb-5 px-4 py-3 bg-white/80 rounded-2xl border border-forest-100 shadow-sm">
+              <div className="flex items-center gap-3 mb-5 px-4 py-3 bg-white/80 rounded-2xl border border-gray-200 shadow-sm">
                 {bookProtagonistImage && (
-                  <div className="w-10 h-10 rounded-xl overflow-hidden border border-forest-100 shrink-0">
+                  <div className="w-10 h-10 rounded-xl overflow-hidden border border-gray-200 shrink-0">
                     <Image src={bookProtagonistImage} alt={bookProtagonist?.name ?? ''} width={40} height={40} className="object-cover w-full h-full" />
                   </div>
                 )}
                 <div className="min-w-0">
                   <p className="font-extrabold text-forest-800 text-sm truncate">{currentBook.name}</p>
-                  <p className="text-[10px] text-gray-400">{STYLES.find(s => s.id === currentBook.styleId)?.emoji} {t(`styles.${currentBook.styleId}.label`)} · {currentBook.ageRange}{t('storyCreate.ageYearsUnit')}</p>
+                  <p className="text-xs text-gray-500">{STYLES.find(s => s.id === currentBook.styleId)?.emoji} {t(`styles.${currentBook.styleId}.label`)} · {currentBook.ageRange}{t('storyCreate.ageYearsUnit')}</p>
                 </div>
                 <button
                   onClick={() => {
@@ -651,7 +651,7 @@ function CreateStoryWizard() {
                     }
                     setStep(0)
                   }}
-                  className="ml-auto text-xs text-forest-500 font-bold hover:text-forest-700 shrink-0"
+                  className="ml-auto text-xs text-ember-500 font-bold hover:text-ember-700 shrink-0"
                 >
                   {t('storyCreate.switchBook')}
                 </button>
@@ -662,11 +662,11 @@ function CreateStoryWizard() {
               {/* ── Left panel ── */}
               <div className="flex flex-col gap-4">
                 <div className="card">
-                  <h2 className="text-base font-extrabold text-forest-800 mb-1">{t('storyCreate.inspirationTitle')}</h2>
-                  <p className="text-xs text-gray-400 mb-4">{t('storyCreate.inspirationHint')}</p>
+                  <h2 className="text-base font-accent font-bold text-forest-800 mb-1">{t('storyCreate.inspirationTitle')}</h2>
+                  <p className="text-xs text-gray-500 mb-4">{t('storyCreate.inspirationHint')}</p>
 
                   {showPreviousChoices && (
-                    <div className="mb-3 rounded-2xl border border-forest-100 bg-forest-50/70 px-3 py-2.5">
+                    <div className="mb-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5">
                       <p className="text-[11px] font-extrabold text-forest-700 mb-2">{t('storyCreate.previousChoicesTitle')}</p>
                       {loadingPreviousChoices ? (
                         <div className="flex gap-2">
@@ -708,14 +708,14 @@ function CreateStoryWizard() {
                               key={`${choice}-${index}`}
                               type="button"
                               onClick={() => handleUsePreviousChoice(choice)}
-                              className="px-2.5 py-1 rounded-full border border-forest-200 bg-white text-forest-700 text-[11px] font-bold hover:bg-forest-100 transition-colors"
+                              className="px-2.5 py-1 rounded-full border border-ember-200 bg-white text-ember-700 text-[11px] font-bold hover:bg-ember-100 transition-colors"
                             >
                               {choice}
                             </button>
                           ))}
                         </div>
                       )}
-                      <p className="text-[10px] text-gray-500 mt-1.5">
+                      <p className="text-xs text-gray-500 mt-1.5">
                         {selectedChoice
                           ? t('storyCreate.fixedChoiceHint')
                           : previousChoicesErrorMessage
@@ -745,7 +745,7 @@ function CreateStoryWizard() {
                         className={`w-11 h-11 mt-0.5 rounded-xl border-2 flex items-center justify-center transition-all shrink-0 ${
                           isRecording ? 'border-red-500 bg-red-500 text-white animate-pulse' :
                           transcribing || lockInspirationInput ? 'border-gray-200 bg-gray-100 text-gray-400' :
-                          'border-forest-300 bg-forest-50 text-forest-600 hover:bg-forest-100'
+                          'border-ember-300 bg-ember-50 text-ember-600 hover:bg-ember-100'
                         }`}
                         title={isRecording ? t('storyCreate.stopRecording') : t('storyCreate.startRecording')}
                       >
@@ -807,7 +807,7 @@ function CreateStoryWizard() {
                 {!generatingSynopsis && synopsisOptions.length === 0 && (
                   <div className="flex-1 flex flex-col items-center justify-center min-h-[200px] rounded-2xl border-2 border-dashed border-gray-200 text-center p-6">
                     <div className="text-4xl mb-3 opacity-40">📖</div>
-                    <p className="text-sm text-gray-400 font-medium">{t('storyCreate.synopsisEmptyHint')}</p>
+                    <p className="text-sm text-gray-500 font-medium">{t('storyCreate.synopsisEmptyHint')}</p>
                     <p className="text-xs text-gray-300 mt-1">{t('storyCreate.synopsisEmptyHint2')}</p>
                   </div>
                 )}
@@ -839,7 +839,7 @@ function CreateStoryWizard() {
                           className="w-full text-left rounded-2xl border-2 border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-md transition-all active:scale-[0.99]"
                         >
                           <div className={`bg-gradient-to-r ${style.gradient} px-4 py-2.5 flex items-center gap-2`}>
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-white/30 text-white">
+                            <span className="text-xs font-extrabold px-2 py-0.5 rounded-full bg-white/30 text-white">
                               {t('storyCreate.versionLabel')} {opt.version}
                             </span>
                             <span className="text-xs font-bold text-white/90">{t(`synopsis.${opt.version}.label`)}</span>
@@ -869,18 +869,18 @@ function CreateStoryWizard() {
             {generatingStory ? (
               <div className="text-center py-16">
                 <div className="w-20 h-20 mx-auto mb-6 relative">
-                  <div className="absolute inset-0 rounded-full border-4 border-forest-100" />
-                  <div className="absolute inset-0 rounded-full border-4 border-forest-500 border-t-transparent animate-spin" />
+                  <div className="absolute inset-0 rounded-full border-4 border-gray-200" />
+                  <div className="absolute inset-0 rounded-full border-4 border-ember-500 border-t-transparent animate-spin" />
                   <div className="absolute inset-0 flex items-center justify-center text-2xl">📖</div>
                 </div>
-                <h2 className="text-xl font-extrabold text-forest-800 mb-2">{t('storyCreate.generatingStory')}</h2>
-                <p className="text-sm text-gray-400 mb-1">{t('storyCreate.generatingSubtitle')}</p>
+                <h2 className="text-xl font-accent font-bold text-forest-800 mb-2">{t('storyCreate.generatingStory')}</h2>
+                <p className="text-sm text-gray-500 mb-1">{t('storyCreate.generatingSubtitle')}</p>
                 <p className="text-xs text-gray-300">{t('storyCreate.generatingNote', { title: generatedTitle })}</p>
               </div>
             ) : generatedStoryId ? (
               <>
                 {/* Story preview card — HTML1 style */}
-                <div className="flex flex-col sm:flex-row rounded-2xl bg-white shadow-xl border-2 border-forest-50/80 overflow-hidden mb-5">
+                <div className="flex flex-col sm:flex-row rounded-2xl bg-white shadow-xl border-2 border-gray-100 overflow-hidden mb-5">
                   {/* Cover image */}
                   {generatedCoverImage ? (
                     <div
@@ -888,7 +888,7 @@ function CreateStoryWizard() {
                       style={{ backgroundImage: `url(${generatedCoverImage})` }}
                     />
                   ) : (
-                    <div className="w-full sm:w-2/5 aspect-[16/10] sm:aspect-auto min-h-[180px] bg-gradient-to-br from-forest-100 to-forest-200 flex items-center justify-center shrink-0">
+                    <div className="w-full sm:w-2/5 aspect-[16/10] sm:aspect-auto min-h-[180px] bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center shrink-0">
                       <span className="text-5xl opacity-40">📖</span>
                     </div>
                   )}
@@ -897,7 +897,7 @@ function CreateStoryWizard() {
                   <div className="flex flex-col p-5 gap-3 flex-1">
                     <div className="flex justify-between items-start gap-2">
                       <h3 className="text-forest-900 text-lg font-extrabold leading-tight">{generatedTitle}</h3>
-                      <div className="shrink-0 w-8 h-8 rounded-full bg-forest-50 border border-forest-100 flex items-center justify-center text-forest-500 text-xs">✓</div>
+                      <div className="shrink-0 w-8 h-8 rounded-full bg-ember-50 border border-ember-100 flex items-center justify-center text-ember-500 text-xs">✓</div>
                     </div>
 
                     {selectedSynopsisOpt && (
@@ -908,17 +908,17 @@ function CreateStoryWizard() {
 
                     <div className="flex flex-wrap gap-1.5">
                       {selectedSynopsisOpt && (
-                        <span className="px-2.5 py-1 bg-forest-50 border border-forest-200 rounded-full text-[10px] font-bold text-forest-600">
+                        <span className="px-2.5 py-1 bg-forest-50 border border-forest-200 rounded-full text-xs font-bold text-forest-600">
                           {selectedSynopsisOpt.label}
                         </span>
                       )}
                       {currentBook && (
-                        <span className="px-2.5 py-1 bg-forest-50 border border-forest-200 rounded-full text-[10px] font-bold text-forest-600">
+                        <span className="px-2.5 py-1 bg-forest-50 border border-forest-200 rounded-full text-xs font-bold text-forest-600">
                           {currentBook.ageRange} {t('storyCreate.ageTagReaderUnit')}
                         </span>
                       )}
                       {bookProtagonist && (
-                        <span className="px-2.5 py-1 bg-forest-50 border border-forest-200 rounded-full text-[10px] font-bold text-forest-600">
+                        <span className="px-2.5 py-1 bg-forest-50 border border-forest-200 rounded-full text-xs font-bold text-forest-600">
                           {t('storyCreate.protagonistTag', { name: bookProtagonist.name })}
                         </span>
                       )}
@@ -927,8 +927,8 @@ function CreateStoryWizard() {
                     {/* Generated story content */}
                     {generatedStoryContent && (
                       <div className="mt-auto">
-                        <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1.5">{t('storyCreate.storyContentLabel')}</p>
-                        <div className="max-h-28 overflow-y-auto rounded-xl bg-forest-50 border border-forest-100 px-3 py-2.5">
+                        <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-1.5">{t('storyCreate.storyContentLabel')}</p>
+                        <div className="max-h-28 overflow-y-auto rounded-xl bg-gray-50 border border-gray-200 px-3 py-2.5">
                           <p className="text-[11px] text-gray-700 leading-relaxed whitespace-pre-line">{generatedStoryContent}</p>
                         </div>
                       </div>
@@ -939,7 +939,7 @@ function CreateStoryWizard() {
                 {/* Discovered NPCs */}
                 {discoveredNpcs.length > 0 && (
                   <div className="mt-4">
-                    <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2">{t('storyCreate.newCharactersLabel')}</p>
+                    <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-2">{t('storyCreate.newCharactersLabel')}</p>
                     <div className="flex gap-3 overflow-x-auto pb-1">
                       {discoveredNpcs.map((npc, i) => (
                         <div key={i} className="flex flex-col items-center gap-1.5 min-w-[80px] max-w-[96px]">
@@ -980,7 +980,7 @@ function CreateStoryWizard() {
                             : t('storyCreate.preparingBtn')}
                         </span>
                         {videoPreparationStage === 'script' && (
-                          <span className="text-[10px] text-white/70 font-normal">
+                          <span className="text-xs text-white/70 font-normal">
                             {t('storyCreate.preparingScriptHint')}
                           </span>
                         )}
@@ -1013,7 +1013,7 @@ function CreateStoryWizard() {
                   {selectedStorybookId && (
                     <Link
                       href="/storybook"
-                      className="block text-sm text-center text-forest-600 font-bold hover:underline"
+                      className="block text-sm text-center text-ember-600 font-bold hover:underline"
                     >
                       {t('storyCreate.backToLibrary')}
                     </Link>
@@ -1088,8 +1088,8 @@ function NewBookSubFlow({
       {/* Sub-step header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-extrabold text-forest-800">{t('storyCreateBook.createBookTitle')}</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{t('storyCreateBook.stepOf', { current: bookSubStep + 1, total: SUB_STEPS.length })}</p>
+          <h1 className="text-2xl font-accent font-bold text-forest-800">{t('storyCreateBook.createBookTitle')}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{t('storyCreateBook.stepOf', { current: bookSubStep + 1, total: SUB_STEPS.length })}</p>
         </div>
         {onCancel && (
           <button onClick={onCancel} className="text-xs font-bold text-gray-400 hover:text-gray-600">
@@ -1109,7 +1109,7 @@ function NewBookSubFlow({
             }`}>
               {bookSubStep > i ? '✓' : i + 1}
             </div>
-            <span className={`text-[10px] font-bold hidden sm:block truncate ${bookSubStep === i ? 'text-forest-700' : 'text-gray-400'}`}>
+            <span className={`text-xs font-bold hidden sm:block truncate ${bookSubStep === i ? 'text-forest-700' : 'text-gray-400'}`}>
               {label}
             </span>
             {i < SUB_STEPS.length - 1 && <div className="flex-1 h-px bg-gray-200 mx-1" />}
@@ -1123,7 +1123,7 @@ function NewBookSubFlow({
           <h2 className="text-base font-extrabold text-forest-700 mb-4">{t('storyCreateBook.selectProtagonistTitle')}</h2>
           {allCharacters.length === 0 ? (
             <div className="card text-center py-10">
-              <p className="text-gray-400 mb-3">{t('storyCreateBook.noCharacters')}</p>
+              <p className="text-gray-500 mb-3">{t('storyCreateBook.noCharacters')}</p>
               <Link href="/character/create" className="btn-primary text-sm">{t('storyCreateBook.createCharacterLink')}</Link>
             </div>
           ) : (
@@ -1137,15 +1137,15 @@ function NewBookSubFlow({
                     onClick={() => setNewProtagonistId(isSelected ? null : c.id)}
                     className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 transition-all ${
                       isSelected
-                        ? 'border-forest-500 bg-forest-50 shadow-md shadow-forest-100'
-                        : 'border-gray-200 hover:border-forest-200 bg-white'
+                        ? 'border-ember-500 bg-ember-50 shadow-md shadow-ember-100'
+                        : 'border-gray-200 hover:border-ember-200 bg-white'
                     }`}
                   >
                     <div className="w-16 h-16 rounded-xl overflow-hidden">
                       <Image src={c.cartoonImage} alt={c.name} width={64} height={64} className="object-cover w-full h-full" />
                     </div>
                     <span className="text-xs font-bold text-gray-700 truncate w-full text-center">{c.name || t('storyCreateBook.unnamed')}</span>
-                    {isSelected && <span className="text-[10px] text-forest-600 font-extrabold">{t('storyCreateBook.selectedMark')}</span>}
+                    {isSelected && <span className="text-xs text-ember-600 font-extrabold">{t('storyCreateBook.selectedMark')}</span>}
                   </button>
                 )
               })}
@@ -1167,9 +1167,9 @@ function NewBookSubFlow({
       {/* Sub-step 1: Select style */}
       {bookSubStep === 1 && (
         <div className="page-enter">
-          <button onClick={() => setBookSubStep(0)} className="text-sm text-forest-500 font-bold mb-4 flex items-center gap-1">{t('storyCreateBook.back')}</button>
+          <button onClick={() => setBookSubStep(0)} className="text-sm text-ember-500 font-bold mb-4 flex items-center gap-1">{t('storyCreateBook.back')}</button>
           <h2 className="text-base font-extrabold text-forest-700 mb-1">{t('storyCreateBook.selectStyleTitle')}</h2>
-          <p className="text-xs text-gray-400 mb-4">{t('storyCreateBook.styleHint', { name: newProtagonist?.name || t('storyCreateBook.noProtagonistName') })}</p>
+          <p className="text-xs text-gray-500 mb-4">{t('storyCreateBook.styleHint', { name: newProtagonist?.name || t('storyCreateBook.noProtagonistName') })}</p>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
             {STYLES.map((s) => {
@@ -1218,7 +1218,7 @@ function NewBookSubFlow({
               </div>
               <div>
                 <p className="text-xs font-extrabold text-forest-700">{selectedStyle?.emoji} {selectedStyle ? t(`styles.${selectedStyle.id}.label`) : ''}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">{selectedStyle ? t(`styles.${selectedStyle.id}.description`) : ''}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{selectedStyle ? t(`styles.${selectedStyle.id}.description`) : ''}</p>
               </div>
             </div>
           )}
@@ -1238,18 +1238,18 @@ function NewBookSubFlow({
       {/* Sub-step 2: Companions */}
       {bookSubStep === 2 && (
         <div className="page-enter">
-          <button onClick={() => setBookSubStep(1)} className="text-sm text-forest-500 font-bold mb-4 flex items-center gap-1">{t('storyCreateBook.back')}</button>
+          <button onClick={() => setBookSubStep(1)} className="text-sm text-ember-500 font-bold mb-4 flex items-center gap-1">{t('storyCreateBook.back')}</button>
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-base font-extrabold text-forest-700">{t('storyCreateBook.companionsTitle')}</h2>
             <button
               onClick={() => { if (newProtagonistId) fetchCompanions(newProtagonistId) }}
               disabled={loadingCompanions}
-              className="text-xs font-bold text-forest-500 hover:text-forest-700 disabled:opacity-40"
+              className="text-xs font-bold text-ember-500 hover:text-ember-700 disabled:opacity-40"
             >
               {loadingCompanions ? t('storyCreateBook.refreshing') : t('storyCreateBook.refreshBtn')}
             </button>
           </div>
-          <p className="text-xs text-gray-400 mb-4">{t('storyCreateBook.companionsHint')}</p>
+          <p className="text-xs text-gray-500 mb-4">{t('storyCreateBook.companionsHint')}</p>
 
           {loadingCompanions ? (
             <div className="grid grid-cols-1 gap-2 mb-4">
@@ -1265,19 +1265,19 @@ function NewBookSubFlow({
                     onClick={() => toggleCompanion(c.name)}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 text-left transition-all ${
                       isSelected
-                        ? 'border-forest-500 bg-forest-50'
-                        : 'border-gray-200 hover:border-forest-200'
+                        ? 'border-ember-500 bg-ember-50'
+                        : 'border-gray-200 hover:border-ember-200'
                     }`}
                   >
                     <span className="text-2xl shrink-0">{c.emoji}</span>
                     <div className="flex-1 min-w-0">
                       <p className="font-extrabold text-sm text-gray-800">{c.name}</p>
-                      <p className="text-[11px] text-gray-400">{c.description}</p>
+                      <p className="text-[11px] text-gray-500">{c.description}</p>
                     </div>
                     <div className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-all ${
-                      isSelected ? 'border-forest-500 bg-forest-500' : 'border-gray-300'
+                      isSelected ? 'border-ember-500 bg-ember-500' : 'border-gray-300'
                     }`}>
-                      {isSelected && <span className="text-white text-[10px] font-bold">✓</span>}
+                      {isSelected && <span className="text-white text-xs font-bold">✓</span>}
                     </div>
                   </button>
                 )
@@ -1286,7 +1286,7 @@ function NewBookSubFlow({
           ) : null}
 
           <div className="flex items-center gap-2 mb-5">
-            <span className="text-xs text-gray-400 shrink-0">{t('storyCreateBook.customCompanionLabel')}</span>
+            <span className="text-xs text-gray-500 shrink-0">{t('storyCreateBook.customCompanionLabel')}</span>
             <input
               type="text"
               value={customCompanion}
@@ -1301,7 +1301,7 @@ function NewBookSubFlow({
               {selectedCompanionNames.map((name) => (
                 <span key={name} className="px-2.5 py-1 rounded-full bg-forest-100 text-forest-700 text-xs font-bold flex items-center gap-1">
                   {companionSuggestions.find((c) => c.name === name)?.emoji} {name}
-                  <button onClick={() => toggleCompanion(name)} className="text-forest-400 hover:text-forest-700 ml-0.5">×</button>
+                  <button onClick={() => toggleCompanion(name)} className="text-gray-400 hover:text-ember-600 ml-0.5">×</button>
                 </span>
               ))}
               {customCompanion.trim() && (
@@ -1332,19 +1332,19 @@ function NewBookSubFlow({
       {/* Sub-step 3: Book name + age */}
       {bookSubStep === 3 && (
         <div className="page-enter">
-          <button onClick={() => setBookSubStep(2)} className="text-sm text-forest-500 font-bold mb-4 flex items-center gap-1">{t('storyCreateBook.back')}</button>
+          <button onClick={() => setBookSubStep(2)} className="text-sm text-ember-500 font-bold mb-4 flex items-center gap-1">{t('storyCreateBook.back')}</button>
           <h2 className="text-base font-extrabold text-forest-700 mb-4">{t('storyCreateBook.namingTitle')}</h2>
 
           {/* Preview card */}
-          <div className="card mb-5 flex items-center gap-4 bg-gradient-to-r from-forest-50 to-honey-50/50">
+          <div className="card mb-5 flex items-center gap-4 bg-gray-50">
             {protagonistStyleImage && (
-              <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-forest-100 shrink-0">
+              <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-gray-200 shrink-0">
                 <Image src={protagonistStyleImage} alt={newProtagonist?.name ?? ''} width={56} height={56} className="object-cover w-full h-full" />
               </div>
             )}
             <div>
               <p className="font-extrabold text-forest-800">{t('storyCreateBook.bookPreview', { name: newProtagonist?.name || t('storyCreateBook.noProtagonistName') })}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">
+              <p className="text-xs text-gray-500 mt-0.5">
                 {selectedStyle?.emoji} {selectedStyle ? t(`styles.${selectedStyle.id}.label`) : ''}
                 {(selectedCompanionNames.length > 0 || customCompanion.trim()) && (
                   <> · {t('storyCreateBook.companionPreview')}{[...selectedCompanionNames, customCompanion.trim()].filter(Boolean).join('、')}</>
@@ -1430,12 +1430,12 @@ function ExistingBookSelection({
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-extrabold text-forest-800">{t('storyCreateExisting.title')}</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{t('storyCreateExisting.subtitle')}</p>
+          <h1 className="text-2xl font-accent font-bold text-forest-800">{t('storyCreateExisting.title')}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{t('storyCreateExisting.subtitle')}</p>
         </div>
         <button
           onClick={onCreateNew}
-          className="text-xs font-bold px-3 py-2 border-2 border-forest-300 text-forest-600 rounded-full hover:bg-forest-50 transition-colors"
+          className="text-xs font-bold px-3 py-2 border-2 border-ember-300 text-ember-600 rounded-full hover:bg-ember-50 transition-colors"
         >
           {t('storyCreateExisting.newBookBtn')}
         </button>
@@ -1458,12 +1458,12 @@ function ExistingBookSelection({
               onClick={() => setSelectedStorybookId(book.id)}
               className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${
                 isSelected
-                  ? 'border-forest-500 bg-forest-50 shadow-md shadow-forest-100'
-                  : 'border-gray-200 bg-white hover:border-forest-200'
+                  ? 'border-ember-500 bg-ember-50 shadow-md shadow-ember-100'
+                  : 'border-gray-200 bg-white hover:border-ember-200'
               }`}
             >
               {/* Protagonist thumbnail */}
-              <div className="w-14 h-14 rounded-2xl overflow-hidden border border-forest-100 shrink-0 bg-gray-100">
+              <div className="w-14 h-14 rounded-2xl overflow-hidden border border-gray-200 shrink-0 bg-gray-100">
                 {styledImg ? (
                   <Image src={styledImg} alt={protagonist?.name ?? ''} width={56} height={56} className="object-cover w-full h-full" />
                 ) : (
@@ -1475,17 +1475,17 @@ function ExistingBookSelection({
               <div className="flex-1 min-w-0">
                 <p className="font-extrabold text-forest-800 truncate">{book.name}</p>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <span className="text-[10px] bg-forest-100 text-forest-600 px-1.5 py-0.5 rounded-full font-bold">{book.ageRange}{t('storyCreateExisting.ageUnit')}</span>
-                  {styleConfig && <span className="text-[10px] text-gray-400">{styleConfig.emoji} {t(`styles.${styleConfig.id}.label`)}</span>}
-                  <span className="text-[10px] text-gray-400">· {chapterCount === 0 ? t('storyCreateExisting.noStories') : t('storyCreateExisting.episodeCount', { count: chapterCount })}</span>
+                  <span className="text-xs bg-forest-100 text-forest-600 px-1.5 py-0.5 rounded-full font-bold">{book.ageRange}{t('storyCreateExisting.ageUnit')}</span>
+                  {styleConfig && <span className="text-xs text-gray-500">{styleConfig.emoji} {t(`styles.${styleConfig.id}.label`)}</span>}
+                  <span className="text-xs text-gray-400">· {chapterCount === 0 ? t('storyCreateExisting.noStories') : t('storyCreateExisting.episodeCount', { count: chapterCount })}</span>
                 </div>
               </div>
 
               {/* Select indicator */}
               <div className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-all ${
-                isSelected ? 'border-forest-500 bg-forest-500' : 'border-gray-300'
+                isSelected ? 'border-ember-500 bg-ember-500' : 'border-gray-300'
               }`}>
-                {isSelected && <span className="text-white text-[10px] font-bold">✓</span>}
+                {isSelected && <span className="text-white text-xs font-bold">✓</span>}
               </div>
             </button>
           )

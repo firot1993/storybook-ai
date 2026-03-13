@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readFile, fileExists } from '@/lib/storage'
+import { readFile, fileExists, getPublicUrl } from '@/lib/storage'
 import path from 'path'
+
+const GCS_BUCKET = process.env.GCS_BUCKET
 
 const MIME_MAP: Record<string, string> = {
   mp4: 'video/mp4',
@@ -13,13 +15,19 @@ const MIME_MAP: Record<string, string> = {
   srt: 'text/plain',
 }
 
-// GET /api/files/[...path] — Serve local storage files
+// GET /api/files/[...path] — Serve local storage files or redirect to GCS
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   const { path: pathSegments } = await params
   const relativePath = pathSegments.join('/')
+
+  // In GCS mode, redirect to the public GCS URL
+  if (GCS_BUCKET) {
+    return NextResponse.redirect(getPublicUrl(relativePath), 302)
+  }
+
   const ext = path.extname(relativePath).slice(1).toLowerCase()
   const mimeType = MIME_MAP[ext] ?? 'application/octet-stream'
 

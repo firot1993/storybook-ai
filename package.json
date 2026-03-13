@@ -12,6 +12,7 @@
     "test:manual": "NODE_USE_ENV_PROXY=1 HTTP_PROXY=${HTTP_PROXY:-$http_proxy} HTTPS_PROXY=${HTTPS_PROXY:-$https_proxy} ALL_PROXY=${ALL_PROXY:-$all_proxy} vitest run --config vitest.manual.config.ts"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.19.0",
     "@google/genai": "^1.29.0",
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.4.2",

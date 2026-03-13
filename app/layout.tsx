@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Space_Grotesk } from 'next/font/google'
+import { Space_Grotesk, Baloo_2 } from 'next/font/google'
 import './globals.css'
 import ToastContainer from '@/components/toast'
 import NavBar from '@/components/nav-bar'
@@ -11,6 +11,12 @@ const spaceGrotesk = Space_Grotesk({
   variable: '--font-space-grotesk',
 })
 
+const baloo2 = Baloo_2({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-baloo2',
+})
+
 export const metadata: Metadata = {
   title: '童梦奇缘 - AI 绘本故事',
   description: 'Transform photos into storybook characters and generate personalized AI stories',
@@ -19,34 +25,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <body className={`${spaceGrotesk.className} font-display`}>
+      <body className={`${spaceGrotesk.className} ${baloo2.variable} font-body`}>
         <LanguageProvider>
-          <div className="min-h-screen bg-forest-50 relative overflow-hidden">
-
-            {/* ── Ambient background blobs ── */}
-            <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
-              <div className="absolute -top-24 -left-24 w-96 h-96 bg-forest-300/30 rounded-full blur-3xl" />
-              <div className="absolute top-1/3 -right-32 w-80 h-80 bg-honey-300/25 rounded-full blur-3xl" />
-              <div className="absolute -bottom-20 left-1/4 w-72 h-72 bg-ember-300/20 rounded-full blur-3xl" />
-              <div className="absolute bottom-1/3 right-1/4 w-64 h-64 bg-forest-200/20 rounded-full blur-3xl" />
-
-              {/* Floating leaf/star shapes */}
-              <svg className="absolute top-16 left-[12%] w-8 h-8 text-forest-400/50 animate-float" style={{ animationDelay: '0s' }} viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17 8C8 10 5.9 16.17 3.82 21.34L5.71 22l1-2.3A4.49 4.49 0 0 0 8 20C19 20 22 3 22 3c-1 2-8 2-8 2C13 8 13 12 13 12H8C8 8 13 3 17 8z"/>
-              </svg>
-              <svg className="absolute top-40 right-[18%] w-6 h-6 text-honey-400/60 animate-float" style={{ animationDelay: '1.2s' }} viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-              </svg>
-              <svg className="absolute top-28 left-[45%] w-5 h-5 text-ember-400/50 animate-float" style={{ animationDelay: '0.7s' }} viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-              </svg>
-              <svg className="absolute bottom-32 left-[8%] w-7 h-7 text-forest-400/40 animate-float" style={{ animationDelay: '1.8s' }} viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17 8C8 10 5.9 16.17 3.82 21.34L5.71 22l1-2.3A4.49 4.49 0 0 0 8 20C19 20 22 3 22 3c-1 2-8 2-8 2C13 8 13 12 13 12H8C8 8 13 3 17 8z"/>
-              </svg>
-              <svg className="absolute bottom-48 right-[12%] w-9 h-9 text-honey-300/50 animate-float" style={{ animationDelay: '0.4s' }} viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-              </svg>
-            </div>
+          <div className="min-h-screen bg-gray-50 relative">
 
             {/* ── Sticky nav header ── */}
             <NavBar />

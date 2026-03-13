@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -16,6 +16,14 @@ const RANDOM_NAMES = [
 ]
 
 export default function NameCharacterPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="skeleton h-64 w-96 rounded-3xl" /></div>}>
+      <NameCharacterContent />
+    </Suspense>
+  )
+}
+
+function NameCharacterContent() {
   const { locale, t } = useLanguage()
   const [name, setName] = useState('')
   const [age, setAge] = useState<string>('')
@@ -229,7 +237,7 @@ export default function NameCharacterPage() {
     return (
       <div className="min-h-screen px-4 py-8">
         <div className="max-w-2xl mx-auto page-enter">
-          <Link href="/character" className="text-grape-400 hover:text-grape-600 mb-6 inline-flex items-center gap-1 text-sm font-bold">
+          <Link href="/character" className="text-gray-400 hover:text-ember-600 mb-6 inline-flex items-center gap-1 text-sm font-bold">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
@@ -237,7 +245,7 @@ export default function NameCharacterPage() {
           </Link>
 
           <div className="card">
-            <h1 className="text-3xl font-extrabold text-center mb-2 text-grape-700">
+            <h1 className="text-3xl font-accent font-bold text-center mb-2 text-forest-800">
               {t('characterName.detailsTitle')}
             </h1>
             <p className="text-gray-500 text-center mb-7">
@@ -251,13 +259,13 @@ export default function NameCharacterPage() {
                     <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-gray-200 shadow opacity-60">
                       <Image src={character.originalImage} alt="Original" width={80} height={80} className="w-full h-full object-cover" />
                     </div>
-                    <span className="text-[10px] text-gray-400 mt-1.5 font-medium">{t('characterName.photo')}</span>
+                    <span className="text-xs text-gray-500 mt-1.5 font-medium">{t('characterName.photo')}</span>
                   </div>
                   <div className="text-gray-300 -mt-4 text-lg font-bold">→</div>
                 </>
               )}
               <div className="flex flex-col items-center">
-                <div className="rounded-full p-1.5 bg-gradient-to-r from-grape-400 to-grape-600 shadow-xl inline-block">
+                <div className="rounded-full p-1.5 bg-gradient-to-r from-forest-400 to-forest-600 shadow-xl inline-block">
                   <Image
                     src={character.cartoonImage}
                     alt="Character portrait"
@@ -266,7 +274,7 @@ export default function NameCharacterPage() {
                     className="w-36 h-36 rounded-full object-cover bg-white"
                   />
                 </div>
-                <span className="text-[10px] text-grape-500 mt-1.5 font-bold">{t('characterName.character')}</span>
+                <span className="text-xs text-forest-600 mt-1.5 font-bold">{t('characterName.character')}</span>
               </div>
             </div>
 
@@ -304,7 +312,7 @@ export default function NameCharacterPage() {
             </div>
 
             <div className="mt-6">
-              <h2 className="text-sm font-extrabold text-gray-700 mb-3">{t('characterName.relatedBooksTitle')}</h2>
+              <h2 className="text-sm font-accent font-bold text-gray-700 mb-3">{t('characterName.relatedBooksTitle')}</h2>
 
               {loadingRelatedBooks ? (
                 <div className="space-y-3">
@@ -313,7 +321,7 @@ export default function NameCharacterPage() {
                 </div>
               ) : relatedBooks.length === 0 ? (
                 <div className="rounded-2xl bg-gray-50 border border-gray-200 p-4">
-                  <p className="text-xs text-gray-400">{t('characterName.relatedBooksEmpty')}</p>
+                  <p className="text-xs text-gray-500">{t('characterName.relatedBooksEmpty')}</p>
                 </div>
               ) : (
                 <StorybookList
@@ -329,7 +337,7 @@ export default function NameCharacterPage() {
               <button
                 type="button"
                 onClick={() => router.push('/character')}
-                className="text-sm text-gray-400 hover:text-gray-600 underline underline-offset-2"
+                className="text-sm text-gray-500 hover:text-gray-600 underline underline-offset-2"
               >
                 {t('characterName.backToCharacters')}
               </button>
@@ -343,7 +351,7 @@ export default function NameCharacterPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="max-w-xl w-full page-enter">
-        <Link href="/character" className="text-grape-400 hover:text-grape-600 mb-6 inline-flex items-center gap-1 text-sm font-bold">
+        <Link href="/character" className="text-gray-400 hover:text-ember-600 mb-6 inline-flex items-center gap-1 text-sm font-bold">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
@@ -353,7 +361,7 @@ export default function NameCharacterPage() {
         <StepProgress currentStep={1} type="character" />
 
         <div className="card">
-          <h1 className="text-3xl font-extrabold text-center mb-2 text-grape-700">
+          <h1 className="text-3xl font-accent font-bold text-center mb-2 text-forest-800">
             {t('characterName.title')}
           </h1>
           <p className="text-gray-500 text-center mb-7">
@@ -368,13 +376,13 @@ export default function NameCharacterPage() {
                   <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-gray-200 shadow opacity-60">
                     <Image src={character.originalImage} alt="Original" width={80} height={80} className="w-full h-full object-cover" />
                   </div>
-                  <span className="text-[10px] text-gray-400 mt-1.5 font-medium">{t('characterName.photo')}</span>
+                  <span className="text-xs text-gray-500 mt-1.5 font-medium">{t('characterName.photo')}</span>
                 </div>
                 <div className="text-gray-300 -mt-4 text-lg font-bold">→</div>
               </>
             )}
             <div className="flex flex-col items-center">
-              <div className="rounded-full p-1.5 bg-gradient-to-r from-grape-400 to-grape-600 shadow-xl inline-block">
+              <div className="rounded-full p-1.5 bg-gradient-to-r from-forest-400 to-forest-600 shadow-xl inline-block">
                 <Image
                   src={character.cartoonImage}
                   alt="Character portrait"
@@ -383,7 +391,7 @@ export default function NameCharacterPage() {
                   className="w-36 h-36 rounded-full object-cover bg-white"
                 />
               </div>
-              <span className="text-[10px] text-grape-500 mt-1.5 font-bold">{t('characterName.character')}</span>
+              <span className="text-xs text-forest-600 mt-1.5 font-bold">{t('characterName.character')}</span>
             </div>
           </div>
 
@@ -392,7 +400,7 @@ export default function NameCharacterPage() {
             <div>
               <div className="flex justify-between items-end mb-2">
                 <label className="text-sm font-bold text-gray-700">{t('characterName.nameLabel')}</label>
-                <button type="button" onClick={handleRandomName} className="text-xs font-bold text-grape-500 hover:text-grape-700">
+                <button type="button" onClick={handleRandomName} className="text-xs font-bold text-ember-500 hover:text-ember-700">
                   {t('characterName.randomBtn')}
                 </button>
               </div>
@@ -418,8 +426,8 @@ export default function NameCharacterPage() {
                     onClick={() => setAge(age === String(a) ? '' : String(a))}
                     className={`w-10 h-10 rounded-full text-sm font-bold border-2 transition-all ${
                       age === String(a)
-                        ? 'border-grape-500 bg-grape-500 text-white shadow'
-                        : 'border-gray-200 text-gray-500 hover:border-grape-300'
+                        ? 'border-ember-500 bg-ember-500 text-white shadow'
+                        : 'border-gray-200 text-gray-500 hover:border-ember-300'
                     }`}
                   >
                     {a}
@@ -442,36 +450,36 @@ export default function NameCharacterPage() {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="text-sm font-bold text-gray-700">{t('characterName.voiceTitle')}</p>
-                  <p className="text-xs text-gray-400">{t('characterName.voiceSubtitle')}</p>
+                  <p className="text-xs text-gray-500">{t('characterName.voiceSubtitle')}</p>
                 </div>
                 <button
                   type="button"
                   onClick={handleAssignVoice}
                   disabled={assigningVoice}
-                  className="text-sm font-bold px-4 py-2 bg-grape-500 text-white rounded-full hover:bg-grape-600 disabled:opacity-60 transition-colors shrink-0"
+                  className="text-sm font-bold px-4 py-2 bg-ember-500 text-white rounded-full hover:bg-ember-600 disabled:opacity-60 transition-colors shrink-0"
                 >
                   {assigningVoice ? '...' : voiceName ? t('characterName.reassign') : t('characterName.assignVoice')}
                 </button>
               </div>
 
               {voiceName ? (
-                <div className="flex items-center gap-3 bg-white rounded-xl p-3 border border-grape-100">
+                <div className="flex items-center gap-3 bg-white rounded-xl p-3 border border-gray-200">
                   <span className="text-2xl">🎙️</span>
                   <div>
-                    <p className="font-bold text-grape-700">{voiceName}</p>
-                    <p className="text-xs text-gray-400">{t(`voices.${voiceName}`) || t('characterName.matchedVoice')}</p>
+                    <p className="font-bold text-forest-700">{voiceName}</p>
+                    <p className="text-xs text-gray-500">{t(`voices.${voiceName}`) || t('characterName.matchedVoice')}</p>
                     {voiceReason && <p className="text-xs text-gray-500 mt-0.5 italic">{voiceReason}</p>}
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-gray-400 text-center py-2">{t('characterName.noVoice')}</p>
+                <p className="text-xs text-gray-500 text-center py-2">{t('characterName.noVoice')}</p>
               )}
             </div>
 
             <button
               type="submit"
               disabled={saving || !name.trim()}
-              className="btn-primary w-full text-lg disabled:opacity-50 py-4"
+              className="btn-primary w-full text-lg disabled:opacity-50 py-3"
             >
               {saving ? t('characterName.saving') : t('characterName.saveBtn')}
             </button>
@@ -480,7 +488,7 @@ export default function NameCharacterPage() {
               <button
                 type="button"
                 onClick={() => router.push('/story/create')}
-                className="text-sm text-gray-400 hover:text-gray-600 underline underline-offset-2"
+                className="text-sm text-gray-500 hover:text-gray-600 underline underline-offset-2"
               >
                 {t('characterName.skipStory')}
               </button>

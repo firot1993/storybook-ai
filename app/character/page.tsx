@@ -45,8 +45,8 @@ export default function CharacterPage() {
 
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-extrabold text-forest-800">{t('character.pageTitle')}</h1>
-            <p className="text-sm text-gray-400 mt-0.5">{t('character.pageSubtitle')}</p>
+            <h1 className="text-3xl font-accent font-bold text-forest-800">{t('character.pageTitle')}</h1>
+            <p className="text-sm text-gray-500 mt-0.5">{t('character.pageSubtitle')}</p>
           </div>
         </div>
 
@@ -67,13 +67,13 @@ export default function CharacterPage() {
                 📸
               </div>
               <p className="font-extrabold text-ember-600 text-sm">{t('character.createCard')}</p>
-              <p className="text-[10px] text-ember-400 font-medium mt-0.5">{t('character.uploadHint')}</p>
+              <p className="text-xs text-ember-400 font-medium mt-0.5">{t('character.uploadHint')}</p>
             </Link>
 
             {characters.map((char) => (
               <div key={char.id} className="group relative">
                 <div className="card-interactive p-0 overflow-hidden aspect-[3/4] flex flex-col">
-                  <div className="relative flex-1 bg-forest-50">
+                  <div className="relative flex-1 bg-gray-100">
                     <Image
                       src={char.cartoonImage}
                       alt={char.name || t('character.unnamed')}
@@ -82,7 +82,7 @@ export default function CharacterPage() {
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2.5">
                       <Link
                         href={`/story/create?characterId=${char.id}`}
-                        className="w-full bg-white/90 hover:bg-white text-forest-700 text-[10px] font-bold py-1.5 rounded-full text-center"
+                        className="w-full bg-white/90 hover:bg-white text-forest-700 text-xs font-bold py-1.5 rounded-full text-center"
                       >
                         {t('character.createStoryHover')}
                       </Link>
@@ -90,12 +90,12 @@ export default function CharacterPage() {
                   </div>
                   <div className="p-2.5 bg-white text-center">
                     <p className="font-bold text-forest-700 text-sm truncate">{char.name || t('character.unnamed')}</p>
-                    {char.age && <p className="text-[10px] text-ember-500 font-medium">{char.age} {t('character.yearsOld')}</p>}
-                    {char.voiceName && <p className="text-[10px] text-gray-400">🎙️ {char.voiceName}</p>}
+                    {char.age && <p className="text-xs text-ember-500 font-medium">{char.age} {t('character.yearsOld')}</p>}
+                    {char.voiceName && <p className="text-xs text-gray-500">🎙️ {char.voiceName}</p>}
                     <div className="mt-2">
                       <Link
                         href={`/character/name?id=${char.id}`}
-                        className="inline-flex items-center justify-center w-full rounded-full border border-forest-200 text-forest-700 text-[11px] font-bold py-1.5 hover:bg-forest-50 transition-colors"
+                        className="inline-flex items-center justify-center w-full rounded-full border border-gray-200 text-gray-700 text-[11px] font-bold py-1.5 hover:bg-gray-50 transition-colors"
                       >
                         {t('character.manageBtn')}
                       </Link>
@@ -116,10 +116,15 @@ export default function CharacterPage() {
         )}
 
         {!loading && characters.length === 0 && (
-          <div className="text-center py-16 mt-4">
-            <div className="text-5xl mb-4">🌟</div>
-            <p className="font-bold text-forest-700 mb-1">{t('character.emptyState')}</p>
-            <p className="text-sm text-gray-400 mb-5">{t('character.emptyHelp')}</p>
+          <div className="text-center py-24 mt-4 max-w-md mx-auto">
+            <div className="text-7xl mb-6 animate-fade-up stagger-1">🌟</div>
+            <h2 className="font-accent font-bold text-2xl text-forest-800 mb-2 animate-fade-up stagger-2">{t('character.emptyState')}</h2>
+            <p className="text-base text-gray-500 mb-8 leading-relaxed animate-fade-up stagger-3">{t('character.emptyHelp')}</p>
+            <Link href="/character/create" className="btn-primary inline-flex items-center gap-2.5 py-4 px-8 text-lg animate-fade-up stagger-4">
+              <span>📸</span>
+              <span>{t('character.createCard')}</span>
+              <span>→</span>
+            </Link>
           </div>
         )}
       </div>
