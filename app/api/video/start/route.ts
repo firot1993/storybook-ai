@@ -13,6 +13,7 @@ import {
   concatenateAudiosV2,
   concatenateVideos,
   burnSubtitles,
+  getActiveFfmpegRuntimeConfig,
   getVideoDuration,
   subtitlesContainCjk,
   writeSrtFile,
@@ -222,9 +223,18 @@ async function runPipeline(
   const clipPaths: string[] = []
   const sceneDurationsMs: number[] = []
   const sceneLineDurationsMs: number[][] = []
+  const ffmpegConfig = getActiveFfmpegRuntimeConfig()
 
   try {
     console.log(`[Video Pipeline][${projectId}] Start generation with ${scenes.length} scenes`)
+    console.log(
+      `[Video Pipeline][${projectId}] FFmpeg config ` +
+      `threads=${ffmpegConfig.threads} ` +
+      `scenePreset=${ffmpegConfig.scenePreset} ` +
+      `subtitlePreset=${ffmpegConfig.subtitlePreset} ` +
+      `crf=${ffmpegConfig.crf} ` +
+      `audioBitrate=${ffmpegConfig.audioBitrate}`
+    )
     scenes.forEach((scene, index) => debugLogSceneScript(projectId, scene, index))
 
     // ── Stage 1: Generate scene images (use pre-generated if available) ─

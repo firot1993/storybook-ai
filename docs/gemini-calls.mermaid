@@ -1,0 +1,38 @@
+%%{ init: { "theme": "base" } }%%
+flowchart LR
+    subgraph Setup["Phase 1: Storybook Setup"]
+        direction TB
+        G1["#1 generateCharacterWithStyleRef x5<br/>🖼 IMAGE_MODEL | image out<br/>parallel, 5 styles"]
+        G2["#2 generateCompanionSuggestions<br/>📝 TEXT_MODEL | text out"]
+        G3["#3 generateCompanionCharacterCartoon<br/>🖼 Banana primary → Gemini fallback<br/>per companion"]
+        G1 --> G2 --> G3
+    end
+
+    subgraph Story["Phase 2: Story Generation"]
+        direction TB
+        G4["#4 generateSynopsisVersions<br/>📝 TEXT_MODEL | text out<br/>3 synopsis options"]
+        G5["#5 generateStoryWithAssets<br/>🖼📝 IMAGE_MODEL | text+image interleaved<br/>story + cover + NPC portraits + choices"]
+        G4 --> G5
+    end
+
+    subgraph Video["Phase 3: Video Pipeline"]
+        direction TB
+        G6["#6 generateInterleavedDirectorScript<br/>🖼📝 IMAGE_MODEL | text+image interleaved<br/>script + scene illustrations"]
+        G7["#7 generateStorybookDirectorScript<br/>📝 TEXT_MODEL | text only<br/>(fallback for #6)"]
+        G8["#8 generateSceneIllustration<br/>🖼 Banana primary → Gemini fallback<br/>missing scenes only"]
+        G9["#9 TTS calls<br/>🔊 Gemini TTS | audio<br/>per-line narration + dialogue"]
+        G6 -.->|fallback| G7
+        G6 --> G8
+        G7 --> G8
+        G8 --> G9
+    end
+
+    subgraph Other["Utilities"]
+        G10["#10 assignCharacterVoice<br/>📝 TEXT_MODEL | text out"]
+    end
+
+    Setup --> Story --> Video
+
+    classDef interleaved fill:#fef3c7,stroke:#f59e0b,stroke-width:3px,color:#92400e
+
+    class G5,G6 interleaved
