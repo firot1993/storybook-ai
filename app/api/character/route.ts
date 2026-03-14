@@ -3,6 +3,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { generateCharacterWithStyleRef, getGeminiErrorResponse } from '@/lib/gemini'
 import { createCharacter, listCharacters } from '@/lib/db'
+import { resolveApiKey } from '@/lib/api-utils'
 import { saveImageFromBase64 } from '@/lib/storage'
 import { STYLES } from '@/lib/styles'
 import type { Character } from '@/types'
@@ -27,6 +28,7 @@ function loadStyleRefBase64(referenceImageUrl: string): string {
 
 // POST /api/character — Generate character portraits in ALL 5 styles and save to DB
 export async function POST(request: NextRequest) {
+  const apiKey = resolveApiKey(request)
   try {
     const {
       imageBase64,
@@ -59,7 +61,8 @@ export async function POST(request: NextRequest) {
             imageBase64,
             styleRefBase64,
             s.characterPrompt,
-            ageDesc
+            ageDesc,
+            apiKey
           )
           if (!result.imageData) return { styleId: s.id, dataUrl: null }
           return {

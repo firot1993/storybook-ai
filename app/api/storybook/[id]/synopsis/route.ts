@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStory, getStorybook } from '@/lib/db'
 import { generateSynopsisVersions } from '@/lib/gemini'
+import { resolveApiKey } from '@/lib/api-utils'
 import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters } from '@/lib/storybook-helpers'
 import { buildPreviousStoryExcerpt, normalizeStoryChoices } from '@/lib/story-scenes'
@@ -10,6 +11,7 @@ import type { SynopsisOption } from '@/types'
 // 根据故事书配置 + 背景关键词，生成 A/B/C 三版梗概
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const apiKey = resolveApiKey(request)
   try {
     const { storyName, backgroundKeywords, ageRange, fromStoryId, locale: localeRaw } = await request.json()
     const locale = normalizeLocale(localeRaw)
@@ -65,6 +67,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       previousStoryTitle: previousStoryContext?.title,
       previousStoryContent: previousStoryContext?.content,
       previousStoryChoices: previousStoryContext?.choices,
+      apiKey,
     })
 
     const labels = locale === 'zh'

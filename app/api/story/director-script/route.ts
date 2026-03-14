@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStory, getStorybook, createScript, getCharacter } from '@/lib/db'
 import { generateInterleavedDirectorScript, generateStorybookDirectorScript, getGeminiErrorResponse } from '@/lib/gemini'
+import { resolveApiKey } from '@/lib/api-utils'
 import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters, resolveStorybookStyle, resolveStoryCharacterReferences } from '@/lib/storybook-helpers'
 import { saveFile } from '@/lib/storage'
@@ -25,6 +26,7 @@ import { saveFile } from '@/lib/storage'
  * Character names, ageRange, and styleDesc are auto-resolved from the storybook when omitted.
  */
 export async function POST(request: NextRequest) {
+  const apiKey = resolveApiKey(request)
   try {
     const {
       storyId,
@@ -189,6 +191,7 @@ export async function POST(request: NextRequest) {
         protagonistRole,
         characterImagesBase64: charRefs.imagesBase64,
         characterNames: charRefs.names,
+        apiKey,
       })
 
       scenes = result.scenes
@@ -254,6 +257,7 @@ export async function POST(request: NextRequest) {
         maxSceneCount,
         protagonistPronoun,
         protagonistRole,
+        apiKey,
       })
     } catch (error) {
       const { status, message } = getGeminiErrorResponse(error)

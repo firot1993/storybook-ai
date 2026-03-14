@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { updateStoryAudio } from '@/lib/db'
 import { GeminiTtsError, generateSceneNarrationAudioUrls } from '@/lib/gemini-tts'
+import { resolveApiKey } from '@/lib/api-utils'
 import { splitStoryIntoScenes } from '@/lib/story-scenes'
 
 // POST /api/story/audio - Generate (or regenerate) narration audio from existing story content
 export async function POST(request: NextRequest) {
+  const apiKey = resolveApiKey(request)
   try {
     const { storyId, content, sceneCount } = await request.json()
 
@@ -21,7 +23,8 @@ export async function POST(request: NextRequest) {
     const parsedScenes = splitStoryIntoScenes(content)
     const targetScenes = (maxSceneCount ? parsedScenes.slice(0, maxSceneCount) : parsedScenes)
     const sceneAudioUrls = await generateSceneNarrationAudioUrls(
-      targetScenes.length > 0 ? targetScenes : [content]
+      targetScenes.length > 0 ? targetScenes : [content],
+      apiKey
     )
     const audioUrl = sceneAudioUrls.find(Boolean) || ''
 

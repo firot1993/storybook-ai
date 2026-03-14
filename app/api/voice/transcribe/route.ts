@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { transcribeAudio, extractCharacterInfo, GeminiSttError } from '@/lib/gemini-stt'
+import { resolveApiKey } from '@/lib/api-utils'
 
 // POST /api/voice/transcribe
 // Body: multipart/form-data with "audio" (File) and optional "hint" (string)
 export async function POST(request: NextRequest) {
+  const apiKey = resolveApiKey(request)
   try {
     const formData = await request.formData()
     const audioFile = formData.get('audio') as File | null
@@ -21,8 +23,8 @@ export async function POST(request: NextRequest) {
     const base64 = Buffer.from(arrayBuffer).toString('base64')
     const mimeType = audioFile.type || 'audio/webm'
 
-    const transcript = await transcribeAudio(base64, mimeType, hint)
-    const characterInfo = extractInfo ? await extractCharacterInfo(transcript) : undefined
+    const transcript = await transcribeAudio(base64, mimeType, hint, apiKey)
+    const characterInfo = extractInfo ? await extractCharacterInfo(transcript, apiKey) : undefined
 
     return NextResponse.json({
       transcript,

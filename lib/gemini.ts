@@ -1,4 +1,3 @@
-import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
 import type { CompanionSuggestion } from '@/types'
 import {
@@ -14,11 +13,8 @@ import {
   buildVoiceAssignmentPrompt,
   DEFAULT_STORY_IMAGE_REFERENCE_HINT,
 } from './ai-prompts'
+import { getGeminiClient } from './gemini-client'
 import type { Locale } from './i18n/shared'
-
-const genAI = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || '',
-});
 
 const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL?.trim() || 'gemini-3-flash-preview';
 const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL?.trim() || 'gemini-3.1-flash-image-preview';
@@ -177,8 +173,10 @@ export async function generateCharacterWithStyleRef(
   userPhotoBase64: string,
   styleRefBase64: string,
   stylePrompt: string,
-  ageDesc = ''
+  ageDesc = '',
+  apiKey?: string
 ): Promise<{ imageData?: string; mimeType: string }> {
+  const genAI = getGeminiClient(apiKey)
   const prompt = buildCharacterWithStyleRefPrompt(stylePrompt, ageDesc)
 
   const response = (await genAI.models.generateContent({
@@ -242,6 +240,7 @@ export async function generateSynopsisVersions(params: {
   previousStoryTitle?: string
   previousStoryContent?: string
   previousStoryChoices?: string[]
+  apiKey?: string
 }): Promise<{ A: { title: string; content: string }; B: { title: string; content: string }; C: { title: string; content: string } }> {
   const {
     storyName,
@@ -255,8 +254,10 @@ export async function generateSynopsisVersions(params: {
     previousStoryTitle,
     previousStoryContent,
     previousStoryChoices,
+    apiKey,
   } = params
 
+  const genAI = getGeminiClient(apiKey)
   const prompt = buildSynopsisVersionsPrompt({
     storyName,
     protagonistName,
@@ -308,9 +309,11 @@ export async function generateCompanionSuggestions(params: {
   locale?: Locale
   protagonistPronoun?: string
   protagonistRole?: string
+  apiKey?: string
 }): Promise<CompanionSuggestion[]> {
-  const { protagonistName, backgroundKeywords, ageRange, locale = 'zh', protagonistPronoun, protagonistRole } = params
+  const { protagonistName, backgroundKeywords, ageRange, locale = 'zh', protagonistPronoun, protagonistRole, apiKey } = params
 
+  const genAI = getGeminiClient(apiKey)
   const prompt = buildCompanionSuggestionsPrompt({
     protagonistName,
     backgroundKeywords,
@@ -354,6 +357,7 @@ export async function generateStoryWithAssets(params: {
   previousStoryTitle?: string
   previousStoryContent?: string
   previousStoryChoices?: string[]
+  apiKey?: string
 }): Promise<{
   story: string
   choices: string[]
@@ -384,8 +388,10 @@ export async function generateStoryWithAssets(params: {
     previousStoryTitle,
     previousStoryContent,
     previousStoryChoices,
+    apiKey,
   } = params
 
+  const genAI = getGeminiClient(apiKey)
   const debugTag = '[generateStoryWithAssets]'
   const styleLabel = styleDesc || 'dreamlike watercolor, macaron palette, warm soft light'
   const hasCharacterImageRef = Boolean(characterImageBase64)
@@ -639,6 +645,7 @@ export async function generateStorybookDirectorScript(params: {
   maxSceneCount?: number
   protagonistPronoun?: string
   protagonistRole?: string
+  apiKey?: string
 }): Promise<import('@/types').DirectorStoryboardScene[]> {
   const {
     storyName,
@@ -654,8 +661,10 @@ export async function generateStorybookDirectorScript(params: {
     maxSceneCount = 18,
     protagonistPronoun,
     protagonistRole,
+    apiKey,
   } = params
 
+  const genAI = getGeminiClient(apiKey)
   const minScenes = Math.max(1, Math.trunc(minSceneCount))
   const maxScenes = Math.max(minScenes, Math.trunc(maxSceneCount))
   const normalizeName = (name: string) => name.replace(/\s+/g, '').toLowerCase()
@@ -813,6 +822,7 @@ export async function generateInterleavedDirectorScript(params: {
   protagonistRole?: string
   characterImagesBase64?: string[]
   characterNames?: string[]
+  apiKey?: string
 }): Promise<{
   scenes: import('@/types').DirectorStoryboardScene[]
   sceneImages: Map<number, Array<{ data: string; mimeType: string }>>
@@ -832,8 +842,10 @@ export async function generateInterleavedDirectorScript(params: {
     protagonistRole,
     characterImagesBase64 = [],
     characterNames = [],
+    apiKey,
   } = params
 
+  const genAI = getGeminiClient(apiKey)
   const debugTag = '[generateInterleavedDirectorScript]'
 
   // Build character name normalization maps (same as generateStorybookDirectorScript)
@@ -1057,8 +1069,10 @@ export async function generateStoryImage(
   sceneDescription: string,
   characterReference: string,
   characterImagesBase64?: string[],
-  characterNames?: string[]
+  characterNames?: string[],
+  apiKey?: string
 ) {
+  const genAI = getGeminiClient(apiKey)
   const normalizedScene = sceneDescription.replace(/\s+/g, ' ').slice(0, 260);
 
   const textHint = characterReference
@@ -1134,8 +1148,10 @@ export async function assignCharacterVoice(
   age: number | null | undefined,
   style: string,
   excludeVoice?: string,
-  locale: Locale = 'zh'
+  locale: Locale = 'zh',
+  apiKey?: string
 ): Promise<{ voiceName: string; reason: string }> {
+  const genAI = getGeminiClient(apiKey)
   // Filter out the currently assigned voice so re-assign always picks a different one
   const available = excludeVoice
     ? GEMINI_VOICES.filter(v => v.name !== excludeVoice)
