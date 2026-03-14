@@ -194,6 +194,7 @@ const en = {
     preparingBtn: 'Preparing video...',
     preparingScript: 'Generating storyboard & scenes...',
     preparingScriptHint: 'Drawing scene illustrations, this may take a moment',
+    preparingScriptProgress: 'Generating scenes {generated}/{total}...',
     readStoryBtn: 'Read Story Now 📖',
     createAnotherBtn: 'Create Another Episode',
     backToLibrary: 'Back to Library',

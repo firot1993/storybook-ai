@@ -9,6 +9,7 @@ import { STYLES } from '@/lib/styles'
 import { showToast } from '@/components/toast'
 import { useLanguage } from '@/lib/i18n'
 import { normalizeStoryChoices } from '@/lib/story-scenes'
+import { readSSEStream } from '@/lib/sse-client'
 
 const AGE_OPTION_VALUES = ['2-4', '4-6', '6-8'] as const
 const AGE_OPTION_EMOJIS: Record<string, string> = { '2-4': '🍼', '4-6': '⭐', '6-8': '🚀' }
@@ -97,6 +98,7 @@ function CreateStoryWizard() {
   const [discoveredNpcs, setDiscoveredNpcs] = useState<Array<{ name: string; description?: string; image?: string }>>([])
   const [startingVideo, setStartingVideo] = useState(false)
   const [videoPreparationStage, setVideoPreparationStage] = useState<'script' | 'pipeline' | null>(null)
+  const [scriptProgress, setScriptProgress] = useState<{ scenesGenerated: number; totalScenes: number } | null>(null)
   const clearContinuationParams = useCallback((nextStep?: number) => {
     const params = new URLSearchParams(searchParams.toString())
     params.delete('fromStoryId')
@@ -494,8 +496,9 @@ function CreateStoryWizard() {
 
     setStartingVideo(true)
     setVideoPreparationStage('script')
+    setScriptProgress(null)
     try {
-      // Step 1: generate director storyboard script from story
+      // Step 1: generate director storyboard script from story (SSE stream)
       const scriptRes = await fetch('/api/story/director-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -505,14 +508,29 @@ function CreateStoryWizard() {
         }),
       })
       if (!scriptRes.ok) throw new Error('Script generation failed')
-      const { script } = await scriptRes.json()
+
+      let script: { id: string } | null = null
+      await readSSEStream<{ script: { id: string } }>(scriptRes, {
+        onProgress: (event) => {
+          setScriptProgress({ scenesGenerated: event.scenesGenerated, totalScenes: event.totalScenes })
+        },
+        onComplete: (data) => {
+          script = data.script
+        },
+        onError: (data) => {
+          throw new Error(data.error || 'Script generation failed')
+        },
+      })
+
+      if (!script) throw new Error('Script generation returned no result')
+      const scriptId = (script as { id: string }).id
 
       // Step 2: kick off video pipeline
       setVideoPreparationStage('pipeline')
       const videoRes = await fetch('/api/video/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptId: script.id, storyId: generatedStoryId }),
+        body: JSON.stringify({ scriptId, storyId: generatedStoryId }),
       })
       if (!videoRes.ok) throw new Error('Video start failed')
 
@@ -982,7 +1000,9 @@ function CreateStoryWizard() {
                         </span>
                         {videoPreparationStage === 'script' && (
                           <span className="text-xs text-white/70 font-normal">
-                            {t('storyCreate.preparingScriptHint')}
+                            {scriptProgress
+                              ? t('storyCreate.preparingScriptProgress', { generated: scriptProgress.scenesGenerated, total: scriptProgress.totalScenes })
+                              : t('storyCreate.preparingScriptHint')}
                           </span>
                         )}
                       </span>

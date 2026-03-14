@@ -194,6 +194,7 @@ const zh = {
     preparingBtn: '正在准备视频...',
     preparingScript: '正在生成分镜与场景插画...',
     preparingScriptHint: '正在绘制场景插画，请耐心等待',
+    preparingScriptProgress: '正在生成场景 {generated}/{total}...',
     readStoryBtn: '直接阅读故事 📖',
     createAnotherBtn: '再创作一集',
     backToLibrary: '返回故事书库',
