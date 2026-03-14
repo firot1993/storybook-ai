@@ -63,8 +63,23 @@ Optional:
 - `BANANA_API_KEY`
 - `BANANA_MODEL_KEY`
 - `FFMPEG_PATH`
+- `FFMPEG_THREADS` (default: auto; tuned to leave CPU headroom, `3` on a 4 vCPU machine)
+- `FFMPEG_X264_PRESET` (default: `veryfast`)
+- `FFMPEG_SUBTITLE_X264_PRESET` (default: same as `FFMPEG_X264_PRESET`)
+- `FFMPEG_CRF` (default: `24`)
+- `FFMPEG_AUDIO_BITRATE` (default: `128k`)
 - `STORAGE_LOCAL_PATH` (default: `/tmp/storybook`)
 - `NEXT_PUBLIC_BASE_URL` (default: `http://localhost:3000`)
+
+Recommended for a Google Cloud runtime with 4 vCPU / 4 GB RAM:
+
+```bash
+FFMPEG_THREADS=3
+FFMPEG_X264_PRESET=veryfast
+FFMPEG_SUBTITLE_X264_PRESET=veryfast
+FFMPEG_CRF=24
+FFMPEG_AUDIO_BITRATE=128k
+```
 
 ## Local Development
 

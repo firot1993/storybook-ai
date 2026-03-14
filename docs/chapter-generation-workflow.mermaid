@@ -1,0 +1,51 @@
+%%{ init: { "theme": "base", "themeVariables": { "fontSize": "14px" } } }%%
+flowchart TD
+    subgraph Phase1["Phase 1: Storybook Setup"]
+        A["User uploads photo"] -->|"generateCharacterWithStyleRef() x5<br/>[IMAGE_MODEL, parallel]"| B["5 style portraits<br/>+ Character record"]
+        B --> C["User picks art style"]
+        C -->|"generateCompanionSuggestions()<br/>[TEXT_MODEL]"| D["3 companion suggestions"]
+        D --> E["User names book + picks age range"]
+        E -->|"POST /api/storybook<br/>generateCompanionCharacterCartoon()<br/>[Banana / Gemini fallback]"| F["Storybook created<br/>protagonist + companions linked"]
+    end
+
+    subgraph Phase2["Phase 2: Story Generation"]
+        G["User enters keywords"] -->|"generateSynopsisVersions()<br/>[TEXT_MODEL]"| H["3 synopses (A/B/C)"]
+        H --> I["User picks synopsis"]
+        I -->|"generateStoryWithAssets()<br/>[IMAGE_MODEL, text+image interleaved]"| J["Story text + cover image<br/>+ NPC portraits + choices"]
+    end
+
+    subgraph Phase3["Phase 3: Video Pipeline"]
+        K["User picks scene count<br/>(3 / 5 / 7)"] -->|"generateInterleavedDirectorScript()<br/>[IMAGE_MODEL, text+image interleaved]"| L["Director script<br/>+ scene images"]
+        L -.->|"fallback"| L2["generateStorybookDirectorScript()<br/>[TEXT_MODEL, text only]"]
+
+        L --> M["POST /api/video/start<br/>(async pipeline)"]
+        L2 --> M
+
+        M --> S1
+
+        subgraph Pipeline["Async Video Production"]
+            S1["Stage 1: Images<br/>Use pre-generated<br/>+ generateSceneIllustration()<br/>for missing scenes"]
+            S1 --> S2["Stage 2: Audio<br/>Per-line TTS via Gemini<br/>concatenated per scene"]
+            S2 --> S3["Stage 3: Clips<br/>FFmpeg: image + audio → mp4"]
+            S3 --> S4["Stage 4: Concat<br/>FFmpeg: merge all clips → raw.mp4"]
+            S4 --> S5["Stage 5: Subtitles<br/>Build SRT + burn → final.mp4"]
+        end
+
+        S5 --> V["Final video"]
+    end
+
+    subgraph Polling["Client Polling"]
+        P["Play page polls<br/>GET /api/story/{id}<br/>every 3s"] -->|"status"| PS{{"complete / failed?"}}
+        PS -->|"Yes"| PD["Stop polling<br/>Show video / error + retry"]
+        PS -->|"No"| P
+    end
+
+    F --> G
+    J --> K
+    M -.->|"status updates"| P
+
+    classDef phase fill:#f0f7ff,stroke:#3b82f6,stroke-width:2px
+    classDef interleaved fill:#fef3c7,stroke:#f59e0b,stroke-width:3px,color:#92400e
+
+    class Phase1,Phase2,Phase3 phase
+    class J,L interleaved

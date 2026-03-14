@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { buildSubtitleCues, buildSubtitleCuesV2, subtitlesContainCjk } from '../ffmpeg'
+import {
+  buildSubtitleCues,
+  buildSubtitleCuesV2,
+  clampFfmpegThreads,
+  getDefaultFfmpegThreads,
+  getFfmpegRuntimeConfig,
+  subtitlesContainCjk,
+} from '../ffmpeg'
 import type { ScriptScene, SubtitleCue } from '@/types'
 
 function makeScene(overrides: Partial<ScriptScene> = {}): ScriptScene {
@@ -174,5 +181,55 @@ describe('subtitlesContainCjk', () => {
 
   it('returns false for empty array', () => {
     expect(subtitlesContainCjk([])).toBe(false)
+  })
+})
+
+describe('FFmpeg runtime config', () => {
+  it('uses conservative default threads with CPU headroom', () => {
+    expect(getDefaultFfmpegThreads(4)).toBe(3)
+    expect(getDefaultFfmpegThreads(2)).toBe(1)
+    expect(getDefaultFfmpegThreads(1)).toBe(1)
+  })
+
+  it('clamps requested threads to available CPU count', () => {
+    expect(clampFfmpegThreads(8, 4)).toBe(4)
+    expect(clampFfmpegThreads(3, 4)).toBe(3)
+    expect(clampFfmpegThreads(0, 4)).toBe(3)
+  })
+
+  it('builds a cloud-friendly runtime config with sane fallbacks', () => {
+    const config = getFfmpegRuntimeConfig({
+      FFMPEG_THREADS: '6',
+      FFMPEG_X264_PRESET: 'fast',
+      FFMPEG_SUBTITLE_X264_PRESET: 'medium',
+      FFMPEG_CRF: '22',
+      FFMPEG_AUDIO_BITRATE: '96k',
+    }, 4)
+
+    expect(config).toEqual({
+      threads: 4,
+      scenePreset: 'fast',
+      subtitlePreset: 'medium',
+      crf: 22,
+      audioBitrate: '96k',
+    })
+  })
+
+  it('falls back when env overrides are invalid', () => {
+    const config = getFfmpegRuntimeConfig({
+      FFMPEG_THREADS: '-2',
+      FFMPEG_X264_PRESET: 'turbo',
+      FFMPEG_SUBTITLE_X264_PRESET: 'warp',
+      FFMPEG_CRF: '99',
+      FFMPEG_AUDIO_BITRATE: 'oops',
+    }, 4)
+
+    expect(config).toEqual({
+      threads: 3,
+      scenePreset: 'veryfast',
+      subtitlePreset: 'veryfast',
+      crf: 32,
+      audioBitrate: '128k',
+    })
   })
 })

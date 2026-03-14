@@ -2,11 +2,98 @@ import ffmpeg from 'fluent-ffmpeg'
 import { execFileSync } from 'child_process'
 import { existsSync } from 'fs'
 import fs from 'fs/promises'
+import os from 'os'
 import path from 'path'
 import type { SubtitleCue, ScriptScene } from '@/types'
 
 if (process.env.FFMPEG_PATH) {
   ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH)
+}
+
+const X264_PRESETS = new Set([
+  'ultrafast',
+  'superfast',
+  'veryfast',
+  'faster',
+  'fast',
+  'medium',
+  'slow',
+  'slower',
+  'veryslow',
+])
+
+export type FfmpegRuntimeConfig = {
+  threads: number
+  scenePreset: string
+  subtitlePreset: string
+  crf: number
+  audioBitrate: string
+}
+
+function detectAvailableCpuCount(): number {
+  const count = typeof os.availableParallelism === 'function'
+    ? os.availableParallelism()
+    : os.cpus().length
+  return Number.isFinite(count) && count > 0 ? Math.trunc(count) : 1
+}
+
+export function getDefaultFfmpegThreads(availableCpuCount = detectAvailableCpuCount()): number {
+  const safeCpuCount = Number.isFinite(availableCpuCount) && availableCpuCount > 0
+    ? Math.trunc(availableCpuCount)
+    : 1
+  const headroom = safeCpuCount > 1 ? 1 : 0
+  return Math.max(1, Math.min(3, safeCpuCount - headroom))
+}
+
+export function clampFfmpegThreads(requested: number, availableCpuCount = detectAvailableCpuCount()): number {
+  const safeCpuCount = Number.isFinite(availableCpuCount) && availableCpuCount > 0
+    ? Math.trunc(availableCpuCount)
+    : 1
+  const safeRequested = Number.isFinite(requested) && requested > 0
+    ? Math.trunc(requested)
+    : getDefaultFfmpegThreads(safeCpuCount)
+  return Math.max(1, Math.min(safeRequested, safeCpuCount))
+}
+
+function parseX264Preset(value: string | undefined, fallback: string): string {
+  const normalized = value?.trim().toLowerCase()
+  return normalized && X264_PRESETS.has(normalized) ? normalized : fallback
+}
+
+function parseCrf(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? '', 10)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.max(18, Math.min(32, parsed))
+}
+
+function parseAudioBitrate(value: string | undefined, fallback: string): string {
+  const normalized = value?.trim().toLowerCase()
+  return normalized && /^\d+(k|m)?$/.test(normalized) ? normalized : fallback
+}
+
+export function getFfmpegRuntimeConfig(
+  env: Record<string, string | undefined> = process.env,
+  availableCpuCount = detectAvailableCpuCount()
+): FfmpegRuntimeConfig {
+  const defaultThreads = getDefaultFfmpegThreads(availableCpuCount)
+  const requestedThreads = Number.parseInt(env.FFMPEG_THREADS ?? '', 10)
+  const scenePreset = parseX264Preset(env.FFMPEG_X264_PRESET, 'veryfast')
+
+  return {
+    threads: Number.isFinite(requestedThreads)
+      ? clampFfmpegThreads(requestedThreads, availableCpuCount)
+      : defaultThreads,
+    scenePreset,
+    subtitlePreset: parseX264Preset(env.FFMPEG_SUBTITLE_X264_PRESET, scenePreset),
+    crf: parseCrf(env.FFMPEG_CRF, 24),
+    audioBitrate: parseAudioBitrate(env.FFMPEG_AUDIO_BITRATE, '128k'),
+  }
+}
+
+const FFMPEG_RUNTIME = getFfmpegRuntimeConfig()
+
+export function getActiveFfmpegRuntimeConfig(): FfmpegRuntimeConfig {
+  return { ...FFMPEG_RUNTIME }
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -56,6 +143,29 @@ const CJK_FONT_NAME_HINTS = [
 
 function hasCjkGlyphs(text: string): boolean {
   return /[\u3400-\u9FFF\uF900-\uFAFF]/u.test(text)
+}
+
+function buildScalePadFilter(width: string, height: string): string {
+  return `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`
+}
+
+function getBaseH264OutputOptions(preset: string): string[] {
+  return [
+    '-c:v',
+    'libx264',
+    '-preset',
+    preset,
+    '-crf',
+    String(FFMPEG_RUNTIME.crf),
+    '-threads',
+    String(FFMPEG_RUNTIME.threads),
+    '-profile:v',
+    'main',
+    '-pix_fmt',
+    'yuv420p',
+    '-movflags',
+    '+faststart',
+  ]
 }
 
 /**
@@ -159,6 +269,7 @@ export function createSceneVideoClip(
 ): Promise<void> {
   const { resolution = '1280x720', fps = 24 } = options
   const [w, h] = resolution.split('x')
+  const videoFilter = buildScalePadFilter(w, h)
 
   return new Promise((resolve, reject) => {
     ffmpeg()
@@ -166,16 +277,18 @@ export function createSceneVideoClip(
       .inputOptions(['-loop 1'])
       .input(audioPath)
       .outputOptions([
-        `-vf scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black`,
-        `-r ${fps}`,
-        '-c:v libx264',
-        '-tune stillimage',
-        '-preset fast',
-        '-c:a aac',
-        '-b:a 192k',
-        '-pix_fmt yuv420p',
+        '-vf',
+        videoFilter,
+        '-r',
+        String(fps),
+        '-tune',
+        'stillimage',
+        ...getBaseH264OutputOptions(FFMPEG_RUNTIME.scenePreset),
+        '-c:a',
+        'aac',
+        '-b:a',
+        FFMPEG_RUNTIME.audioBitrate,
         '-shortest',
-        '-movflags +faststart',
       ])
       .output(outputPath)
       .on('end', () => resolve())
@@ -234,7 +347,7 @@ export async function createMultiFrameSceneVideoClip(
     const scaleFilters: string[] = []
     for (let i = 0; i < frameCount; i++) {
       scaleFilters.push(
-        `[${i}:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=${fps}[v${i}]`
+        `[${i}:v]${buildScalePadFilter(w, h)},setsar=1,fps=${fps}[v${i}]`
       )
     }
 
@@ -258,13 +371,12 @@ export async function createMultiFrameSceneVideoClip(
       .outputOptions([
         '-map', '[vout]',
         '-map', `${frameCount}:a`,
-        '-c:v libx264',
-        '-preset fast',
-        '-c:a aac',
-        '-b:a 192k',
-        '-pix_fmt yuv420p',
+        '-r', String(fps),
+        '-tune', 'stillimage',
+        ...getBaseH264OutputOptions(FFMPEG_RUNTIME.scenePreset),
+        '-c:a', 'aac',
+        '-b:a', FFMPEG_RUNTIME.audioBitrate,
         '-shortest',
-        '-movflags +faststart',
       ])
       .output(outputPath)
       .on('end', () => resolve())
@@ -372,8 +484,8 @@ export function burnSubtitles(
       .outputOptions([
         '-vf',
         subtitleFilter,
+        ...getBaseH264OutputOptions(FFMPEG_RUNTIME.subtitlePreset),
         '-c:a copy',
-        '-movflags +faststart',
       ])
       .output(outputPath)
       .on('end', () => resolve())
