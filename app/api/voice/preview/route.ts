@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { GeminiTtsError, generateVoicePreviewAudioUrl } from '@/lib/gemini-tts'
+import { resolveApiKey } from '@/lib/api-utils'
 
 export async function POST(request: NextRequest) {
+  const apiKey = resolveApiKey(request)
   try {
     const { voiceName, name } = await request.json()
     if (!voiceName) {
@@ -9,7 +11,7 @@ export async function POST(request: NextRequest) {
     }
     const charName = typeof name === 'string' && name.trim() ? name.trim() : '小朋友'
     const text = `大家好！我是${charName}，我最喜欢冒险和讲故事了！让我们一起出发吧！`
-    const audioDataUrl = await generateVoicePreviewAudioUrl(voiceName, text)
+    const audioDataUrl = await generateVoicePreviewAudioUrl(voiceName, text, apiKey)
     return NextResponse.json({ audioDataUrl })
   } catch (error) {
     if (error instanceof GeminiTtsError) {

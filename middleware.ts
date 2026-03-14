@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/api/auth', '/api/health']
+const PUBLIC_PATHS = ['/login', '/api/auth', '/api/auth/byok', '/api/health']
 const PUBLIC_PREFIXES = ['/_next/', '/favicon.ico']
 
 async function hashCode(code: string): Promise<string> {
@@ -27,6 +27,12 @@ export async function middleware(request: NextRequest) {
 
   const cookie = request.cookies.get('storybook-auth')?.value
   if (cookie === await hashCode(inviteCode)) {
+    return NextResponse.next()
+  }
+
+  // Allow access if user has a BYOK cookie (presence check only; decryption in API routes)
+  const byokCookie = request.cookies.get('storybook-byok')?.value
+  if (byokCookie) {
     return NextResponse.next()
   }
 

@@ -1,10 +1,8 @@
-import { GoogleGenAI } from '@google/genai'
 import {
   DEFAULT_TRANSCRIBE_AUDIO_HINT,
   buildExtractCharacterInfoPrompt,
 } from './ai-prompts'
-
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' })
+import { getGeminiClient } from './gemini-client'
 // Gemini 2.0 Flash supports inline audio for transcription
 const STT_MODEL = process.env.GEMINI_STT_MODEL?.trim() || 'gemini-2.0-flash'
 
@@ -26,15 +24,17 @@ export class GeminiSttError extends Error {
 export async function transcribeAudio(
   audioBase64: string,
   mimeType: string,
-  hint = DEFAULT_TRANSCRIBE_AUDIO_HINT
+  hint = DEFAULT_TRANSCRIBE_AUDIO_HINT,
+  apiKey?: string
 ): Promise<string> {
-  if (!process.env.GEMINI_API_KEY) {
+  if (!apiKey && !process.env.GEMINI_API_KEY) {
     throw new GeminiSttError(503, 'GEMINI_API_KEY is not configured.')
   }
   if (!audioBase64) {
     throw new GeminiSttError(400, 'Audio data is required.')
   }
 
+  const genAI = getGeminiClient(apiKey)
   try {
     const response = await genAI.models.generateContent({
       model: STT_MODEL,
@@ -68,10 +68,12 @@ export async function transcribeAudio(
  * Extract character name and description from a transcript.
  */
 export async function extractCharacterInfo(
-  transcript: string
+  transcript: string,
+  apiKey?: string
 ): Promise<{ name?: string; description?: string }> {
-  if (!process.env.GEMINI_API_KEY) return { description: transcript }
+  if (!apiKey && !process.env.GEMINI_API_KEY) return { description: transcript }
 
+  const genAI = getGeminiClient(apiKey)
   const prompt = buildExtractCharacterInfoPrompt(transcript)
 
   try {

@@ -209,8 +209,8 @@ gcloud run deploy "$SERVICE_NAME" \
   --image="$IMAGE" \
   --region="$REGION" \
   --allow-unauthenticated \
-  --memory=2Gi \
-  --cpu=2 \
+  --memory=4Gi \
+  --cpu=4 \
   --timeout=300 \
   --concurrency=10 \
   --set-secrets="$SECRETS_FLAG" \

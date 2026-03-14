@@ -1,8 +1,4 @@
-import { GoogleGenAI } from '@google/genai'
-
-const genAI = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || '',
-})
+import { getGeminiClient } from './gemini-client'
 
 const TTS_MODEL = process.env.GEMINI_TTS_MODEL?.trim() || 'gemini-2.5-flash-preview-tts'
 const DEFAULT_VOICE_NAME = 'Kore'
@@ -134,7 +130,7 @@ export function normalizeToPlayableWav(audioBuffer: Buffer, mimeType?: string): 
   return wrapPcm16ToWav(audioBuffer)
 }
 
-function normalizeText(text: string): string {
+function normalizeText(text: string, apiKey?: string): string {
   const normalizedText = typeof text === 'string' ? text.trim() : ''
   if (!normalizedText) {
     throw new GeminiTtsError({
@@ -143,7 +139,7 @@ function normalizeText(text: string): string {
     })
   }
 
-  if (!process.env.GEMINI_API_KEY) {
+  if (!apiKey && !process.env.GEMINI_API_KEY) {
     throw new GeminiTtsError({
       status: 503,
       message: 'GEMINI_API_KEY is not configured.',
@@ -174,9 +170,11 @@ function extractAudioDataPart(response: GeminiTtsResponse): { data: string; mime
 
 async function requestGeminiAudio(
   text: string,
-  speechConfig: Record<string, unknown>
+  speechConfig: Record<string, unknown>,
+  apiKey?: string
 ): Promise<string> {
-  const normalizedText = normalizeText(text)
+  const normalizedText = normalizeText(text, apiKey)
+  const genAI = getGeminiClient(apiKey)
   const maxAttempts = clampPositiveInt(TTS_MAX_RETRIES, 4)
   const retryBaseMs = clampPositiveInt(TTS_RETRY_BASE_MS, 5000)
   let retryDelayMs = 0
@@ -274,56 +272,56 @@ export function toSingleSpeakerNarrationScript(sceneText: string): string {
   return scriptedLines.join('\n')
 }
 
-export async function generateVoicePreviewAudioUrl(voiceName: string, text: string): Promise<string> {
+export async function generateVoicePreviewAudioUrl(voiceName: string, text: string, apiKey?: string): Promise<string> {
   return requestGeminiAudio(text, {
     voiceConfig: {
       prebuiltVoiceConfig: { voiceName },
     },
-  })
+  }, apiKey)
 }
 
-export async function generateNarrationAudioUrl(text: string): Promise<string> {
+export async function generateNarrationAudioUrl(text: string, apiKey?: string): Promise<string> {
   const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
   return requestGeminiAudio(text, {
     voiceConfig: {
       prebuiltVoiceConfig: { voiceName },
     },
-  })
+  }, apiKey)
 }
 
-export async function generateSceneNarrationAudioUrl(sceneText: string): Promise<string> {
+export async function generateSceneNarrationAudioUrl(sceneText: string, apiKey?: string): Promise<string> {
   const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
   const scriptedScene = toSingleSpeakerNarrationScript(sceneText)
   return requestGeminiAudio(scriptedScene, {
     voiceConfig: {
       prebuiltVoiceConfig: { voiceName },
     },
-  })
+  }, apiKey)
 }
 
 /**
  * V2: Generate audio for a single subtitle line.
  * Keeps line granularity so downstream subtitle timing can align with real audio durations.
  */
-export async function generateSceneLineNarrationAudioUrlV2(lineText: string): Promise<string> {
+export async function generateSceneLineNarrationAudioUrlV2(lineText: string, apiKey?: string): Promise<string> {
   const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
   const scriptedLine = toSingleSpeakerNarrationScript(lineText)
   return requestGeminiAudio(scriptedLine, {
     voiceConfig: {
       prebuiltVoiceConfig: { voiceName },
     },
-  })
+  }, apiKey)
 }
 
 /**
  * V2: Generate per-line scene narration audio URLs.
  */
-export async function generateSceneLineNarrationAudioUrlsV2(lines: string[]): Promise<string[]> {
+export async function generateSceneLineNarrationAudioUrlsV2(lines: string[], apiKey?: string): Promise<string[]> {
   const results: string[] = []
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     try {
-      results.push(await generateSceneLineNarrationAudioUrlV2(line))
+      results.push(await generateSceneLineNarrationAudioUrlV2(line, apiKey))
     } catch (error) {
       console.warn(`[Gemini TTS V2] Line ${i} audio generation failed:`, error)
       throw error
@@ -332,12 +330,12 @@ export async function generateSceneLineNarrationAudioUrlsV2(lines: string[]): Pr
   return results
 }
 
-export async function generateSceneNarrationAudioUrls(scenes: string[]): Promise<string[]> {
+export async function generateSceneNarrationAudioUrls(scenes: string[], apiKey?: string): Promise<string[]> {
   const results: string[] = []
 
   for (const scene of scenes) {
     try {
-      results.push(await generateSceneNarrationAudioUrl(scene))
+      results.push(await generateSceneNarrationAudioUrl(scene, apiKey))
     } catch (error) {
       console.warn('[Gemini TTS] Scene audio generation failed:', error)
       results.push('')

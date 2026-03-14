@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCharacter } from '@/lib/db'
 import { generateCompanionSuggestions } from '@/lib/gemini'
+import { resolveApiKey } from '@/lib/api-utils'
 import { normalizeLocale } from '@/lib/i18n/shared'
 
 // POST /api/companions/suggest
 // 根据主角信息生成 3 个 AI 推荐冒险小伙伴（不需要故事书ID）
 export async function POST(request: NextRequest) {
+  const apiKey = resolveApiKey(request)
   try {
     const { protagonistId, backgroundKeywords, ageRange, locale: localeRaw } = await request.json()
     const locale = normalizeLocale(localeRaw)
@@ -22,6 +24,7 @@ export async function POST(request: NextRequest) {
       locale,
       protagonistPronoun,
       protagonistRole,
+      apiKey,
     })
 
     return NextResponse.json({ companions })

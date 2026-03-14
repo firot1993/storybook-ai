@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCharacter, createStory, getCharacter, getStory, getStorybook, updateStorybook } from '@/lib/db'
 import { generateStoryWithAssets } from '@/lib/gemini'
+import { resolveApiKey } from '@/lib/api-utils'
 import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
 import { buildPreviousStoryExcerpt, normalizeStoryChoices } from '@/lib/story-scenes'
@@ -73,6 +74,7 @@ async function buildNpcCharactersWithAssets(
 // 从选定梗概生成完整童话 + 封面插画，保存为故事书的一个章节
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const apiKey = resolveApiKey(request)
   try {
     const {
       storyName,
@@ -152,6 +154,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       previousStoryTitle: previousStoryContext?.title,
       previousStoryContent: previousStoryContext?.content,
       previousStoryChoices: previousStoryContext?.choices,
+      apiKey,
     })
 
     const storyPathId = crypto.randomUUID()
