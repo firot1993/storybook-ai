@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   // Validate by making a lightweight Gemini API call
   try {
     const client = getGeminiClient(trimmedKey)
-    await client.models.list({ pageSize: 1 })
+    await client.models.list()
   } catch (error) {
     console.error('[BYOK] API key validation failed:', error)
     const apiError = error as { status?: number; statusCode?: number; message?: string; code?: number }
