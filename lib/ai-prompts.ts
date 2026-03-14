@@ -494,6 +494,95 @@ interface InterleavedDirectorScriptPromptParams {
   protagonistRole?: string
 }
 
+interface ChunkedInterleavedDirectorScriptPromptParams extends InterleavedDirectorScriptPromptParams {
+  startSceneIndex: number   // 0-based start index for this chunk
+  endSceneIndex: number     // exclusive end index for this chunk
+  totalScenes: number       // total scene count across all chunks
+  previousSceneSummaries?: string[]  // summaries of scenes from prior chunks
+}
+
+export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInterleavedDirectorScriptPromptParams): string {
+  const {
+    storyName,
+    protagonistName,
+    supportingName,
+    storyContent,
+    ageRange,
+    styleDesc,
+    locale,
+    characterPoolText,
+    characterProfileText,
+    startSceneIndex,
+    endSceneIndex,
+    totalScenes,
+    previousSceneSummaries = [],
+    protagonistPronoun,
+    protagonistRole,
+  } = params
+  const roleList = [protagonistName, supportingName]
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .join(', ')
+  const styleLabel = styleDesc || DEFAULT_DIRECTOR_STYLE_LABEL
+  const englishStyleLabel = styleDesc || DEFAULT_DIRECTOR_STYLE_LABEL
+  const chunkSceneCount = endSceneIndex - startSceneIndex
+
+  const previousSummariesBlock = previousSceneSummaries.length > 0
+    ? dedentPrompt(`
+        [Previous Scenes Summary]
+        The following scenes have already been generated. Continue the narrative naturally from where they left off.
+        ${previousSceneSummaries.map((s, i) => `Scene ${i + 1}: ${s}`).join('\n')}
+      `)
+    : ''
+
+  return dedentPrompt(`
+    [System Role]
+    You are an elite children's animation director and storyboard designer. You transform warm fairy tales into visually rich, emotionally clear animated storyboards with strong pacing. You also illustrate each scene directly.
+
+    [Creative Task]
+    Generate scenes ${startSceneIndex + 1} to ${endSceneIndex} of ${totalScenes} total scenes based on the parameters below.
+    That means you must produce exactly ${chunkSceneCount} scene(s) in this response.
+    For EACH scene, output the scene metadata then IMMEDIATELY generate the scene illustration.
+
+    Core rules:
+    1. Each scene should support roughly 8-12 seconds of animation and avoid static staging.
+    2. Use concrete, visual language instead of abstract wording.
+    3. Clearly specify shot type, camera movement, and action focus.
+    4. Keep the emotional interaction child-friendly and age-appropriate for ${ageRange}-year-old viewers.
+    5. Maintain a consistent visual style: ${styleLabel}.
+    6. Ensure opening frames connect visually from one scene to the next.
+    7. If charactersUsed is non-empty, every frame prompt must explicitly include all charactersUsed names.
+    8. ${getOutputLanguageRequirement(locale, 'sceneDescription, cameraDesign, animationAction, voiceOver, and dialogue text values')}
+    9. openingFramePrompt, midActionFramePrompt, and endingFramePrompt must always stay in English for downstream image generation.
+
+    [Story Parameters]
+    Story title: ${storyName}
+    Main roles: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}, ${supportingName}
+    Available character pool: ${characterPoolText || roleList}
+    Character notes:
+    ${characterProfileText || 'None'}
+    Story text:
+    ${storyContent}
+    Target audience age: ${ageRange}
+    ${previousSummariesBlock}
+
+    [Output Format]
+    Start scene numbering at ${startSceneIndex + 1}. For each scene, output in this exact order:
+
+    1. The scene metadata as a comment marker:
+    <!--SCENE_META:{"index":${startSceneIndex + 1},"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
+
+    2. Then IMMEDIATELY generate a 16:9 illustration for the OPENING frame based on the openingFramePrompt. Style: ${styleLabel}, bright and warm.
+    3. Then generate a 16:9 illustration for the MID-ACTION frame based on the midActionFramePrompt. Same style and characters.
+    4. Then generate a 16:9 illustration for the ENDING frame based on the endingFramePrompt. Same style and characters.
+
+    Continue with the next scene until all ${chunkSceneCount} scenes in this chunk are complete.
+
+    [Character Consistency]
+    Keep all characters visually consistent across every illustration — same face shape, hairstyle, hair color, outfit, and proportions in every scene.
+  `)
+}
+
 export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirectorScriptPromptParams): string {
   const {
     storyName,

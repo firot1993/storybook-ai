@@ -18,6 +18,7 @@ import { getCurrentStoryFromIndexedDB, setCurrentStoryInIndexedDB } from '@/lib/
 import { showToast } from '@/components/toast'
 import { splitStoryIntoScenes, extractStoryChoices } from '@/lib/story-scenes'
 import { useLanguage } from '@/lib/i18n'
+import { readSSEStream } from '@/lib/sse-client'
 
 function formatAudioTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -133,11 +134,13 @@ function VideoStartButton({
 }) {
   const { locale, t } = useLanguage()
   const [loading, setLoading] = useState(false)
+  const [scriptProgress, setScriptProgress] = useState<{ scenesGenerated: number; totalScenes: number } | null>(null)
 
   const handleStart = useCallback(async () => {
     if (loading) return
 
     setLoading(true)
+    setScriptProgress(null)
     try {
       const scriptRes = await fetch('/api/story/director-script', {
         method: 'POST',
@@ -148,12 +151,27 @@ function VideoStartButton({
         }),
       })
       if (!scriptRes.ok) throw new Error('Script generation failed')
-      const { script } = await scriptRes.json() as { script: { id: string } }
+
+      let script: { id: string } | null = null
+      await readSSEStream<{ script: { id: string } }>(scriptRes, {
+        onProgress: (event) => {
+          setScriptProgress({ scenesGenerated: event.scenesGenerated, totalScenes: event.totalScenes })
+        },
+        onComplete: (data) => {
+          script = data.script
+        },
+        onError: (data) => {
+          throw new Error(data.error || 'Script generation failed')
+        },
+      })
+
+      if (!script) throw new Error('Script generation returned no result')
+      const scriptId = (script as { id: string }).id
 
       const videoRes = await fetch('/api/video/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptId: script.id, storyId }),
+        body: JSON.stringify({ scriptId, storyId }),
       })
       if (!videoRes.ok) throw new Error('Video start failed')
       const { videoProject } = await videoRes.json() as { videoProject: VideoProject }
@@ -177,7 +195,9 @@ function VideoStartButton({
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
             </svg>
-            {t('storyPlay.scriptGenerating')}
+            {scriptProgress
+              ? t('storyCreate.preparingScriptProgress', { generated: scriptProgress.scenesGenerated, total: scriptProgress.totalScenes })
+              : t('storyPlay.scriptGenerating')}
           </>
         ) : (
           <>{label ?? t('storyPlay.startVideo')}</>
@@ -303,36 +323,73 @@ function PlayStoryContent() {
     }
   }, [router, searchParams])
 
-  // Poll video project status while generation is in progress
-  const pollStartRef = useRef<number>(0)
+  // Stream video project status updates via SSE while generation is in progress
   useEffect(() => {
     const urlStoryId = searchParams.get('id')
     if (!urlStoryId || !videoProject) return
     const isTerminal = videoProject.status === 'complete' || videoProject.status === 'failed'
     if (isTerminal) return
 
-    // Record when polling started; stop after 15 minutes as a safety net
-    if (!pollStartRef.current) pollStartRef.current = Date.now()
-    const MAX_POLL_MS = 15 * 60 * 1000
+    let cancelled = false
+    const abortController = new AbortController()
 
-    const interval = setInterval(async () => {
-      if (Date.now() - pollStartRef.current > MAX_POLL_MS) {
-        clearInterval(interval)
-        setVideoProject((prev) =>
-          prev ? { ...prev, status: 'failed' as const, errorMessage: 'Video generation timed out. Please try again.' } : prev
-        )
-        return
-      }
+    const streamProgress = async () => {
       try {
-        const res = await fetch(`/api/story/${urlStoryId}`)
-        if (res.ok) {
-          const data = await res.json()
-          if (data.videoProject) setVideoProject(data.videoProject)
-        }
-      } catch { /* ignore polling errors */ }
-    }, 3000)
+        const res = await fetch(`/api/story/${urlStoryId}`, {
+          headers: { 'Accept': 'text/event-stream' },
+          signal: abortController.signal,
+        })
+        if (!res.ok || !res.body) return
 
-    return () => clearInterval(interval)
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (!cancelled) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const parts = buffer.split('\n\n')
+          buffer = parts.pop() ?? ''
+
+          for (const part of parts) {
+            const trimmed = part.trim()
+            if (!trimmed) continue
+
+            let eventType = 'message'
+            let data = ''
+            for (const line of trimmed.split('\n')) {
+              if (line.startsWith('event: ')) eventType = line.slice(7)
+              else if (line.startsWith('data: ')) data = line.slice(6)
+            }
+            if (!data) continue
+
+            try {
+              const parsed = JSON.parse(data)
+              if (eventType === 'progress' && parsed.videoProject) {
+                setVideoProject(parsed.videoProject)
+              } else if (eventType === 'error') {
+                setVideoProject((prev) =>
+                  prev ? { ...prev, status: 'failed' as const, errorMessage: parsed.error } : prev
+                )
+              }
+            } catch { /* ignore parse errors */ }
+          }
+        }
+      } catch (err) {
+        if (!cancelled && !(err instanceof DOMException && (err as DOMException).name === 'AbortError')) {
+          console.warn('[VideoProgress] SSE stream error:', err)
+        }
+      }
+    }
+
+    streamProgress()
+
+    return () => {
+      cancelled = true
+      abortController.abort()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoProject?.status, searchParams])
 
