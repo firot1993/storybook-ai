@@ -102,6 +102,58 @@
   100% { opacity: 1; transform: rotateY(0) scale(1); }
 }
 
+@keyframes gentleFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+@keyframes cardReveal {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Storybook page unfold — 3D page-turn entrance */
+@keyframes storyPageUnfold {
+  0%   { opacity: 0; transform: perspective(800px) rotateY(-12deg) translateX(-20px) scale(0.92); }
+  60%  { opacity: 1; transform: perspective(800px) rotateY(2deg) translateX(0) scale(1.01); }
+  100% { opacity: 1; transform: perspective(800px) rotateY(0) translateX(0) scale(1); }
+}
+
+/* Warm golden shimmer for story skeletons */
+@keyframes goldenShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Quill write-on — lines expand from left */
+@keyframes writeOn {
+  from { transform: scaleX(0); opacity: 0.3; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+
+/* Soft breathing glow around card */
+@keyframes storyGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 146, 60, 0), 0 1px 3px rgba(0,0,0,0.06); }
+  50%      { box-shadow: 0 0 20px 2px rgba(251, 146, 60, 0.12), 0 4px 12px rgba(0,0,0,0.08); }
+}
+
+/* Sparkle twinkle for decoration */
+@keyframes sparkle {
+  0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
+  50%      { opacity: 1; transform: scale(1) rotate(180deg); }
+}
+
+@keyframes softPop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+@keyframes headerSlide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Animation utilities ──────────────────────────────────────── */
 .animate-slide-in      { animation: slideIn 0.4s ease-out; }
 .animate-fade-in       { animation: fadeIn 0.4s ease-out; }
@@ -109,6 +161,11 @@
 .animate-scene         { animation: sceneTransition 0.4s ease-out; }
 .animate-page-turn     { animation: pageTurn 0.4s ease-out; transform-origin: left center; }
 .animate-shimmer       { animation: shimmer 1.5s linear infinite; }
+.animate-gentle-float  { animation: gentleFloat 3s ease-in-out infinite; }
+.animate-card-reveal   { animation: cardReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-soft-pop      { animation: softPop 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-header-slide  { animation: headerSlide 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-story-unfold  { animation: storyPageUnfold 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; transform-origin: left center; }
 
 /* Stagger delays */
 .stagger-1 { animation-delay: 0ms; }
@@ -117,12 +174,76 @@
 .stagger-4 { animation-delay: 240ms; }
 .stagger-5 { animation-delay: 320ms; }
 
+/* Story skeleton stagger — wider spacing for dramatic cascade */
+.story-stagger-1 { animation-delay: 0ms; }
+.story-stagger-1 .story-skeleton-line:nth-child(1) { animation-delay: 0.3s; }
+.story-stagger-1 .story-skeleton-line:nth-child(2) { animation-delay: 0.45s; }
+.story-stagger-1 .story-skeleton-line:nth-child(3) { animation-delay: 0.6s; }
+.story-stagger-1 .story-skeleton-line:nth-child(4) { animation-delay: 0.75s; }
+.story-stagger-1::after { animation-delay: 0.5s; }
+
+.story-stagger-2 { animation-delay: 200ms; }
+.story-stagger-2 .story-skeleton-line:nth-child(1) { animation-delay: 0.5s; }
+.story-stagger-2 .story-skeleton-line:nth-child(2) { animation-delay: 0.65s; }
+.story-stagger-2 .story-skeleton-line:nth-child(3) { animation-delay: 0.8s; }
+.story-stagger-2 .story-skeleton-line:nth-child(4) { animation-delay: 0.95s; }
+.story-stagger-2::after { animation-delay: 0.7s; }
+
+.story-stagger-3 { animation-delay: 400ms; }
+.story-stagger-3 .story-skeleton-line:nth-child(1) { animation-delay: 0.7s; }
+.story-stagger-3 .story-skeleton-line:nth-child(2) { animation-delay: 0.85s; }
+.story-stagger-3 .story-skeleton-line:nth-child(3) { animation-delay: 1.0s; }
+.story-stagger-3 .story-skeleton-line:nth-child(4) { animation-delay: 1.15s; }
+.story-stagger-3::after { animation-delay: 0.9s; }
+
+/* ── Reduced motion ──────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* ── Skeleton loader ──────────────────────────────────────────── */
 .skeleton {
   @apply rounded-xl;
   background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
+}
+
+/* ── Story skeleton: warm golden shimmer + write-on lines ────── */
+.story-skeleton-card {
+  animation: storyPageUnfold 0.7s cubic-bezier(0.16, 1, 0.3, 1) both,
+             storyGlow 2.5s ease-in-out infinite 0.7s;
+  transform-origin: left center;
+  position: relative;
+  overflow: hidden;
+}
+
+.story-skeleton-card::after {
+  content: '✦';
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  font-size: 10px;
+  color: rgba(251, 146, 60, 0.5);
+  animation: sparkle 2s ease-in-out infinite;
+}
+
+.story-skeleton-header {
+  background: linear-gradient(90deg, #fed7aa 0%, #ffedd5 30%, #fef3c7 50%, #ffedd5 70%, #fed7aa 100%);
+  background-size: 200% 100%;
+  animation: goldenShimmer 2s ease-in-out infinite;
+}
+
+.story-skeleton-line {
+  @apply rounded-lg;
+  background: linear-gradient(90deg, #f3e8d4 25%, #faf5ee 50%, #f3e8d4 75%);
+  background-size: 200% 100%;
+  animation: goldenShimmer 2s ease-in-out infinite, writeOn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: left center;
 }
 
 /* ── Background pattern (dot grid) ───────────────────────────── */

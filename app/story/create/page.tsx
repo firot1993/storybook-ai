@@ -633,7 +633,7 @@ function CreateStoryWizard() {
           <div className="page-enter">
             {/* Book context mini-header */}
             {currentBook && (
-              <div className="flex items-center gap-3 mb-5 px-4 py-3 bg-white/80 rounded-2xl border border-gray-200 shadow-sm">
+              <div className="animate-header-slide flex items-center gap-3 mb-5 px-4 py-3 bg-white/80 rounded-2xl border border-gray-200 shadow-sm">
                 {bookProtagonistImage && (
                   <div className="w-10 h-10 rounded-xl overflow-hidden border border-gray-200 shrink-0">
                     <Image src={bookProtagonistImage} alt={bookProtagonist?.name ?? ''} width={40} height={40} className="object-cover w-full h-full" />
@@ -660,13 +660,13 @@ function CreateStoryWizard() {
 
             <div className="grid grid-cols-1 sm:grid-cols-[5fr_7fr] gap-4">
               {/* ── Left panel ── */}
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 animate-fade-up stagger-1">
                 <div className="card">
                   <h2 className="text-base font-accent font-bold text-forest-800 mb-1">{t('storyCreate.inspirationTitle')}</h2>
                   <p className="text-xs text-gray-500 mb-4">{t('storyCreate.inspirationHint')}</p>
 
                   {showPreviousChoices && (
-                    <div className="mb-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                    <div className="mb-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5 animate-fade-in">
                       <p className="text-[11px] font-extrabold text-forest-700 mb-2">{t('storyCreate.previousChoicesTitle')}</p>
                       {loadingPreviousChoices ? (
                         <div className="flex gap-2">
@@ -708,7 +708,7 @@ function CreateStoryWizard() {
                               key={`${choice}-${index}`}
                               type="button"
                               onClick={() => handleUsePreviousChoice(choice)}
-                              className="px-2.5 py-1 rounded-full border border-ember-200 bg-white text-ember-700 text-[11px] font-bold hover:bg-ember-100 transition-colors"
+                              className="px-2.5 py-1 rounded-full border border-ember-200 bg-white text-ember-700 text-[11px] font-bold hover:bg-ember-100 hover:shadow-sm hover:-translate-y-0.5 transition-all duration-200"
                             >
                               {choice}
                             </button>
@@ -777,7 +777,7 @@ function CreateStoryWizard() {
                           onClick={() => setEpisodeAge(value)}
                           className={`flex-1 py-2 rounded-xl border-2 text-xs font-bold transition-all ${
                             episodeAge === value
-                              ? 'border-forest-500 bg-forest-100 text-forest-700'
+                              ? 'border-forest-500 bg-forest-100 text-forest-700 animate-soft-pop'
                               : 'border-gray-200 text-gray-500 hover:border-forest-200'
                           }`}
                         >
@@ -803,10 +803,10 @@ function CreateStoryWizard() {
               </div>
 
               {/* ── Right panel ── */}
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 animate-fade-up stagger-2">
                 {!generatingSynopsis && synopsisOptions.length === 0 && (
                   <div className="flex-1 flex flex-col items-center justify-center min-h-[200px] rounded-2xl border-2 border-dashed border-gray-200 text-center p-6">
-                    <div className="text-4xl mb-3 opacity-40">📖</div>
+                    <div className="text-4xl mb-3 opacity-40 animate-gentle-float">📖</div>
                     <p className="text-sm text-gray-500 font-medium">{t('storyCreate.synopsisEmptyHint')}</p>
                     <p className="text-xs text-gray-300 mt-1">{t('storyCreate.synopsisEmptyHint2')}</p>
                   </div>
@@ -814,13 +814,14 @@ function CreateStoryWizard() {
 
                 {generatingSynopsis && (
                   <div className="space-y-3">
-                    {['A', 'B', 'C'].map((v) => (
-                      <div key={v} className="rounded-2xl overflow-hidden border border-gray-100 animate-pulse">
-                        <div className="h-9 bg-gray-200 rounded-t-2xl" />
-                        <div className="p-4 space-y-2">
-                          <div className="h-3 bg-gray-100 rounded w-3/4" />
-                          <div className="h-3 bg-gray-100 rounded w-full" />
-                          <div className="h-3 bg-gray-100 rounded w-5/6" />
+                    {['A', 'B', 'C'].map((v, idx) => (
+                      <div key={v} className={`story-skeleton-card story-stagger-${idx + 1} rounded-2xl border border-ember-100/60 bg-white`}>
+                        <div className="h-9 story-skeleton-header rounded-t-2xl" />
+                        <div className="p-4 space-y-2.5">
+                          <div className="h-3.5 story-skeleton-line w-2/5" />
+                          <div className="h-3 story-skeleton-line w-full" />
+                          <div className="h-3 story-skeleton-line w-4/5" />
+                          <div className="h-3 story-skeleton-line w-3/5" />
                         </div>
                       </div>
                     ))}
@@ -829,14 +830,14 @@ function CreateStoryWizard() {
 
                 {!generatingSynopsis && synopsisOptions.length > 0 && (
                   <>
-                    <p className="text-xs font-bold text-gray-500 px-1">{t('storyCreate.synopsisSelectHint')}</p>
-                    {synopsisOptions.map((opt) => {
+                    <p className="text-xs font-bold text-gray-500 px-1 animate-fade-in">{t('storyCreate.synopsisSelectHint')}</p>
+                    {synopsisOptions.map((opt, idx) => {
                       const style = SYNOPSIS_STYLE[opt.version as keyof typeof SYNOPSIS_STYLE]
                       return (
                         <button
                           key={opt.version}
                           onClick={() => handleSelectSynopsis(opt)}
-                          className="w-full text-left rounded-2xl border-2 border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-md transition-all active:scale-[0.99]"
+                          className={`animate-card-reveal w-full text-left rounded-2xl border-2 border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.99] stagger-${idx + 1}`}
                         >
                           <div className={`bg-gradient-to-r ${style.gradient} px-4 py-2.5 flex items-center gap-2`}>
                             <span className="text-xs font-extrabold px-2 py-0.5 rounded-full bg-white/30 text-white">
