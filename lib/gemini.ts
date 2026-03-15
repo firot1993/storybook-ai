@@ -129,6 +129,31 @@ export function getGeminiErrorResponse(error: unknown): { status: number; messag
   };
 }
 
+function isRetriableGeminiChunkError(error: unknown): boolean {
+  const geminiError = error as GeminiErrorShape;
+  const status = geminiError?.status;
+  const message = geminiError?.message ?? '';
+  const causeCode = geminiError?.cause?.code ?? '';
+  const causeMessage = geminiError?.cause?.message ?? '';
+  const combinedMessage = `${message} ${causeMessage}`.toLowerCase();
+
+  if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+
+  if (
+    causeCode === 'UND_ERR_CONNECT_TIMEOUT' ||
+    causeCode === 'UND_ERR_HEADERS_TIMEOUT' ||
+    combinedMessage.includes('connect timeout') ||
+    combinedMessage.includes('headers timeout') ||
+    combinedMessage.includes('fetch failed')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function extractImageData(response: GeminiImageResponse): string | undefined {
   for (const candidate of response.candidates ?? []) {
     for (const part of candidate.content?.parts ?? []) {
@@ -222,6 +247,91 @@ function safeParseJsonArray(raw: string): unknown[] {
   text = text.replace(/,\s*([}\]])/g, '$1')
   const parsed = JSON.parse(text)
   return Array.isArray(parsed) ? parsed : []
+}
+
+function repairJsonStringLiterals(raw: string): string {
+  const text = raw.replace(/\r\n/g, '\n')
+  let repaired = ''
+  let inString = false
+  let isEscaped = false
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i]
+
+    if (!inString) {
+      repaired += char
+      if (char === '"') inString = true
+      continue
+    }
+
+    if (isEscaped) {
+      repaired += char
+      isEscaped = false
+      continue
+    }
+
+    if (char === '\\') {
+      repaired += char
+      isEscaped = true
+      continue
+    }
+
+    if (char === '"') {
+      let nextIndex = i + 1
+      while (nextIndex < text.length && /\s/.test(text[nextIndex])) {
+        nextIndex += 1
+      }
+      const nextChar = text[nextIndex]
+      const looksLikeClosingQuote =
+        nextChar == null ||
+        nextChar === ':' ||
+        nextChar === ',' ||
+        nextChar === '}' ||
+        nextChar === ']'
+
+      if (looksLikeClosingQuote) {
+        repaired += char
+        inString = false
+      } else {
+        repaired += '\\"'
+      }
+      continue
+    }
+
+    if (char === '\n') {
+      repaired += '\\n'
+      continue
+    }
+    if (char === '\r') {
+      repaired += '\\r'
+      continue
+    }
+    if (char === '\t') {
+      repaired += '\\t'
+      continue
+    }
+
+    const code = char.charCodeAt(0)
+    if (code < 0x20) {
+      repaired += `\\u${code.toString(16).padStart(4, '0')}`
+      continue
+    }
+
+    repaired += char
+  }
+
+  return repaired
+}
+
+function parseJsonObjectWithRepairs<T>(raw: string): T {
+  const normalized = raw.replace(/,\s*([}\]])/g, '$1')
+
+  try {
+    return JSON.parse(normalized) as T
+  } catch {
+    const repaired = repairJsonStringLiterals(normalized).replace(/,\s*([}\]])/g, '$1')
+    return JSON.parse(repaired) as T
+  }
 }
 
 // ── Storybook v2: 三版梗概生成 ───────────────────────────────
@@ -335,11 +445,11 @@ export async function generateCompanionSuggestions(params: {
   }
 }
 
-// ── Storybook v2: 单次交错生成（故事 + 封面 + NPC立绘） ──────
+// ── Storybook v2: 单次交错生成（故事 + 封面 + 限量角色立绘） ──────
 
 /**
- * Single interleaved Gemini call that generates story text, cover image,
- * and NPC character portrait images all at once using
+ * Single interleaved Gemini call that generates story text, a cover image,
+ * and limited supporting/NPC portrait images in one pass using
  * `responseModalities: ['TEXT', 'IMAGE']`.
  */
 export async function generateStoryWithAssets(params: {
@@ -913,9 +1023,14 @@ async function parseInterleavedResponseParts(
         .replace(/,\s*([}\]])/g, '$1')
 
       try {
-        sceneMetaList.push(JSON.parse(jsonText) as RawSceneMeta)
+        sceneMetaList.push(parseJsonObjectWithRepairs<RawSceneMeta>(jsonText))
       } catch (e) {
-        console.warn(`${debugTag} Failed to parse SCENE_META:`, e)
+        console.warn(
+          `${debugTag} Failed to parse SCENE_META:`,
+          e,
+          '\nRaw excerpt:',
+          jsonText.slice(0, 500)
+        )
       }
 
       tokenRegex.lastIndex = jsonEnd + 1
@@ -1271,34 +1386,46 @@ export async function generateInterleavedDirectorScript(params: {
           console.log(`${debugTag} Retrying parallel chunk ${chunkIdx + 1}/${totalChunks} (attempt ${attempt + 1})`)
         }
 
-        const response = (await genAI.models.generateContent({
-          model: IMAGE_MODEL,
-          contents: [{ role: 'user', parts }],
-          config: { responseModalities: ['TEXT', 'IMAGE'] },
-        })) as GeminiImageResponse
+        try {
+          const response = (await genAI.models.generateContent({
+            model: IMAGE_MODEL,
+            contents: [{ role: 'user', parts }],
+            config: { responseModalities: ['TEXT', 'IMAGE'] },
+          })) as GeminiImageResponse
 
-        const responseParts = response.candidates?.[0]?.content?.parts ?? []
-        console.log(`${debugTag} Parallel chunk ${chunkIdx + 1} response`, {
-          totalParts: responseParts.length,
-          textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
-          imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
-          attempt: attempt + 1,
-        })
-
-        const globalOffset = startSceneIndex
-        const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
-
-        if (parsed.sceneMetaList.length > 0) {
-          onProgress?.({
-            chunkIndex: chunkIdx,
-            totalChunks,
-            scenesGenerated: parsed.sceneMetaList.length,
-            totalScenes: sceneCount,
+          const responseParts = response.candidates?.[0]?.content?.parts ?? []
+          console.log(`${debugTag} Parallel chunk ${chunkIdx + 1} response`, {
+            totalParts: responseParts.length,
+            textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
+            imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
+            attempt: attempt + 1,
           })
-          return { meta: parsed.sceneMetaList, images: parsed.sceneImages }
-        }
 
-        console.warn(`${debugTag} Parallel chunk ${chunkIdx + 1} returned no scene metadata${attempt < MAX_CHUNK_RETRIES ? ', retrying...' : ''}`)
+          const globalOffset = startSceneIndex
+          const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
+
+          if (parsed.sceneMetaList.length > 0) {
+            onProgress?.({
+              chunkIndex: chunkIdx,
+              totalChunks,
+              scenesGenerated: parsed.sceneMetaList.length,
+              totalScenes: sceneCount,
+            })
+            return { meta: parsed.sceneMetaList, images: parsed.sceneImages }
+          }
+
+          console.warn(`${debugTag} Parallel chunk ${chunkIdx + 1} returned no scene metadata${attempt < MAX_CHUNK_RETRIES ? ', retrying...' : ''}`)
+        } catch (error) {
+          const retryable = isRetriableGeminiChunkError(error)
+          if (retryable && attempt < MAX_CHUNK_RETRIES) {
+            console.warn(
+              `${debugTag} Parallel chunk ${chunkIdx + 1} request failed with retryable error, retrying...`,
+              error
+            )
+            continue
+          }
+          throw error
+        }
       }
 
       return { meta: [], images: new Map() }
@@ -1396,28 +1523,40 @@ export async function generateInterleavedDirectorScript(params: {
         console.log(`${debugTag} Retrying chunk ${chunkIdx + 1}/${totalChunks} (attempt ${attempt + 1})`)
       }
 
-      const response = (await genAI.models.generateContent({
-        model: IMAGE_MODEL,
-        contents: [{ role: 'user', parts }],
-        config: { responseModalities: ['TEXT', 'IMAGE'] },
-      })) as GeminiImageResponse
+      try {
+        const response = (await genAI.models.generateContent({
+          model: IMAGE_MODEL,
+          contents: [{ role: 'user', parts }],
+          config: { responseModalities: ['TEXT', 'IMAGE'] },
+        })) as GeminiImageResponse
 
-      const responseParts = response.candidates?.[0]?.content?.parts ?? []
-      console.log(`${debugTag} Chunk ${chunkIdx + 1} response`, {
-        totalParts: responseParts.length,
-        textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
-        imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
-        attempt: attempt + 1,
-      })
+        const responseParts = response.candidates?.[0]?.content?.parts ?? []
+        console.log(`${debugTag} Chunk ${chunkIdx + 1} response`, {
+          totalParts: responseParts.length,
+          textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
+          imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
+          attempt: attempt + 1,
+        })
 
-      const globalOffset = allSceneMetaList.length
-      const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
-      chunkMeta = parsed.sceneMetaList
-      chunkImages = parsed.sceneImages
+        const globalOffset = allSceneMetaList.length
+        const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
+        chunkMeta = parsed.sceneMetaList
+        chunkImages = parsed.sceneImages
 
-      if (chunkMeta.length > 0) break
+        if (chunkMeta.length > 0) break
 
-      console.warn(`${debugTag} Chunk ${chunkIdx + 1} returned no scene metadata${attempt < MAX_CHUNK_RETRIES ? ', retrying...' : ''}`)
+        console.warn(`${debugTag} Chunk ${chunkIdx + 1} returned no scene metadata${attempt < MAX_CHUNK_RETRIES ? ', retrying...' : ''}`)
+      } catch (error) {
+        const retryable = isRetriableGeminiChunkError(error)
+        if (retryable && attempt < MAX_CHUNK_RETRIES) {
+          console.warn(
+            `${debugTag} Chunk ${chunkIdx + 1} request failed with retryable error, retrying...`,
+            error
+          )
+          continue
+        }
+        throw error
+      }
     }
 
     // Merge results

@@ -1,12 +1,12 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js'
 
-const TTS_MODEL = process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2'
+const TTS_MODEL = process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_v3'
 const DEFAULT_VOICE_NAME = 'Kore'
 const WAV_SAMPLE_RATE = 24000
 const WAV_CHANNELS = 1
 const WAV_BITS_PER_SAMPLE = 16
 const TTS_CONCURRENCY = Number(process.env.ELEVENLABS_CONCURRENCY ?? 5)
-const DEFAULT_TTS_SPEED = 0.8
+const DEFAULT_TTS_SPEED = 0.9
 const MIN_TTS_SPEED = 0.7
 const MAX_TTS_SPEED = 1.2
 const DEFAULT_TTS_STABILITY = 0.5

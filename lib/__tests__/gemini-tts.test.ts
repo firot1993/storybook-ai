@@ -26,6 +26,7 @@ import {
 
 beforeEach(() => {
   convertMock.mockReset()
+  delete process.env.ELEVENLABS_MODEL_ID
   delete process.env.ELEVENLABS_SPEED
 })
 
@@ -211,7 +212,7 @@ describe('generateVoicePreviewAudioUrl', () => {
     expect(convertMock).toHaveBeenCalledTimes(1)
     expect(convertMock.mock.calls[0]?.[1]).toMatchObject({
       text: 'Hello world',
-      modelId: expect.any(String),
+      modelId: 'eleven_v3',
       outputFormat: 'pcm_24000',
       voiceSettings: {
         speed: 0.9,

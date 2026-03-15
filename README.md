@@ -59,7 +59,7 @@ Optional:
 - `GEMINI_TTS_MODEL` (default: `gemini-2.5-flash-preview-tts`)
 - `GEMINI_STT_MODEL` (default: `gemini-2.0-flash`)
 - `GEMINI_TTS_VOICE`
-- `ELEVENLABS_MODEL_ID` (default: `eleven_multilingual_v2`)
+- `ELEVENLABS_MODEL_ID` (default: `eleven_v3`)
 - `ELEVENLABS_CONCURRENCY` (default: `5`)
 - `ELEVENLABS_SPEED` (default: `0.9`, range: `0.7-1.2`)
 - `ELEVENLABS_STABILITY` (default: `0.5` / `50%`)

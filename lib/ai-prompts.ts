@@ -120,6 +120,15 @@ function formatProtagonistLabel(name: string, pronoun?: string, role?: string): 
   return parts.length > 0 ? `${name} (${parts.join(', ')})` : name
 }
 
+function getElevenV3VoiceOverRequirement(locale: Locale): string {
+  return (
+    'Every voiceOver must begin with one or two short eleven_v3 control tags in English square brackets ' +
+    '(for example [softly], [warmly], [whispers], or [gentle laugh]). ' +
+    `Keep the spoken narration itself in ${getLocaleLanguageName(locale)}; only the control tags may stay in English. ` +
+    'Use control tags only inside the voiceOver string, keep them child-friendly, and never place them in dialogue or frame prompts.'
+  )
+}
+
 function getTitleLengthInstruction(locale: Locale): string {
   return locale === 'zh' ? '4-6 Chinese characters' : '2-5 words'
 }
@@ -359,7 +368,8 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
        <!--SCENE_CONTEXT:{"visualTheme":"location/environment description","timeLighting":"time of day and lighting mood","keyProp":"key visual prop or focal object","actionFlow":"character action/movement summary","characters":["character names present"]}-->
        Fill every field with concrete, vivid details from that scene. This metadata is used downstream for illustration — be specific, not generic.
     8. ${getOutputLanguageRequirement(locale, 'All story prose, dialogue, NPC descriptions, and choice text')}
-    9. If the story introduces any NEW named character other than the protagonist or supporting character, list them as NPCs.
+    9. You may introduce NEW named NPCs only when the story genuinely needs them, and never more than 2 total.
+       Prefer 0 NPCs when possible. If background figures are absolutely necessary, keep them unnamed, generic, and visually incidental.
     ${needsSupportingCharacter ? `
     [Supporting Character Invention]
     The supporting character slot is currently unnamed. You MUST invent a memorable, named supporting character for the story (an animal, magical creature, or child-friendly fantasy companion).
@@ -367,13 +377,13 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
     - Weave them naturally into the story as the protagonist's companion.
     - Immediately after the story body, output this marker on its own line:
     <!--SUPPORTING:{"name":"<invented character name>","description":"<short visual traits, ${getCompanionDescriptionInstruction(locale)}>"}-->
-    - Then generate a full-body portrait for this character in the [CHARACTER - <Name>] section below (same as NPCs).
+    - Then generate a full-body portrait for this character in the [CHARACTER - <Name>] section below so downstream systems can use it as a reference image.
     - Do NOT list this invented supporting character in the NPCS marker.
     ` : ''}
     Immediately after the story body${needsSupportingCharacter ? ' and the SUPPORTING marker' : ''}, output these two markers exactly as written, one per line:
     <!--NPCS:[{"name":"<new character name>","description":"<short traits, ${getNpcDescriptionInstruction(locale)}>"}]-->
     <!--CHOICES:["<next-episode choice 1, ${getChoiceLengthInstruction(locale)}>","<choice 2, ${getChoiceLengthInstruction(locale)}>","<choice 3, ${getChoiceLengthInstruction(locale)}>"]-->
-    If there are no new NPCs, return [] for NPCS.
+    If there are no new NPCs, return [] for NPCS. If there are NPCs, return at most 2.
 
     Then, ${needsSupportingCharacter ? 'for the invented supporting character AND ' : ''}for each NPC listed in NPCS, output:
     [CHARACTER - <Character Name>]
@@ -383,11 +393,15 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
     Then generate that character as a full-body portrait in ${styleLabel} style with a clean white background.
     ${getOutputLanguageRequirement(locale, 'The Personality and Appearance lines')}
 
-    IMPORTANT: Output each NPC one at a time — write the [CHARACTER - Name] header, then immediately generate that character's portrait image, before moving to the next NPC or the [COVER] section. Do NOT output all character headers first and then all images.
+    IMPORTANT:
+    - Output each character one at a time: write the [CHARACTER - Name] header, then immediately generate that character's portrait image.
+    - Generate portrait images only for the invented supporting character (if any) and the NPCs listed in NPCS.
+    - Never generate more than 2 NPC portraits total.
 
     Finally output:
     [COVER]
-    Generate the cover image for this storybook. Use a vertical composition with an approximate 3:4 aspect ratio, ${styleLabel} style, and show the story's core emotional scene. Do not include any text in the image.
+    Generate exactly ONE image total for the entire response: the cover image for this storybook. Use a vertical composition with an approximate 3:4 aspect ratio, ${styleLabel} style, and show the story's core emotional scene. Do not include any text in the image.
+    Do NOT generate scene illustrations, alternate cover options, or any other extra images beyond the allowed character reference portraits and this single cover image.
 
     Keep the section headers exactly as written: [STORY BODY], [CHARACTER - <Character Name>], and [COVER].
     ${hasCharacterImageRef ? `
@@ -459,6 +473,8 @@ export function buildDirectorScriptPrompt(params: DirectorScriptPromptParams): s
     7. If charactersUsed is non-empty, every frame prompt must explicitly include all charactersUsed names.
     8. ${getOutputLanguageRequirement(locale, 'sceneDescription, cameraDesign, animationAction, voiceOver, and dialogue text values')}
     9. openingFramePrompt, midActionFramePrompt, and endingFramePrompt must always stay in English for downstream image generation.
+    10. ${getElevenV3VoiceOverRequirement(locale)}
+    11. Return JSON-safe text only: every JSON string value must stay on a single line, any internal double quotes must be escaped, and no field may contain raw line breaks.
 
     [Story Parameters]
     Story title: ${storyName}
@@ -478,7 +494,7 @@ export function buildDirectorScriptPrompt(params: DirectorScriptPromptParams): s
         "sceneDescription": "Short scene description",
         "cameraDesign": "Shot type, camera movement, and focus",
         "animationAction": "Detailed character and environment action for the scene",
-        "voiceOver": "Rhythmic, read-aloud-friendly narration",
+        "voiceOver": "[softly] Rhythmic, read-aloud-friendly narration",
         "dialogue": [{"speaker": "Character name", "text": "Short warm line"}],
         "charactersUsed": ["Character names visible in this scene"],
         "estimatedDuration": 10,
@@ -580,6 +596,8 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     7. If charactersUsed is non-empty, every frame prompt must explicitly include all charactersUsed names.
     8. ${getOutputLanguageRequirement(locale, 'sceneDescription, cameraDesign, animationAction, voiceOver, and dialogue text values')}
     9. openingFramePrompt, midActionFramePrompt, and endingFramePrompt must always stay in English for downstream image generation.
+    10. ${getElevenV3VoiceOverRequirement(locale)}
+    11. Return JSON-safe text only: every JSON string value must stay on a single line, any internal double quotes must be escaped, and no field may contain raw line breaks.
 
     [Story Parameters]
     Story title: ${storyName}
@@ -598,7 +616,7 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     Start scene numbering at ${startSceneIndex + 1}. For each scene, output in this exact order:
 
     1. The scene metadata as a comment marker:
-    <!--SCENE_META:{"index":${startSceneIndex + 1},"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
+    <!--SCENE_META:{"index":${startSceneIndex + 1},"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"[softly] Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
 
     2. Then IMMEDIATELY generate a 16:9 illustration for the OPENING frame based on the openingFramePrompt. Style: ${styleLabel}, bright and warm.
     3. Then generate a 16:9 illustration for the MID-ACTION frame based on the midActionFramePrompt. Same style and characters.
@@ -650,6 +668,8 @@ export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirector
     7. If charactersUsed is non-empty, every frame prompt must explicitly include all charactersUsed names.
     8. ${getOutputLanguageRequirement(locale, 'sceneDescription, cameraDesign, animationAction, voiceOver, and dialogue text values')}
     9. openingFramePrompt, midActionFramePrompt, and endingFramePrompt must always stay in English for downstream image generation.
+    10. ${getElevenV3VoiceOverRequirement(locale)}
+    11. Return JSON-safe text only: every JSON string value must stay on a single line, any internal double quotes must be escaped, and no field may contain raw line breaks.
 
     [Story Parameters]
     Story title: ${storyName}
@@ -667,7 +687,7 @@ export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirector
     For each scene, output in this exact order:
 
     1. The scene metadata as a comment marker:
-    <!--SCENE_META:{"index":1,"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
+    <!--SCENE_META:{"index":1,"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"[softly] Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
 
     2. Then IMMEDIATELY generate a 16:9 illustration for the OPENING frame based on the openingFramePrompt. Style: ${styleLabel}, bright and warm.
     3. Then generate a 16:9 illustration for the MID-ACTION frame based on the midActionFramePrompt. Same style and characters.
