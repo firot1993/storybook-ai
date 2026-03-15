@@ -244,7 +244,8 @@ step 8 "Deploy to Cloud Run"
 ENV_VARS="NODE_ENV=production,GCS_BUCKET=${BUCKET}"
 if [[ -f "$ENV_FILE" ]]; then
   for key in GEMINI_TEXT_MODEL GEMINI_IMAGE_MODEL GEMINI_STT_MODEL \
-             GEMINI_TTS_VOICE ELEVENLABS_MODEL_ID ELEVENLABS_CONCURRENCY; do
+             GEMINI_TTS_VOICE ELEVENLABS_MODEL_ID ELEVENLABS_CONCURRENCY \
+             ELEVENLABS_SPEED ELEVENLABS_STABILITY ELEVENLABS_STYLE; do
     val=$(grep -E "^${key}=" "$ENV_FILE" | cut -d'=' -f2-)
     if [[ -n "$val" ]]; then
       ENV_VARS="${ENV_VARS},${key}=${val}"

@@ -1,23 +1,33 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
+
+const convertMock = vi.fn()
 
 // Mock @elevenlabs/elevenlabs-js before importing the module under test
 vi.mock('@elevenlabs/elevenlabs-js', () => ({
   ElevenLabsClient: class {
     textToSpeech = {
-      convert: vi.fn(),
+      convert: convertMock,
     }
   },
 }))
 
 import {
   clampPositiveInt,
+  clampTtsSpeed,
+  clampUnitInterval,
   looksLikeWav,
   wrapPcm16ToWav,
   normalizeToPlayableWav,
   toDataUrl,
   toSingleSpeakerNarrationScript,
   GeminiTtsError,
+  generateVoicePreviewAudioUrl,
 } from '../gemini-tts'
+
+beforeEach(() => {
+  convertMock.mockReset()
+  delete process.env.ELEVENLABS_SPEED
+})
 
 describe('GeminiTtsError', () => {
   it('stores status and message', () => {
@@ -51,6 +61,46 @@ describe('clampPositiveInt', () => {
 
   it('returns fallback for Infinity', () => {
     expect(clampPositiveInt(Infinity, 10)).toBe(10)
+  })
+})
+
+describe('clampTtsSpeed', () => {
+  it('returns the value when it is within the supported range', () => {
+    expect(clampTtsSpeed(0.9, 1)).toBe(0.9)
+  })
+
+  it('clamps too-small values up to the minimum', () => {
+    expect(clampTtsSpeed(0.2, 1)).toBe(0.7)
+  })
+
+  it('clamps too-large values down to the maximum', () => {
+    expect(clampTtsSpeed(2, 1)).toBe(1.2)
+  })
+
+  it('returns fallback for NaN', () => {
+    expect(clampTtsSpeed(NaN, 0.9)).toBe(0.9)
+  })
+})
+
+describe('clampUnitInterval', () => {
+  it('returns the value when it is already between 0 and 1', () => {
+    expect(clampUnitInterval(0.5, 0.2)).toBe(0.5)
+  })
+
+  it('interprets percentage-style inputs', () => {
+    expect(clampUnitInterval(50, 0.2)).toBe(0.5)
+  })
+
+  it('clamps too-small values up to zero', () => {
+    expect(clampUnitInterval(-3, 0.2)).toBe(0)
+  })
+
+  it('clamps too-large values down to one', () => {
+    expect(clampUnitInterval(120, 0.2)).toBe(1)
+  })
+
+  it('returns fallback for NaN', () => {
+    expect(clampUnitInterval(NaN, 0.15)).toBe(0.15)
   })
 })
 
@@ -144,6 +194,31 @@ describe('toDataUrl', () => {
   it('creates a valid data URL', () => {
     const result = toDataUrl('aGVsbG8=', 'audio/wav')
     expect(result).toBe('data:audio/wav;base64,aGVsbG8=')
+  })
+})
+
+describe('generateVoicePreviewAudioUrl', () => {
+  it('passes slower voice settings to ElevenLabs by default', async () => {
+    convertMock.mockResolvedValue(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(Uint8Array.from([1, 2, 3, 4]))
+        controller.close()
+      },
+    }))
+
+    await generateVoicePreviewAudioUrl('Kore', 'Hello world', 'test-key')
+
+    expect(convertMock).toHaveBeenCalledTimes(1)
+    expect(convertMock.mock.calls[0]?.[1]).toMatchObject({
+      text: 'Hello world',
+      modelId: expect.any(String),
+      outputFormat: 'pcm_24000',
+      voiceSettings: {
+        speed: 0.9,
+        stability: 0.5,
+        style: 0.15,
+      },
+    })
   })
 })
 

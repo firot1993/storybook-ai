@@ -5,10 +5,9 @@ import {
   buildCharacterWithStyleRefPrompt,
   buildChunkedInterleavedDirectorScriptPrompt,
   buildCompanionSuggestionsPrompt,
+  buildDirectorScriptPrompt,
   buildInterleavedDirectorScriptPrompt,
   buildReferenceImageLabel,
-  buildDirectorScriptPrompt,
-  buildProtagonistReferencePrompt,
   buildStoryImagePrompt,
   buildStoryWithAssetsPrompt,
   buildSynopsisVersionsPrompt,
@@ -352,7 +351,8 @@ export async function generateStoryWithAssets(params: {
   styleDesc: string
   locale?: Locale
   theme?: string
-  characterImageBase64?: string
+  characterImagesBase64?: string[]
+  characterNames?: string[]
   protagonistPronoun?: string
   protagonistRole?: string
   needsSupportingCharacter?: boolean
@@ -384,7 +384,8 @@ export async function generateStoryWithAssets(params: {
     styleDesc,
     locale = 'zh',
     theme,
-    characterImageBase64,
+    characterImagesBase64 = [],
+    characterNames = [],
     protagonistPronoun,
     protagonistRole,
     needsSupportingCharacter,
@@ -397,7 +398,7 @@ export async function generateStoryWithAssets(params: {
   const genAI = getGeminiClient(apiKey)
   const debugTag = '[generateStoryWithAssets]'
   const styleLabel = styleDesc || 'dreamlike watercolor, macaron palette, warm soft light'
-  const hasCharacterImageRef = Boolean(characterImageBase64)
+  const hasCharacterImageRef = characterImagesBase64.length > 0
 
   const prompt = buildStoryWithAssetsPrompt({
     storyName,
@@ -409,6 +410,7 @@ export async function generateStoryWithAssets(params: {
     locale,
     theme,
     hasCharacterImageRef,
+    referenceCharacterNames: characterNames,
     protagonistPronoun,
     protagonistRole,
     needsSupportingCharacter,
@@ -429,19 +431,21 @@ export async function generateStoryWithAssets(params: {
     promptChars: prompt.length,
   })
 
-  // Build content parts: text prompt + optional protagonist reference image
+  // Build content parts: text prompt + optional labeled character reference images
   const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
     { text: prompt },
   ]
 
-  if (characterImageBase64) {
-    const isJpeg = characterImageBase64.startsWith('/9j/')
+  for (let index = 0; index < characterImagesBase64.length; index++) {
+    const imageBase64 = characterImagesBase64[index]
+    const name = characterNames[index]?.trim() || `Character ${index + 1}`
+    const isJpeg = imageBase64.startsWith('/9j/')
     parts.push({
-      text: buildProtagonistReferencePrompt(protagonistName),
+      text: buildReferenceImageLabel(name),
     })
     parts.push({
       inlineData: {
-        data: characterImageBase64,
+        data: imageBase64,
         mimeType: isJpeg ? 'image/jpeg' : 'image/png',
       },
     })
@@ -984,7 +988,6 @@ async function parseInterleavedResponseParts(
 function enrichSceneMeta(
   sceneMetaList: RawSceneMeta[],
   canonicalByKey: Map<string, string>,
-  detailsByKey: Map<string, string>,
   locale: string
 ): import('@/types').DirectorStoryboardScene[] {
   const normalizeName = (name: string) => name.replace(/\s+/g, '').toLowerCase()
@@ -1016,12 +1019,7 @@ function enrichSceneMeta(
     const withCharacters = (promptText: string | undefined) => {
       const base = (promptText ?? '').trim()
       if (usedList.length === 0) return base
-      const label = usedList
-        .map((name) => {
-          const detail = detailsByKey.get(normalizeName(name))
-          return detail ? `${name}(${detail})` : name
-        })
-        .join(', ')
+      const label = usedList.join(', ')
       const lc = base.toLowerCase()
       if (lc.includes('must include all characters') || lc.includes('characters in this frame')) {
         return base
@@ -1108,7 +1106,6 @@ export async function generateInterleavedDirectorScript(params: {
   // Build character name normalization maps
   const normalizeName = (name: string) => name.replace(/\s+/g, '').toLowerCase()
   const canonicalByKey = new Map<string, string>()
-  const detailsByKey = new Map<string, string>()
   for (const rawName of characterPool) {
     const trimmed = rawName.trim()
     if (!trimmed) continue
@@ -1120,21 +1117,11 @@ export async function generateInterleavedDirectorScript(params: {
     if (!name) continue
     const key = normalizeName(name)
     if (!canonicalByKey.has(key)) canonicalByKey.set(key, name)
-    const description = profile.description?.trim() || ''
-    if (description && !detailsByKey.has(key)) {
-      detailsByKey.set(key, description.slice(0, 120))
-    }
   }
   if (!canonicalByKey.has(normalizeName(protagonistName))) {
     canonicalByKey.set(normalizeName(protagonistName), protagonistName)
   }
   const characterPoolText = Array.from(canonicalByKey.values()).join(', ')
-  const characterProfileText = Array.from(canonicalByKey.entries())
-    .map(([key, name]) => {
-      const detail = detailsByKey.get(key)
-      return detail ? `${name}: ${detail}` : name
-    })
-    .join('\n')
 
   // Build character reference image parts (shared across all chunks)
   const charRefParts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = []
@@ -1167,7 +1154,6 @@ export async function generateInterleavedDirectorScript(params: {
       styleDesc,
       locale,
       characterPoolText,
-      characterProfileText,
       sceneCount,
       protagonistPronoun,
       protagonistRole,
@@ -1213,7 +1199,7 @@ export async function generateInterleavedDirectorScript(params: {
       throw new Error('Interleaved director script returned no scene metadata')
     }
 
-    const scenes = enrichSceneMeta(sceneMetaList, canonicalByKey, detailsByKey, locale)
+    const scenes = enrichSceneMeta(sceneMetaList, canonicalByKey, locale)
     onProgress?.({
       chunkIndex: 0,
       totalChunks: 1,
@@ -1259,7 +1245,6 @@ export async function generateInterleavedDirectorScript(params: {
         styleDesc,
         locale,
         characterPoolText,
-        characterProfileText,
         sceneCount: endSceneIndex - startSceneIndex,
         protagonistPronoun,
         protagonistRole,
@@ -1347,7 +1332,7 @@ export async function generateInterleavedDirectorScript(params: {
       throw new Error('Interleaved director script returned no scene metadata across all parallel chunks')
     }
 
-    const scenes = enrichSceneMeta(allSceneMetaList, canonicalByKey, detailsByKey, locale)
+    const scenes = enrichSceneMeta(allSceneMetaList, canonicalByKey, locale)
     return { scenes, sceneImages: allSceneImages }
   }
 
@@ -1382,7 +1367,6 @@ export async function generateInterleavedDirectorScript(params: {
       styleDesc,
       locale,
       characterPoolText,
-      characterProfileText,
       sceneCount: endSceneIndex - startSceneIndex,
       protagonistPronoun,
       protagonistRole,
@@ -1471,7 +1455,7 @@ export async function generateInterleavedDirectorScript(params: {
     throw new Error('Interleaved director script returned no scene metadata across all chunks')
   }
 
-  const scenes = enrichSceneMeta(allSceneMetaList, canonicalByKey, detailsByKey, locale)
+  const scenes = enrichSceneMeta(allSceneMetaList, canonicalByKey, locale)
   return { scenes, sceneImages: allSceneImages }
 }
 

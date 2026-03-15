@@ -33,6 +33,7 @@ interface StoryWithAssetsPromptParams {
   locale: Locale
   theme?: string
   hasCharacterImageRef: boolean
+  referenceCharacterNames?: string[]
   protagonistPronoun?: string
   protagonistRole?: string
   needsSupportingCharacter?: boolean
@@ -295,6 +296,7 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
     locale,
     theme,
     hasCharacterImageRef,
+    referenceCharacterNames = [],
     protagonistPronoun,
     protagonistRole,
     needsSupportingCharacter,
@@ -304,6 +306,10 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
   } = params
   const styleLabel = styleDesc || DEFAULT_STORY_STYLE_LABEL
   const themeLabel = theme || 'exploration and friendship'
+  const referenceCharactersLabel = referenceCharacterNames
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .join(', ')
   const continuationChoices = (previousStoryChoices ?? [])
     .map((choice) => choice.trim())
     .filter(Boolean)
@@ -386,12 +392,13 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
     Keep the section headers exactly as written: [STORY BODY], [CHARACTER - <Character Name>], and [COVER].
     ${hasCharacterImageRef ? `
 
-    [Protagonist Consistency Constraint]
-    You will receive a reference image for the protagonist "${protagonistName}".
-    In every image that includes the protagonist, keep the protagonist visually consistent:
-    - same face shape, hairstyle, hair color, main outfit colors, and overall temperament
-    - do not treat the protagonist reference as an NPC
-    - do not change the protagonist's species or gender unless the story explicitly requires it` : ''}
+    [Character Reference Constraint]
+    You will receive labeled reference image(s) for existing story characters${referenceCharactersLabel ? `: ${referenceCharactersLabel}` : ''}.
+    In every image that includes a referenced character, use the corresponding image as the source of truth for appearance:
+    - keep the same face shape, hairstyle, hair color, outfit colors, and overall silhouette
+    - do not override the reference appearance with new textual appearance ideas
+    - do not treat a protagonist reference as an NPC reference
+    - do not change a referenced character's species or gender unless the story explicitly requires it` : ''}
   `)
 }
 
@@ -492,7 +499,6 @@ interface InterleavedDirectorScriptPromptParams {
   styleDesc: string
   locale: Locale
   characterPoolText: string
-  characterProfileText: string
   sceneCount: number
   protagonistPronoun?: string
   protagonistRole?: string
@@ -517,7 +523,6 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     styleDesc,
     locale,
     characterPoolText,
-    characterProfileText,
     startSceneIndex,
     endSceneIndex,
     totalScenes,
@@ -580,12 +585,14 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     Story title: ${storyName}
     Main roles: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}, ${supportingName}
     Available character pool: ${characterPoolText || roleList}
-    Character notes:
-    ${characterProfileText || 'None'}
     Story text:
     ${storyTextForPrompt}
     Target audience age: ${ageRange}
     ${contextBlock}
+
+    [Reference Constraint]
+    If labeled character reference images are provided, treat those images as the only source of truth for character appearance consistency.
+    Do not invent or reinforce extra appearance traits from text notes when a reference image exists.
 
     [Output Format]
     Start scene numbering at ${startSceneIndex + 1}. For each scene, output in this exact order:
@@ -614,7 +621,6 @@ export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirector
     styleDesc,
     locale,
     characterPoolText,
-    characterProfileText,
     sceneCount,
     protagonistPronoun,
     protagonistRole,
@@ -649,11 +655,13 @@ export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirector
     Story title: ${storyName}
     Main roles: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}, ${supportingName}
     Available character pool: ${characterPoolText || roleList}
-    Character notes:
-    ${characterProfileText || 'None'}
     Story text:
     ${storyContent}
     Target audience age: ${ageRange}
+
+    [Reference Constraint]
+    If labeled character reference images are provided, treat those images as the only source of truth for character appearance consistency.
+    Do not invent or reinforce extra appearance traits from text notes when a reference image exists.
 
     [Output Format]
     For each scene, output in this exact order:

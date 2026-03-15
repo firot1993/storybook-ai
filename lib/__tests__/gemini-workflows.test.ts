@@ -207,6 +207,8 @@ describe('gemini workflow prompt composition', () => {
       ageRange: '4-6',
       styleDesc: 'soft watercolor storybook',
       locale: 'en',
+      characterImagesBase64: ['abc123'],
+      characterNames: ['Luna'],
       previousStoryTitle: 'Lantern in the Woods',
       previousStoryContent: '[Scene 1] A lantern appeared at dusk.',
       previousStoryChoices: ['Follow the lantern', 'Hide behind a tree'],
@@ -214,6 +216,7 @@ describe('gemini workflow prompt composition', () => {
 
     const prompt = getPromptTextFromCall()
     expect(prompt).toContain('[Continuation Context]')
+    expect(prompt).toContain('[Character Reference Constraint]')
     expect(prompt).toContain('Previous episode title: Lantern in the Woods')
     expect(prompt).toContain('Previous end-of-episode choices: Follow the lantern, Hide behind a tree')
   })
@@ -306,6 +309,7 @@ describe('gemini workflow prompt composition', () => {
         styleDesc: 'soft watercolor storybook',
         locale: 'en',
         characterPool: ['Luna', 'Milo'],
+        characterProfiles: [{ name: 'Milo', description: 'brave otter friend' }],
         sceneCount: 2,
       })
 
@@ -314,6 +318,10 @@ describe('gemini workflow prompt composition', () => {
       expect(result.scenes[1].sceneDescription).toBe('Bridge arrival')
       expect(result.sceneImages.get(0)).toHaveLength(3)
       expect(result.sceneImages.get(1)).toHaveLength(3)
+      expect(result.scenes[1].imagePrompts?.[0]).toContain(
+        'Characters in this frame: Luna, Milo. Must include all characters'
+      )
+      expect(result.scenes[1].imagePrompts?.[0]).not.toContain('Milo(')
     } finally {
       if (previousChunkSize === undefined) {
         delete process.env.GEMINI_INTERLEAVED_CHUNK_SIZE
