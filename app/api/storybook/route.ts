@@ -1,8 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createCharacter, createStorybook, listStorybooks } from '@/lib/db'
+import { createCharacter, createStorybook, getCharacter, listStorybooks } from '@/lib/db'
 import { generateCompanionCharacterCartoon } from '@/lib/banana-img'
+import { saveImageFromBase64 } from '@/lib/storage'
 import { getStyleById } from '@/lib/styles'
 import type { StorybookCharacter } from '@/types'
+
+function getStorageImageExtension(mimeType?: string): string {
+  switch ((mimeType || '').toLowerCase()) {
+    case 'image/png':
+      return 'png'
+    case 'image/webp':
+      return 'webp'
+    default:
+      return 'jpg'
+  }
+}
 
 async function ensureSupportingCharacterAssets(params: {
   characters: StorybookCharacter[]
@@ -14,8 +26,32 @@ async function ensureSupportingCharacterAssets(params: {
   const nextCharacters: StorybookCharacter[] = []
 
   for (const c of characters) {
-    if (c.role !== 'supporting' || c.id || !c.name?.trim()) {
+    if (c.role !== 'supporting') {
       nextCharacters.push(c)
+      continue
+    }
+
+    if (c.id) {
+      const existing = await getCharacter(c.id)
+      const image =
+        existing && styleId
+          ? (existing.styleImages?.[styleId] || existing.cartoonImage)
+          : existing?.cartoonImage
+
+      nextCharacters.push({
+        ...c,
+        name: c.name?.trim() || existing?.name || c.name,
+        isNpc: false,
+        ...(image ? { image } : {}),
+      })
+      continue
+    }
+
+    if (!c.name?.trim()) {
+      nextCharacters.push({
+        ...c,
+        isNpc: false,
+      })
       continue
     }
 
@@ -26,23 +62,30 @@ async function ensureSupportingCharacterAssets(params: {
         `Friendly supporting companion in a children's story.`,
         stylePrompt
       )
-      const dataUrl = `data:${image.mimeType};base64,${image.data}`
+      const extension = getStorageImageExtension(image.mimeType)
+      const imageUrl = await saveImageFromBase64(
+        image.data,
+        `characters/${crypto.randomUUID()}/${styleId || 'default'}.${extension}`
+      )
       const created = await createCharacter({
         name,
-        cartoonImage: dataUrl,
-        styleImages: styleId ? { [styleId]: dataUrl } : undefined,
+        cartoonImage: imageUrl,
+        styleImages: styleId ? { [styleId]: imageUrl } : undefined,
         style: styleConfig?.description || stylePrompt,
       })
       nextCharacters.push({
         ...c,
         id: created.id,
         name,
+        isNpc: false,
+        image: imageUrl,
       })
     } catch (error) {
       console.warn(`[POST /api/storybook] Supporting character image generation failed for "${name}":`, error)
       nextCharacters.push({
         ...c,
         name,
+        isNpc: false,
       })
     }
   }
@@ -78,9 +121,7 @@ export async function POST(request: NextRequest) {
       characters: enrichedCharacters,
     })
 
-    return NextResponse.json({
-      storybook: { ...storybook, characters: storybook.characters },
-    })
+    return NextResponse.json({ storybook })
   } catch (error) {
     console.error('[POST /api/storybook]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

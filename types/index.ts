@@ -7,6 +7,8 @@ export interface StorybookCharacter {
   role: 'protagonist' | 'supporting'
   /** Optional short traits/description for AI-generated NPC entries */
   description?: string
+  /** Optional display image for a linked character or generated NPC */
+  image?: string
   /** Marks dynamically discovered story NPCs persisted on the storybook */
   isNpc?: boolean
   /** Per-storybook pronoun override (e.g. "he/him", "she/her", or custom) */
