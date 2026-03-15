@@ -147,7 +147,7 @@ Then run the `db` test with that ID:
 
 ```bash
 STORYBOOK_ID=<id> npm run test:manual -- -t db
-STORYBOOK_ID=cmmh7h4zz00012cqt7ecg7pkn TEST_LOCALE=en TEST_KEYWORDS="adverture" npm run test:manual -- -t db
+STORYBOOK_ID=cmmqj10b40000m5qtct82pt1z TEST_LOCALE=en TEST_KEYWORDS="Follow the new, silent stream" npm run test:manual -- -t db
 ```
 
 This reads the storybook's characters, protagonist image, art style, and age

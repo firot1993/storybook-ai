@@ -77,6 +77,7 @@ interface VoiceAssignmentPromptParams {
   style: string
   locale: Locale
   availableVoices: VoiceCastingOption[]
+  pronoun?: string
 }
 
 export const DEFAULT_TRANSCRIBE_AUDIO_HINT =
@@ -686,11 +687,12 @@ export function buildStoryImagePrompt(params: StoryImagePromptParams): string {
 }
 
 export function buildVoiceAssignmentPrompt(params: VoiceAssignmentPromptParams): string {
-  const { name, age, style, locale, availableVoices } = params
+  const { name, age, style, locale, availableVoices, pronoun } = params
   const voiceList = availableVoices
     .map((voice) => `- ${voice.name}: ${voice.tone} (${voice.gender})`)
     .join('\n')
   const ageDesc = age != null ? `Age: ${age} years old` : 'Age: unknown'
+  const pronounDesc = pronoun ? `- Pronoun: ${pronoun}` : ''
 
   return dedentPrompt(`
     You are casting a voice actor for a children's storybook character aged 5-8.
@@ -698,12 +700,13 @@ export function buildVoiceAssignmentPrompt(params: VoiceAssignmentPromptParams):
     Character info:
     - Name: ${name || 'Unnamed character'}
     - ${ageDesc}
+    ${pronounDesc}
     - Art style: ${style || 'cartoon'}
 
     Available voices:
     ${voiceList}
 
-    Choose the single best-fitting voice.
+    Choose the single best-fitting voice. Match the voice gender to the character's pronoun/gender when possible (e.g. "she/her" → female voice, "he/him" → male voice).
     Write the "reason" in ${getLocaleLanguageName(locale)}.
     Respond with valid JSON only:
     {"voiceName": "VoiceName", "reason": "One sentence explaining why this voice fits."}

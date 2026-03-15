@@ -1445,11 +1445,11 @@ export async function generateStoryImage(
 
 // Child-appropriate voices targeting 5–8 year old characters
 const GEMINI_VOICES = [
-  { name: 'Puck',   tone: 'upbeat and playful',   gender: 'neutral', ageRange: 'young' },
+  { name: 'Puck',   tone: 'upbeat and playful',   gender: 'male',    ageRange: 'young' },
   { name: 'Leda',   tone: 'youthful and bright',  gender: 'female',  ageRange: 'young' },
-  { name: 'Zephyr', tone: 'bright and energetic', gender: 'neutral', ageRange: 'young' },
+  { name: 'Zephyr', tone: 'bright and energetic', gender: 'female',  ageRange: 'young' },
   { name: 'Fenrir', tone: 'excitable and lively', gender: 'male',    ageRange: 'young' },
-  { name: 'Aoede',  tone: 'breezy and warm',       gender: 'female',  ageRange: 'young' },
+  { name: 'Aoede',  tone: 'breezy and warm',      gender: 'female',  ageRange: 'young' },
 ]
 
 export async function assignCharacterVoice(
@@ -1458,7 +1458,8 @@ export async function assignCharacterVoice(
   style: string,
   excludeVoice?: string,
   locale: Locale = 'zh',
-  apiKey?: string
+  apiKey?: string,
+  pronoun?: string
 ): Promise<{ voiceName: string; reason: string }> {
   const genAI = getGeminiClient(apiKey)
   // Filter out the currently assigned voice so re-assign always picks a different one
@@ -1471,6 +1472,7 @@ export async function assignCharacterVoice(
     style,
     locale,
     availableVoices: available,
+    pronoun,
   })
 
   try {

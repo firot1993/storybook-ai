@@ -34,7 +34,9 @@ export async function PATCH(
         character.age,
         character.style,
         character.voiceName || undefined,  // exclude current voice so re-assign picks a different one
-        locale
+        locale,
+        undefined, // apiKey
+        character.pronoun || undefined
       )
       const updated = await updateCharacter(id, { voiceName })
       return NextResponse.json({ character: updated, voiceName, reason })

@@ -1,35 +1,35 @@
-import { getGeminiClient } from './gemini-client'
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js'
 
-const TTS_MODEL = process.env.GEMINI_TTS_MODEL?.trim() || 'gemini-2.5-flash-preview-tts'
+const TTS_MODEL = process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2'
 const DEFAULT_VOICE_NAME = 'Kore'
 const WAV_SAMPLE_RATE = 24000
 const WAV_CHANNELS = 1
 const WAV_BITS_PER_SAMPLE = 16
-const TTS_MIN_INTERVAL_MS = Number(process.env.GEMINI_TTS_MIN_INTERVAL_MS ?? 6500)
-const TTS_MAX_RETRIES = Number(process.env.GEMINI_TTS_MAX_RETRIES ?? 4)
-const TTS_RETRY_BASE_MS = Number(process.env.GEMINI_TTS_RETRY_BASE_MS ?? 5000)
+const TTS_CONCURRENCY = Number(process.env.ELEVENLABS_CONCURRENCY ?? 5)
 
-let ttsNextAvailableAt = 0
-let ttsGate: Promise<void> = Promise.resolve()
+// Map Gemini voice names to ElevenLabs voice IDs.
+// Gender alignment follows GEMINI_VOICES in lib/gemini.ts.
+const VOICE_MAP: Record<string, string> = {
+  // Young / child-appropriate voices (used for character assignment)
+  Puck:     'pNInz6obpgDQGcFmaJgB',  // Adam — upbeat, playful (neutral→male)
+  Leda:     'EXAVITQu4vr4xnSDxMaL',  // Bella — youthful, bright female
+  Zephyr:   'jsCqWAovK2LkecY7zXl4',  // Freya — bright, energetic (neutral→female)
+  Fenrir:   'TxGEqnHWrfWFTfGW9XjX',  // Josh — excitable, lively male
+  Aoede:    'jBpfuIE2acCO8z3wKNLl',  // Lily — breezy, warm female
+
+  // Narrator / adult voices
+  Kore:     '21m00Tcm4TlvDq8ikWAM',  // Rachel — confident, clear female
+  Charon:   'ErXwobaYiN019PkySvjV',  // Antoni — calm, informative male
+  Sulafat:  'XB0fDUnXU5powFXDhCwa',  // Charlotte — warm, nurturing female
+  Achird:   'VR6AewLTigWG4xSOukaG',  // Arnold — friendly, casual male
+  Achernar: 'MF3mGyEYCl7XYWbV9V6O',  // Elli — soft, gentle female
+  Orus:     'N2lVS1w4EtoT3dr4eOWO',  // Callum — steady, reliable male
+  Gacrux:   '2EiwWnXFnvU5JabPnv8n',  // Clyde — mature, measured male
+}
 
 type GeminiTtsErrorDetails = {
   status: number
   message: string
-}
-
-type GeminiAudioPart = {
-  inlineData?: {
-    data?: string
-    mimeType?: string
-  }
-}
-
-type GeminiTtsResponse = {
-  candidates?: Array<{
-    content?: {
-      parts?: GeminiAudioPart[]
-    }
-  }>
 }
 
 export class GeminiTtsError extends Error {
@@ -41,49 +41,10 @@ export class GeminiTtsError extends Error {
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  if (ms <= 0) return Promise.resolve()
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 export function clampPositiveInt(value: number, fallback: number): number {
   if (!Number.isFinite(value)) return fallback
   const parsed = Math.trunc(value)
   return parsed > 0 ? parsed : fallback
-}
-
-export function parseRetryDelayMs(message: string): number | null {
-  const messageText = typeof message === 'string' ? message : ''
-  if (!messageText) return null
-
-  const retryInMatch = messageText.match(/Please retry in\s+([0-9.]+)s/i)
-  if (retryInMatch) {
-    const seconds = Number.parseFloat(retryInMatch[1])
-    if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds * 1000)
-  }
-
-  const retryDelayMatch = messageText.match(/"retryDelay"\s*:\s*"([0-9.]+)s"/i)
-  if (retryDelayMatch) {
-    const seconds = Number.parseFloat(retryDelayMatch[1])
-    if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds * 1000)
-  }
-
-  return null
-}
-
-async function acquireTtsRequestSlot(additionalDelayMs = 0): Promise<void> {
-  const minInterval = clampPositiveInt(TTS_MIN_INTERVAL_MS, 6500)
-  const extraDelay = Math.max(0, Math.trunc(additionalDelayMs))
-
-  const reserve = async () => {
-    const now = Date.now()
-    const waitMs = Math.max(0, ttsNextAvailableAt - now) + extraDelay
-    if (waitMs > 0) await sleep(waitMs)
-    ttsNextAvailableAt = Date.now() + minInterval
-  }
-
-  ttsGate = ttsGate.then(reserve, reserve)
-  await ttsGate
 }
 
 export function toDataUrl(base64: string, mimeType: string): string {
@@ -98,7 +59,6 @@ export function looksLikeWav(buffer: Buffer): boolean {
   )
 }
 
-// Gemini TTS typically returns PCM16 mono @ 24kHz. Wrap raw PCM in a WAV header for browser playback.
 export function wrapPcm16ToWav(pcmData: Buffer): Buffer {
   const blockAlign = (WAV_CHANNELS * WAV_BITS_PER_SAMPLE) / 8
   const byteRate = WAV_SAMPLE_RATE * blockAlign
@@ -139,95 +99,88 @@ function normalizeText(text: string, apiKey?: string): string {
     })
   }
 
-  if (!apiKey && !process.env.GEMINI_API_KEY) {
+  if (!apiKey && !process.env.ELEVENLABS_API_KEY) {
     throw new GeminiTtsError({
       status: 503,
-      message: 'GEMINI_API_KEY is not configured.',
+      message: 'ELEVENLABS_API_KEY is not configured.',
     })
   }
 
   return normalizedText
 }
 
-function extractAudioDataPart(response: GeminiTtsResponse): { data: string; mimeType?: string } {
-  const audioPart = response.candidates
-    ?.flatMap((candidate) => candidate.content?.parts ?? [])
-    .find((part) => Boolean(part.inlineData?.data))
+// Cached ElevenLabs client instances keyed by API key
+const clientCache = new Map<string, ElevenLabsClient>()
 
-  const audioBase64 = audioPart?.inlineData?.data
-  if (!audioBase64) {
-    throw new GeminiTtsError({
-      status: 502,
-      message: 'Gemini TTS returned no audio data.',
-    })
-  }
+function getElevenLabsClient(apiKey?: string): ElevenLabsClient {
+  const key = apiKey || process.env.ELEVENLABS_API_KEY || ''
+  const cached = clientCache.get(key)
+  if (cached) return cached
 
-  return {
-    data: audioBase64,
-    mimeType: audioPart?.inlineData?.mimeType,
+  const client = new ElevenLabsClient({ apiKey: key || undefined })
+  clientCache.set(key, client)
+  return client
+}
+
+function resolveVoiceId(voiceName: string): string {
+  return VOICE_MAP[voiceName] || voiceName
+}
+
+function createSemaphore(limit: number) {
+  let active = 0
+  const queue: Array<() => void> = []
+
+  return async function <T>(fn: () => Promise<T>): Promise<T> {
+    if (active >= limit) {
+      await new Promise<void>((resolve) => queue.push(resolve))
+    }
+    active++
+    try {
+      return await fn()
+    } finally {
+      active--
+      const next = queue.shift()
+      if (next) next()
+    }
   }
 }
 
-async function requestGeminiAudio(
+async function collectStream(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value) chunks.push(value)
+  }
+  return Buffer.concat(chunks)
+}
+
+async function requestElevenLabsAudio(
   text: string,
-  speechConfig: Record<string, unknown>,
+  voiceName: string,
   apiKey?: string
 ): Promise<string> {
   const normalizedText = normalizeText(text, apiKey)
-  const genAI = getGeminiClient(apiKey)
-  const maxAttempts = clampPositiveInt(TTS_MAX_RETRIES, 4)
-  const retryBaseMs = clampPositiveInt(TTS_RETRY_BASE_MS, 5000)
-  let retryDelayMs = 0
+  const client = getElevenLabsClient(apiKey)
+  const voiceId = resolveVoiceId(voiceName)
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    await acquireTtsRequestSlot(retryDelayMs)
-    retryDelayMs = 0
+  const stream = await client.textToSpeech.convert(voiceId, {
+    text: normalizedText,
+    modelId: TTS_MODEL,
+    outputFormat: 'pcm_24000',
+  })
 
-    let response: GeminiTtsResponse
-    try {
-      response = (await genAI.models.generateContent({
-        model: TTS_MODEL,
-        contents: [{ parts: [{ text: normalizedText }] }],
-        config: {
-          responseModalities: ['AUDIO'],
-          speechConfig,
-        },
-      })) as GeminiTtsResponse
-    } catch (error) {
-      const apiError = error as { status?: number; message?: string }
-      const geminiError = new GeminiTtsError({
-        status: typeof apiError?.status === 'number' ? apiError.status : 502,
-        message: apiError?.message || 'Gemini TTS request failed.',
-      })
-      const shouldRetry = geminiError.status === 429 || geminiError.status === 503
-      if (!shouldRetry || attempt === maxAttempts) throw geminiError
-
-      const serverSuggestedDelay = parseRetryDelayMs(geminiError.message)
-      retryDelayMs = serverSuggestedDelay ?? retryBaseMs * attempt
-      continue
-    }
-
-    const { data, mimeType } = extractAudioDataPart(response)
-    const decodedAudio = Buffer.from(data, 'base64')
-    if (decodedAudio.byteLength === 0) {
-      if (attempt === maxAttempts) {
-        throw new GeminiTtsError({
-          status: 502,
-          message: 'Gemini TTS returned empty audio data.',
-        })
-      }
-      retryDelayMs = retryBaseMs * attempt
-      continue
-    }
-
-    const wavBuffer = normalizeToPlayableWav(decodedAudio, mimeType)
-    return toDataUrl(wavBuffer.toString('base64'), 'audio/wav')
+  const pcmBuffer = await collectStream(stream)
+  if (pcmBuffer.byteLength === 0) {
+    throw new GeminiTtsError({
+      status: 502,
+      message: 'ElevenLabs TTS returned empty audio data.',
+    })
   }
 
-  throw new GeminiTtsError({
-    status: 502,
-    message: 'Gemini TTS failed after retries.',
-  })
+  const wavBuffer = wrapPcm16ToWav(pcmBuffer)
+  return toDataUrl(wavBuffer.toString('base64'), 'audio/wav')
 }
 
 export function toSingleSpeakerNarrationScript(sceneText: string): string {
@@ -246,18 +199,18 @@ export function toSingleSpeakerNarrationScript(sceneText: string): string {
     const namedSpeaker = cleaned.match(/^([A-Za-z][A-Za-z' -]{0,30})\s*:\s*(.+)$/)
     if (namedSpeaker) {
       const speaker = namedSpeaker[1].trim()
-      const quote = namedSpeaker[2].trim().replace(/^["“]|["”]$/g, '')
+      const quote = namedSpeaker[2].trim().replace(/^[""\u201c]|[""\u201d]$/g, '')
       return `${speaker} says, "${quote}".`
     }
 
-    const quotedSpeaker = cleaned.match(/^([A-Za-z][A-Za-z' -]{0,30})\s*["“]\s*(.+?)\s*["”]?$/)
+    const quotedSpeaker = cleaned.match(/^([A-Za-z][A-Za-z' -]{0,30})\s*["\u201c]\s*(.+?)\s*["\u201d]?$/)
     if (quotedSpeaker) {
       const speaker = quotedSpeaker[1].trim()
-      const quote = quotedSpeaker[2].trim().replace(/^["“]|["”]$/g, '')
+      const quote = quotedSpeaker[2].trim().replace(/^[""\u201c]|[""\u201d]$/g, '')
       return `${speaker} says, "${quote}".`
     }
 
-    const pureQuote = cleaned.match(/^["“](.+?)["”]$/)
+    const pureQuote = cleaned.match(/^["\u201c](.+?)["\u201d]$/)
     if (pureQuote) {
       return `"${pureQuote[1].trim()}"`
     }
@@ -273,30 +226,18 @@ export function toSingleSpeakerNarrationScript(sceneText: string): string {
 }
 
 export async function generateVoicePreviewAudioUrl(voiceName: string, text: string, apiKey?: string): Promise<string> {
-  return requestGeminiAudio(text, {
-    voiceConfig: {
-      prebuiltVoiceConfig: { voiceName },
-    },
-  }, apiKey)
+  return requestElevenLabsAudio(text, voiceName, apiKey)
 }
 
 export async function generateNarrationAudioUrl(text: string, apiKey?: string): Promise<string> {
   const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
-  return requestGeminiAudio(text, {
-    voiceConfig: {
-      prebuiltVoiceConfig: { voiceName },
-    },
-  }, apiKey)
+  return requestElevenLabsAudio(text, voiceName, apiKey)
 }
 
 export async function generateSceneNarrationAudioUrl(sceneText: string, apiKey?: string): Promise<string> {
   const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
   const scriptedScene = toSingleSpeakerNarrationScript(sceneText)
-  return requestGeminiAudio(scriptedScene, {
-    voiceConfig: {
-      prebuiltVoiceConfig: { voiceName },
-    },
-  }, apiKey)
+  return requestElevenLabsAudio(scriptedScene, voiceName, apiKey)
 }
 
 /**
@@ -306,41 +247,41 @@ export async function generateSceneNarrationAudioUrl(sceneText: string, apiKey?:
 export async function generateSceneLineNarrationAudioUrlV2(lineText: string, apiKey?: string): Promise<string> {
   const voiceName = process.env.GEMINI_TTS_VOICE || DEFAULT_VOICE_NAME
   const scriptedLine = toSingleSpeakerNarrationScript(lineText)
-  return requestGeminiAudio(scriptedLine, {
-    voiceConfig: {
-      prebuiltVoiceConfig: { voiceName },
-    },
-  }, apiKey)
+  return requestElevenLabsAudio(scriptedLine, voiceName, apiKey)
 }
 
 /**
  * V2: Generate per-line scene narration audio URLs.
+ * Uses parallel requests with a semaphore for concurrency control.
  */
 export async function generateSceneLineNarrationAudioUrlsV2(lines: string[], apiKey?: string): Promise<string[]> {
-  const results: string[] = []
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    try {
-      results.push(await generateSceneLineNarrationAudioUrlV2(line, apiKey))
-    } catch (error) {
-      console.warn(`[Gemini TTS V2] Line ${i} audio generation failed:`, error)
-      throw error
-    }
-  }
-  return results
+  const sem = createSemaphore(clampPositiveInt(TTS_CONCURRENCY, 5))
+  return Promise.all(
+    lines.map((line, i) =>
+      sem(async () => {
+        try {
+          return await generateSceneLineNarrationAudioUrlV2(line, apiKey)
+        } catch (error) {
+          console.warn(`[ElevenLabs TTS V2] Line ${i} audio generation failed:`, error)
+          throw error
+        }
+      })
+    )
+  )
 }
 
 export async function generateSceneNarrationAudioUrls(scenes: string[], apiKey?: string): Promise<string[]> {
-  const results: string[] = []
-
-  for (const scene of scenes) {
-    try {
-      results.push(await generateSceneNarrationAudioUrl(scene, apiKey))
-    } catch (error) {
-      console.warn('[Gemini TTS] Scene audio generation failed:', error)
-      results.push('')
-    }
-  }
-
-  return results
+  const sem = createSemaphore(clampPositiveInt(TTS_CONCURRENCY, 5))
+  return Promise.all(
+    scenes.map((scene) =>
+      sem(async () => {
+        try {
+          return await generateSceneNarrationAudioUrl(scene, apiKey)
+        } catch (error) {
+          console.warn('[ElevenLabs TTS] Scene audio generation failed:', error)
+          return ''
+        }
+      })
+    )
+  )
 }
