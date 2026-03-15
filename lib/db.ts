@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from './prisma'
 import { decodeStoryAudioPayload, encodeStoryAudioPayload } from './story-audio'
+import { mergeStorybookCharacters } from './storybook-characters'
 
 // ── Characters ──────────────────────────────────────────────
 
@@ -106,20 +107,95 @@ export async function deleteCharacter(id: string) {
 
 // ── Storybooks ──────────────────────────────────────────────
 
+async function hydrateStorybookCharacters(
+  characters: import('@/types').StorybookCharacter[],
+  styleId: string,
+  options?: { forceSupportingNonNpc?: boolean }
+): Promise<import('@/types').StorybookCharacter[]> {
+  const mergedCharacters = mergeStorybookCharacters(characters)
+  const ids = Array.from(
+    new Set(
+      mergedCharacters
+        .map((character) => (typeof character.id === 'string' ? character.id.trim() : ''))
+        .filter(Boolean)
+    )
+  )
+
+  if (ids.length === 0) {
+    return mergedCharacters
+  }
+
+  const linkedCharacters = await prisma.character.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true,
+      name: true,
+      cartoonImage: true,
+      styleImages: true,
+      pronoun: true,
+      role: true,
+    },
+  })
+
+  const linkedById = new Map(
+    linkedCharacters.map((character) => [
+      character.id,
+      {
+        ...character,
+        styleImages: character.styleImages as Record<string, string>,
+      },
+    ])
+  )
+
+  return mergedCharacters.map((character) => {
+    const linked = linkedById.get(character.id)
+    const normalizedNpcFlag =
+      options?.forceSupportingNonNpc && character.role === 'supporting'
+        ? false
+        : character.isNpc
+
+    if (!linked) {
+      return normalizedNpcFlag === character.isNpc
+        ? character
+        : { ...character, isNpc: normalizedNpcFlag }
+    }
+
+    const image = character.image || linked.styleImages[styleId] || linked.cartoonImage || ''
+    return {
+      ...character,
+      ...(normalizedNpcFlag === undefined ? {} : { isNpc: normalizedNpcFlag }),
+      ...(character.name ? {} : linked.name ? { name: linked.name } : {}),
+      ...(character.pronoun ? {} : linked.pronoun ? { pronoun: linked.pronoun } : {}),
+      ...(character.characterRole ? {} : linked.role ? { characterRole: linked.role } : {}),
+      ...(image ? { image } : {}),
+    }
+  })
+}
+
 export async function createStorybook(data: {
   name: string
   ageRange: string
   styleId: string
   characters: import('@/types').StorybookCharacter[]
 }) {
-  return prisma.storybook.create({
+  const normalizedCharacters = mergeStorybookCharacters(data.characters)
+  const created = await prisma.storybook.create({
     data: {
       name: data.name,
       ageRange: data.ageRange,
       styleId: data.styleId,
-      characters: data.characters as unknown as import('@prisma/client').Prisma.InputJsonValue,
+      characters: normalizedCharacters as unknown as import('@prisma/client').Prisma.InputJsonValue,
     },
   })
+
+  return {
+    ...created,
+    characters: await hydrateStorybookCharacters(
+      created.characters as unknown as import('@/types').StorybookCharacter[],
+      created.styleId,
+      { forceSupportingNonNpc: true }
+    ),
+  }
 }
 
 export async function listStorybooks() {
@@ -132,10 +208,16 @@ export async function listStorybooks() {
       },
     },
   })
-  return books.map((b: (typeof books)[number]) => ({
-    ...b,
-    characters: b.characters as unknown as import('@/types').StorybookCharacter[],
-  }))
+  return Promise.all(
+    books.map(async (b: (typeof books)[number]) => ({
+      ...b,
+      characters: await hydrateStorybookCharacters(
+        b.characters as unknown as import('@/types').StorybookCharacter[],
+        b.styleId,
+        { forceSupportingNonNpc: b.chapters.length === 0 }
+      ),
+    }))
+  )
 }
 
 export async function getStorybook(id: string) {
@@ -146,7 +228,11 @@ export async function getStorybook(id: string) {
   if (!b) return null
   return {
     ...b,
-    characters: b.characters as unknown as import('@/types').StorybookCharacter[],
+    characters: await hydrateStorybookCharacters(
+      b.characters as unknown as import('@/types').StorybookCharacter[],
+      b.styleId,
+      { forceSupportingNonNpc: b.chapters.length === 0 }
+    ),
     chapters: b.chapters.map((s: (typeof b.chapters)[number]) => ({
       ...s,
       characterIds: s.characterIds as unknown as string[],
@@ -159,15 +245,28 @@ export async function updateStorybook(
   id: string,
   data: { name?: string; ageRange?: string; styleId?: string; characters?: import('@/types').StorybookCharacter[] }
 ) {
-  return prisma.storybook.update({
+  const normalizedCharacters = data.characters !== undefined
+    ? mergeStorybookCharacters(data.characters)
+    : undefined
+  const updated = await prisma.storybook.update({
     where: { id },
     data: {
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.ageRange !== undefined ? { ageRange: data.ageRange } : {}),
       ...(data.styleId !== undefined ? { styleId: data.styleId } : {}),
-      ...(data.characters !== undefined ? { characters: data.characters as unknown as import('@prisma/client').Prisma.InputJsonValue } : {}),
+      ...(normalizedCharacters !== undefined
+        ? { characters: normalizedCharacters as unknown as import('@prisma/client').Prisma.InputJsonValue }
+        : {}),
     },
   })
+
+  return {
+    ...updated,
+    characters: await hydrateStorybookCharacters(
+      updated.characters as unknown as import('@/types').StorybookCharacter[],
+      updated.styleId
+    ),
+  }
 }
 
 // ── Stories ─────────────────────────────────────────────────

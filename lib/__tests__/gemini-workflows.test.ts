@@ -26,6 +26,7 @@ vi.mock('sharp', () => ({
 
 import {
   assignCharacterVoice,
+  generateInterleavedDirectorScript,
   generateStoryWithAssets,
   generateStorybookDirectorScript,
   generateSynopsisVersions,
@@ -263,6 +264,63 @@ describe('gemini workflow prompt composition', () => {
     expect(scenes[0].imagePrompts?.[0]).toContain(
       'Characters in this frame: Luna, Milo(brave otter friend). Must include all characters'
     )
+  })
+
+  it('parses split scene metadata and groups batched director images by scene order', async () => {
+    generateContentMock.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text:
+                  'SCENE_META:{"index":1,"sceneDescription":"Lantern path",',
+              },
+              {
+                text:
+                  '"cameraDesign":"wide glide","animationAction":"Luna follows the lantern","voiceOver":"A lantern hummed ahead.","dialogue":[{"speaker":"Luna","text":"Wait for me."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening one","midActionFramePrompt":"middle one","endingFramePrompt":"ending one"}\n' +
+                  'SCENE_META:{"index":2,"sceneDescription":"Bridge arrival","cameraDesign":"gentle push in","animationAction":"Milo waves from the bridge","voiceOver":"The bridge shone like silver.","dialogue":[{"speaker":"Milo","text":"Over here."}],"charactersUsed":["Luna","Milo"],"estimatedDuration":11,"openingFramePrompt":"opening two","midActionFramePrompt":"middle two","endingFramePrompt":"ending two"}',
+              },
+              ...Array.from({ length: 6 }, (_, i) => ({
+                inlineData: {
+                  data: Buffer.from(`scene-image-${i}`).toString('base64'),
+                  mimeType: 'image/png',
+                },
+              })),
+            ],
+          },
+        },
+      ],
+    })
+
+    const previousChunkSize = process.env.GEMINI_INTERLEAVED_CHUNK_SIZE
+    process.env.GEMINI_INTERLEAVED_CHUNK_SIZE = '2'
+
+    try {
+      const result = await generateInterleavedDirectorScript({
+        storyName: 'Moonlight Trip',
+        protagonistName: 'Luna',
+        supportingName: 'Milo',
+        storyContent: '[Scene 1] A lantern drifted toward the bridge.',
+        ageRange: '4-6',
+        styleDesc: 'soft watercolor storybook',
+        locale: 'en',
+        characterPool: ['Luna', 'Milo'],
+        sceneCount: 2,
+      })
+
+      expect(result.scenes).toHaveLength(2)
+      expect(result.scenes[0].sceneDescription).toBe('Lantern path')
+      expect(result.scenes[1].sceneDescription).toBe('Bridge arrival')
+      expect(result.sceneImages.get(0)).toHaveLength(3)
+      expect(result.sceneImages.get(1)).toHaveLength(3)
+    } finally {
+      if (previousChunkSize === undefined) {
+        delete process.env.GEMINI_INTERLEAVED_CHUNK_SIZE
+      } else {
+        process.env.GEMINI_INTERLEAVED_CHUNK_SIZE = previousChunkSize
+      }
+    }
   })
 
   it('maps NPC images when Gemini batches text and images separately', async () => {

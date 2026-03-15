@@ -4,6 +4,7 @@ import { generateStoryWithAssets } from '@/lib/gemini'
 import { resolveApiKey } from '@/lib/api-utils'
 import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters, resolveStorybookStyle } from '@/lib/storybook-helpers'
+import { mergeStorybookCharacters } from '@/lib/storybook-characters'
 import { buildPreviousStoryExcerpt, normalizeStoryChoices } from '@/lib/story-scenes'
 import { imageToBase64, saveImageFromBase64 } from '@/lib/storage'
 import type { Story, StorybookCharacter } from '@/types'
@@ -234,11 +235,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         image: supImageUrl,
       }
 
+      const mergedCharacters = mergeStorybookCharacters([
+        ...storybook.characters,
+        supportingCharacterAddition,
+      ])
       await updateStorybook(id, {
-        characters: [...storybook.characters, supportingCharacterAddition],
+        characters: mergedCharacters,
       })
       // Refresh storybook characters for NPC processing below
-      storybook.characters = [...storybook.characters, supportingCharacterAddition]
+      storybook.characters = mergedCharacters
     }
 
     const npcCharacterAdditions = await buildNpcCharactersWithAssets(
@@ -249,9 +254,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       npcImages
     )
     if (npcCharacterAdditions.length > 0) {
+      const mergedCharacters = mergeStorybookCharacters([
+        ...storybook.characters,
+        ...npcCharacterAdditions,
+      ])
       await updateStorybook(id, {
-        characters: [...storybook.characters, ...npcCharacterAdditions],
+        characters: mergedCharacters,
       })
+      storybook.characters = mergedCharacters
     }
 
     // Embed choices in content so the play page can display interactive options

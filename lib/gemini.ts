@@ -844,33 +844,136 @@ async function parseInterleavedResponseParts(
   sceneImages: Map<number, Array<{ data: string; mimeType: string }>>
 }> {
   const sceneMetaList: RawSceneMeta[] = []
-  const sceneImages = new Map<number, Array<{ data: string; mimeType: string }>>()
   const MAX_FRAMES_PER_SCENE = 3
+  const allTextParts: string[] = []
+  const imageFrames: Array<{ data: string; mimeType: string }> = []
 
-  let lastGlobalSceneIndex = -1
+  const findBalancedJsonEnd = (text: string, startIndex: number) => {
+    let depth = 0
+    let inString = false
+    let isEscaped = false
+
+    for (let i = startIndex; i < text.length; i++) {
+      const char = text[i]
+
+      if (inString) {
+        if (isEscaped) {
+          isEscaped = false
+          continue
+        }
+        if (char === '\\') {
+          isEscaped = true
+          continue
+        }
+        if (char === '"') {
+          inString = false
+        }
+        continue
+      }
+
+      if (char === '"') {
+        inString = true
+        continue
+      }
+
+      if (char === '{') {
+        depth += 1
+        continue
+      }
+
+      if (char === '}') {
+        depth -= 1
+        if (depth === 0) return i
+      }
+    }
+
+    return -1
+  }
+
+  const parseSceneMetaList = (rawText: string) => {
+    const tokenRegex = /SCENE_META\s*:/gi
+    let match: RegExpExecArray | null
+
+    while ((match = tokenRegex.exec(rawText)) !== null) {
+      const jsonStart = rawText.indexOf('{', match.index)
+      if (jsonStart < 0) continue
+
+      const jsonEnd = findBalancedJsonEnd(rawText, jsonStart)
+      if (jsonEnd < 0) {
+        console.warn(`${debugTag} Incomplete SCENE_META payload; skipping trailing fragment`)
+        break
+      }
+
+      const jsonText = rawText
+        .slice(jsonStart, jsonEnd + 1)
+        .replace(/,\s*([}\]])/g, '$1')
+
+      try {
+        sceneMetaList.push(JSON.parse(jsonText) as RawSceneMeta)
+      } catch (e) {
+        console.warn(`${debugTag} Failed to parse SCENE_META:`, e)
+      }
+
+      tokenRegex.lastIndex = jsonEnd + 1
+    }
+  }
+
+  const resolveGlobalSceneIndices = () =>
+    sceneMetaList.map((meta, order) => {
+      const rawIndex = Number(meta.index)
+      const parsedIndex = Number.isFinite(rawIndex) ? Math.trunc(rawIndex) - 1 : NaN
+      if (Number.isFinite(parsedIndex) && parsedIndex >= 0) {
+        return parsedIndex
+      }
+      return globalSceneOffset + order
+    })
+
+  const buildSequentialSceneImages = () => {
+    const sceneImages = new Map<number, Array<{ data: string; mimeType: string }>>()
+    if (sceneMetaList.length === 0 || imageFrames.length === 0) return sceneImages
+
+    const sceneIndices = resolveGlobalSceneIndices()
+    const guessedFramesPerScene = Math.max(
+      1,
+      Math.min(MAX_FRAMES_PER_SCENE, Math.round(imageFrames.length / sceneIndices.length))
+    )
+
+    let imageCursor = 0
+    const reserveAtLeastOnePerScene = imageFrames.length >= sceneIndices.length
+
+    for (let i = 0; i < sceneIndices.length; i++) {
+      const remainingScenes = sceneIndices.length - i
+      const remainingImages = imageFrames.length - imageCursor
+      if (remainingImages <= 0) break
+
+      let targetCount = Math.min(guessedFramesPerScene, remainingImages, MAX_FRAMES_PER_SCENE)
+      if (reserveAtLeastOnePerScene && remainingScenes > 1) {
+        targetCount = Math.min(targetCount, remainingImages - (remainingScenes - 1))
+      }
+      if (targetCount <= 0) targetCount = 1
+
+      const frames = imageFrames.slice(imageCursor, imageCursor + targetCount)
+      imageCursor += targetCount
+
+      if (frames.length > 0) {
+        sceneImages.set(sceneIndices[i], frames)
+      }
+    }
+
+    return sceneImages
+  }
 
   for (const part of responseParts) {
     if (part.text) {
-      const metaRegex = /<!--SCENE_META:(.*?)-->/g
-      let match: RegExpExecArray | null
-      while ((match = metaRegex.exec(part.text)) !== null) {
-        try {
-          const meta = JSON.parse(match[1])
-          sceneMetaList.push(meta)
-          lastGlobalSceneIndex = globalSceneOffset + sceneMetaList.length - 1
-        } catch (e) {
-          console.warn(`${debugTag} Failed to parse SCENE_META:`, e)
-        }
-      }
-    } else if (part.inlineData?.data && lastGlobalSceneIndex >= 0) {
-      const frames = sceneImages.get(lastGlobalSceneIndex) ?? []
-      if (frames.length < MAX_FRAMES_PER_SCENE) {
-        const compressed = await compressImage(part.inlineData.data, 768, 80)
-        frames.push(compressed)
-        sceneImages.set(lastGlobalSceneIndex, frames)
-      }
+      allTextParts.push(part.text)
+    } else if (part.inlineData?.data) {
+      const compressed = await compressImage(part.inlineData.data, 768, 80)
+      imageFrames.push(compressed)
     }
   }
+
+  parseSceneMetaList(allTextParts.join('\n'))
+  const sceneImages = buildSequentialSceneImages()
 
   return { sceneMetaList, sceneImages }
 }

@@ -315,7 +315,6 @@ function CreateStoryWizard() {
           id: '',
           name,
           role: 'supporting',
-          isNpc: true,
           ...(description ? { description } : {}),
         })
       }
@@ -963,9 +962,12 @@ function CreateStoryWizard() {
                       {discoveredNpcs.map((npc, i) => (
                         <div key={i} className="flex flex-col items-center gap-1.5 min-w-[80px] max-w-[96px]">
                           {npc.image ? (
-                            <img
+                            <Image
                               src={npc.image}
                               alt={npc.name}
+                              width={64}
+                              height={64}
+                              unoptimized
                               className="w-16 h-16 rounded-2xl object-cover border-2 border-forest-200 shadow-sm"
                             />
                           ) : (
