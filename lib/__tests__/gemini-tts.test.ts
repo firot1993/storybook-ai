@@ -1,14 +1,15 @@
 import { describe, it, expect, vi } from 'vitest'
 
-// Mock @google/genai before importing the module under test
-vi.mock('@google/genai', () => ({
-  GoogleGenAI: class {
-    models = { generateContent: vi.fn() }
+// Mock @elevenlabs/elevenlabs-js before importing the module under test
+vi.mock('@elevenlabs/elevenlabs-js', () => ({
+  ElevenLabsClient: class {
+    textToSpeech = {
+      convert: vi.fn(),
+    }
   },
 }))
 
 import {
-  parseRetryDelayMs,
   clampPositiveInt,
   looksLikeWav,
   wrapPcm16ToWav,
@@ -50,39 +51,6 @@ describe('clampPositiveInt', () => {
 
   it('returns fallback for Infinity', () => {
     expect(clampPositiveInt(Infinity, 10)).toBe(10)
-  })
-})
-
-describe('parseRetryDelayMs', () => {
-  it('parses "Please retry in Xs" format', () => {
-    expect(parseRetryDelayMs('Please retry in 5s')).toBe(5000)
-  })
-
-  it('parses "Please retry in X.Xs" format', () => {
-    expect(parseRetryDelayMs('Please retry in 2.5s')).toBe(2500)
-  })
-
-  it('parses retryDelay JSON format', () => {
-    expect(parseRetryDelayMs('"retryDelay": "10s"')).toBe(10000)
-  })
-
-  it('returns null for no match', () => {
-    expect(parseRetryDelayMs('Some other error message')).toBeNull()
-  })
-
-  it('returns null for empty string', () => {
-    expect(parseRetryDelayMs('')).toBeNull()
-  })
-
-  it('handles non-string input gracefully', () => {
-    // @ts-expect-error testing invalid input
-    expect(parseRetryDelayMs(null)).toBeNull()
-    // @ts-expect-error testing invalid input
-    expect(parseRetryDelayMs(123)).toBeNull()
-  })
-
-  it('rounds up fractional seconds to ceiling ms', () => {
-    expect(parseRetryDelayMs('Please retry in 1.1s')).toBe(1100)
   })
 })
 

@@ -77,6 +77,7 @@ interface VoiceAssignmentPromptParams {
   style: string
   locale: Locale
   availableVoices: VoiceCastingOption[]
+  pronoun?: string
 }
 
 export const DEFAULT_TRANSCRIBE_AUDIO_HINT =
@@ -348,8 +349,11 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
     4. Structure the story as a quiet beginning, magical turning point, and warm healing ending.
     5. End with an open hook that invites imagination or leads naturally to the next episode.
     6. Mark natural scene breaks with [Scene 1], [Scene 2], and so on. Use 3 to 4 scenes total.
-    7. ${getOutputLanguageRequirement(locale, 'All story prose, dialogue, NPC descriptions, and choice text')}
-    8. If the story introduces any NEW named character other than the protagonist or supporting character, list them as NPCs.
+    7. Immediately after each [Scene N] marker, on the next line, output a hidden context comment:
+       <!--SCENE_CONTEXT:{"visualTheme":"location/environment description","timeLighting":"time of day and lighting mood","keyProp":"key visual prop or focal object","actionFlow":"character action/movement summary","characters":["character names present"]}-->
+       Fill every field with concrete, vivid details from that scene. This metadata is used downstream for illustration — be specific, not generic.
+    8. ${getOutputLanguageRequirement(locale, 'All story prose, dialogue, NPC descriptions, and choice text')}
+    9. If the story introduces any NEW named character other than the protagonist or supporting character, list them as NPCs.
     ${needsSupportingCharacter ? `
     [Supporting Character Invention]
     The supporting character slot is currently unnamed. You MUST invent a memorable, named supporting character for the story (an animal, magical creature, or child-friendly fantasy companion).
@@ -499,6 +503,8 @@ interface ChunkedInterleavedDirectorScriptPromptParams extends InterleavedDirect
   endSceneIndex: number     // exclusive end index for this chunk
   totalScenes: number       // total scene count across all chunks
   previousSceneSummaries?: string[]  // summaries of scenes from prior chunks
+  sceneText?: string        // per-scene story text (replaces full storyContent when provided)
+  sceneContext?: import('@/types').SceneContext  // per-scene visual context (replaces previousSceneSummaries)
 }
 
 export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInterleavedDirectorScriptPromptParams): string {
@@ -516,6 +522,8 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     endSceneIndex,
     totalScenes,
     previousSceneSummaries = [],
+    sceneText,
+    sceneContext,
     protagonistPronoun,
     protagonistRole,
   } = params
@@ -527,13 +535,26 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
   const englishStyleLabel = styleDesc || DEFAULT_DIRECTOR_STYLE_LABEL
   const chunkSceneCount = endSceneIndex - startSceneIndex
 
-  const previousSummariesBlock = previousSceneSummaries.length > 0
+  // When scene context is provided (parallel mode), use it instead of previous summaries
+  const contextBlock = sceneContext
     ? dedentPrompt(`
-        [Previous Scenes Summary]
-        The following scenes have already been generated. Continue the narrative naturally from where they left off.
-        ${previousSceneSummaries.map((s, i) => `Scene ${i + 1}: ${s}`).join('\n')}
+        [Scene Visual Context]
+        Visual Theme: ${sceneContext.visualTheme}
+        Time/Lighting: ${sceneContext.timeLighting}
+        Key Prop: ${sceneContext.keyProp}
+        Action Flow: ${sceneContext.actionFlow}
+        Characters: ${sceneContext.characters.join(', ')}
       `)
-    : ''
+    : previousSceneSummaries.length > 0
+      ? dedentPrompt(`
+          [Previous Scenes Summary]
+          The following scenes have already been generated. Continue the narrative naturally from where they left off.
+          ${previousSceneSummaries.map((s, i) => `Scene ${i + 1}: ${s}`).join('\n')}
+        `)
+      : ''
+
+  // When scene text is provided (parallel mode), use just the scene's text instead of full story
+  const storyTextForPrompt = sceneText ?? storyContent
 
   return dedentPrompt(`
     [System Role]
@@ -562,9 +583,9 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     Character notes:
     ${characterProfileText || 'None'}
     Story text:
-    ${storyContent}
+    ${storyTextForPrompt}
     Target audience age: ${ageRange}
-    ${previousSummariesBlock}
+    ${contextBlock}
 
     [Output Format]
     Start scene numbering at ${startSceneIndex + 1}. For each scene, output in this exact order:
@@ -666,11 +687,12 @@ export function buildStoryImagePrompt(params: StoryImagePromptParams): string {
 }
 
 export function buildVoiceAssignmentPrompt(params: VoiceAssignmentPromptParams): string {
-  const { name, age, style, locale, availableVoices } = params
+  const { name, age, style, locale, availableVoices, pronoun } = params
   const voiceList = availableVoices
     .map((voice) => `- ${voice.name}: ${voice.tone} (${voice.gender})`)
     .join('\n')
   const ageDesc = age != null ? `Age: ${age} years old` : 'Age: unknown'
+  const pronounDesc = pronoun ? `- Pronoun: ${pronoun}` : ''
 
   return dedentPrompt(`
     You are casting a voice actor for a children's storybook character aged 5-8.
@@ -678,12 +700,13 @@ export function buildVoiceAssignmentPrompt(params: VoiceAssignmentPromptParams):
     Character info:
     - Name: ${name || 'Unnamed character'}
     - ${ageDesc}
+    ${pronounDesc}
     - Art style: ${style || 'cartoon'}
 
     Available voices:
     ${voiceList}
 
-    Choose the single best-fitting voice.
+    Choose the single best-fitting voice. Match the voice gender to the character's pronoun/gender when possible (e.g. "she/her" → female voice, "he/him" → male voice).
     Write the "reason" in ${getLocaleLanguageName(locale)}.
     Respond with valid JSON only:
     {"voiceName": "VoiceName", "reason": "One sentence explaining why this voice fits."}

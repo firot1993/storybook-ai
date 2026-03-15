@@ -2,8 +2,18 @@ import fs from 'fs/promises'
 import path from 'path'
 import { Storage } from '@google-cloud/storage'
 
+const MIME_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.srt': 'text/plain',
+}
+
 const LOCAL_BASE = process.env.STORAGE_LOCAL_PATH || '/tmp/storybook'
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
 const GCS_BUCKET = process.env.GCS_BUCKET
 
 const gcs = GCS_BUCKET ? new Storage() : null
@@ -39,13 +49,15 @@ export async function saveFile(
   // Upload to GCS if enabled
   if (bucket) {
     const file = bucket.file(relativePath)
+    const ext = path.extname(relativePath).toLowerCase()
     await file.save(Buffer.isBuffer(content) ? content : Buffer.from(content), {
       resumable: false,
+      contentType: MIME_TYPES[ext] || 'application/octet-stream',
     })
     return getPublicUrl(relativePath)
   }
 
-  return `${BASE_URL}/api/files/${relativePath}`
+  return `/api/files/${relativePath}`
 }
 
 /**

@@ -157,7 +157,7 @@ export default function CharacterCreatePage() {
       const res = await fetch('/api/voice/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voiceName, name: name.trim() }),
+        body: JSON.stringify({ voiceName, name: name.trim(), locale }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)

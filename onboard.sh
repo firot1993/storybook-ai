@@ -1,22 +1,24 @@
 #!/bin/bash
 set -e
+trap 'echo ""; echo "❌ Onboarding failed at step above. Fix the issue and re-run — completed steps will be skipped."' ERR
 
 # ── Configuration ─────────────────────────────────────────────
 PROJECT_ID="${GCP_PROJECT_ID:-storybook-ai}"
 REGION="${GCP_REGION:-us-central1}"
-SERVICE_NAME="storybook-ai"
+SERVICE_NAME="storybook-ai-v2"
 SQL_INSTANCE="storybook-db"
 SQL_TIER="${GCP_SQL_TIER:-db-f1-micro}"
 AR_REPO="storybook"
 BUCKET="${GCS_BUCKET:-storybook-ai-files}"
 DB_NAME="storybook_ai"
+FORCE_BUILD="${FORCE_BUILD:-false}"
 
 echo "▶ GCP Onboarding for ${SERVICE_NAME}"
 echo "  Project: ${PROJECT_ID}"
 echo "  Region:  ${REGION}"
 echo ""
 echo "Override defaults with env vars:"
-echo "  GCP_PROJECT_ID, GCP_REGION, GCP_SQL_TIER, GCS_BUCKET"
+echo "  GCP_PROJECT_ID, GCP_REGION, GCP_SQL_TIER, GCS_BUCKET, FORCE_BUILD"
 echo ""
 read -p "Proceed with these settings? (y/N) " confirm
 [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
@@ -126,7 +128,26 @@ if ! skip_if_exists "SQL instance ${SQL_INSTANCE}" "gcloud sql instances describ
   DATABASE_URL="$DB_URL" npx prisma db push
   echo "  Schema pushed."
 else
-  DB_URL=$(gcloud secrets versions access latest --secret=database-url 2>/dev/null || true)
+  # Instance exists — ensure the database-url secret also exists
+  if gcloud secrets describe database-url &>/dev/null; then
+    DB_URL=$(gcloud secrets versions access latest --secret=database-url)
+  else
+    echo "  Secret database-url missing. Recreating..."
+    DB_PASS=$(openssl rand -hex 16)
+    gcloud sql users set-password postgres --instance="$SQL_INSTANCE" --password="$DB_PASS"
+    echo "  Password reset."
+
+    gcloud sql databases create "$DB_NAME" --instance="$SQL_INSTANCE" 2>/dev/null || true
+
+    DB_IP=$(gcloud sql instances describe "$SQL_INSTANCE" --format='value(ipAddresses[0].ipAddress)')
+    DB_URL="postgresql://postgres:${DB_PASS}@${DB_IP}:5432/${DB_NAME}"
+    echo -n "$DB_URL" | gcloud secrets create database-url --data-file=-
+    echo "  Connection string stored in Secret Manager (database-url)."
+
+    echo "  Pushing Prisma schema..."
+    DATABASE_URL="$DB_URL" npx prisma db push
+    echo "  Schema pushed."
+  fi
 fi
 echo ""
 
@@ -146,9 +167,14 @@ echo ""
 step 6 "Build Docker image"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/app:latest"
 echo "  Image: ${IMAGE}"
-echo "  Building with Cloud Build..."
-gcloud builds submit --tag "$IMAGE" .
-echo "  Image built and pushed."
+if [[ "$FORCE_BUILD" != "true" ]] && gcloud artifacts docker images describe "$IMAGE" &>/dev/null; then
+  echo "  Image already exists, skipping build. To force rebuild:"
+  echo "    FORCE_BUILD=true ./onboard.sh"
+else
+  echo "  Building with Cloud Build..."
+  gcloud builds submit --tag "$IMAGE" .
+  echo "  Image built and pushed."
+fi
 echo ""
 
 # ── Step 7: Store secrets ─────────────────────────────────────
@@ -166,6 +192,17 @@ if [[ -f "$ENV_FILE" ]]; then
     echo "    echo -n 'YOUR_KEY' | gcloud secrets create gemini-api-key --data-file=-"
   fi
 
+  # Store ELEVENLABS_API_KEY
+  ELEVENLABS_KEY=$(grep -E '^ELEVENLABS_API_KEY=' "$ENV_FILE" | cut -d'=' -f2-)
+  if [[ -n "$ELEVENLABS_KEY" && "$ELEVENLABS_KEY" != "your_elevenlabs_api_key_here" ]]; then
+    echo -n "$ELEVENLABS_KEY" | gcloud secrets create elevenlabs-api-key --data-file=- 2>/dev/null \
+      || echo -n "$ELEVENLABS_KEY" | gcloud secrets versions add elevenlabs-api-key --data-file=-
+    echo "  Stored elevenlabs-api-key."
+  else
+    echo "  WARNING: ELEVENLABS_API_KEY not set in ${ENV_FILE}. Set it manually:"
+    echo "    echo -n 'YOUR_KEY' | gcloud secrets create elevenlabs-api-key --data-file=-"
+  fi
+
   # Store INVITE_CODE
   INVITE=$(grep -E '^INVITE_CODE=' "$ENV_FILE" | cut -d'=' -f2-)
   if [[ -n "$INVITE" && "$INVITE" != "your_invite_code_here" ]]; then
@@ -181,15 +218,33 @@ else
 fi
 echo ""
 
+# ── Step 7b: Grant Secret Manager access to Cloud Run ────────
+step "7b" "IAM – Secret Manager access"
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+echo "  Granting secretmanager.secretAccessor to ${SA}..."
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SA}" \
+  --role="roles/secretmanager.secretAccessor" \
+  --quiet > /dev/null
+echo "  IAM binding set."
+
+echo "  Granting storage.objectAdmin on gs://${BUCKET} to ${SA}..."
+gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+  --member="serviceAccount:${SA}" \
+  --role=roles/storage.objectAdmin \
+  --quiet > /dev/null
+echo "  GCS write access granted."
+echo ""
+
 # ── Step 8: Deploy to Cloud Run ───────────────────────────────
 step 8 "Deploy to Cloud Run"
 
 # Build env vars from .env.local (non-secret, non-blank, non-comment lines)
 ENV_VARS="NODE_ENV=production,GCS_BUCKET=${BUCKET}"
 if [[ -f "$ENV_FILE" ]]; then
-  for key in GEMINI_TEXT_MODEL GEMINI_IMAGE_MODEL GEMINI_TTS_MODEL GEMINI_STT_MODEL \
-             GEMINI_TTS_VOICE GEMINI_TTS_MIN_INTERVAL_MS GEMINI_TTS_MAX_RETRIES \
-             GEMINI_TTS_RETRY_BASE_MS; do
+  for key in GEMINI_TEXT_MODEL GEMINI_IMAGE_MODEL GEMINI_STT_MODEL \
+             GEMINI_TTS_VOICE ELEVENLABS_MODEL_ID ELEVENLABS_CONCURRENCY; do
     val=$(grep -E "^${key}=" "$ENV_FILE" | cut -d'=' -f2-)
     if [[ -n "$val" ]]; then
       ENV_VARS="${ENV_VARS},${key}=${val}"
@@ -199,6 +254,10 @@ fi
 
 # Build secrets string
 SECRETS_FLAG="GEMINI_API_KEY=gemini-api-key:latest,DATABASE_URL=database-url:latest"
+# Include elevenlabs-api-key if the secret exists
+if gcloud secrets describe elevenlabs-api-key &>/dev/null; then
+  SECRETS_FLAG="${SECRETS_FLAG},ELEVENLABS_API_KEY=elevenlabs-api-key:latest"
+fi
 # Only include invite-code if the secret exists
 if gcloud secrets describe invite-code &>/dev/null; then
   SECRETS_FLAG="${SECRETS_FLAG},INVITE_CODE=invite-code:latest"

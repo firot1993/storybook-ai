@@ -1,3 +1,5 @@
+import type { SceneContext } from '@/types'
+
 export function extractStoryChoices(content: string): string[] {
   const match = content.match(/<!--CHOICES:(.*?)-->/)
   if (!match) return []
@@ -17,10 +19,37 @@ export function buildPreviousStoryExcerpt(content: string, maxChars = 2200): str
   return storyBody.length > maxChars ? storyBody.slice(-maxChars) : storyBody
 }
 
+const SCENE_CONTEXT_PATTERN = /<!--SCENE_CONTEXT:(.*?)-->\n?/g
+
+export function extractSceneContexts(content: string): SceneContext[] {
+  const contexts: SceneContext[] = []
+  const regex = new RegExp(SCENE_CONTEXT_PATTERN.source, 'g')
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(content)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1]) as SceneContext
+      contexts.push({
+        visualTheme: parsed.visualTheme ?? '',
+        timeLighting: parsed.timeLighting ?? '',
+        keyProp: parsed.keyProp ?? '',
+        actionFlow: parsed.actionFlow ?? '',
+        characters: Array.isArray(parsed.characters) ? parsed.characters : [],
+      })
+    } catch {
+      // skip malformed context markers
+    }
+  }
+  return contexts
+}
+
+export function stripSceneContextMarkers(content: string): string {
+  return content.replace(new RegExp(SCENE_CONTEXT_PATTERN.source, 'g'), '')
+}
+
 export function splitStoryIntoScenes(content: string): string[] {
-  // Strip the choices marker before parsing scenes
+  // Strip the choices and scene context markers before parsing scenes
   const normalized = typeof content === 'string'
-    ? content.replace(/<!--CHOICES:.*?-->/, '').trim()
+    ? stripSceneContextMarkers(content.replace(/<!--CHOICES:.*?-->/, '')).trim()
     : ''
   if (!normalized) return []
 

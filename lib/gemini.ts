@@ -1,5 +1,6 @@
 import sharp from 'sharp';
-import type { CompanionSuggestion } from '@/types'
+import type { CompanionSuggestion, SceneContext } from '@/types'
+import { extractSceneContexts } from './story-scenes'
 import {
   buildCharacterWithStyleRefPrompt,
   buildChunkedInterleavedDirectorScriptPrompt,
@@ -366,6 +367,7 @@ export async function generateStoryWithAssets(params: {
   supporting?: { name: string; description: string }
   coverImage?: { data: string; mimeType: string }
   npcImages: Map<string, { data: string; mimeType: string }>
+  sceneContexts: SceneContext[]
   _debug?: {
     rawResponse: unknown
     rawText: string
@@ -527,6 +529,11 @@ export async function generateStoryWithAssets(params: {
     }
   }
 
+  // Extract scene contexts before stripping other markers
+  // Note: SCENE_CONTEXT markers are kept in the story text (they're HTML comments,
+  // invisible when rendered) so they survive in stored content for downstream use.
+  const sceneContexts = extractSceneContexts(rawText)
+
   let story = rawText
     .replace(/<!--CHOICES:.*?-->/g, '')
     .replace(/<!--NPCS:.*?-->/g, '')
@@ -619,6 +626,7 @@ export async function generateStoryWithAssets(params: {
     supporting,
     coverImage,
     npcImages,
+    sceneContexts,
     _debug: { rawResponse: response, rawText: allText, imageSectionLabels, responseParts: debugParts },
   }
 }
@@ -957,6 +965,8 @@ export async function generateInterleavedDirectorScript(params: {
   protagonistRole?: string
   characterImagesBase64?: string[]
   characterNames?: string[]
+  sceneTexts?: string[]
+  sceneContexts?: SceneContext[]
   apiKey?: string
   onProgress?: (event: {
     chunkIndex: number
@@ -983,6 +993,8 @@ export async function generateInterleavedDirectorScript(params: {
     protagonistRole,
     characterImagesBase64 = [],
     characterNames = [],
+    sceneTexts,
+    sceneContexts: inputSceneContexts,
     apiKey,
     onProgress,
   } = params
@@ -1108,8 +1120,136 @@ export async function generateInterleavedDirectorScript(params: {
     return { scenes, sceneImages }
   }
 
-  // Multi-chunk: sequential generation
-  console.log(`${debugTag} Start (chunked)`, {
+  // Check if we can run in parallel mode (scene texts + contexts provided and aligned)
+  const canRunParallel = sceneTexts && inputSceneContexts
+    && sceneTexts.length === sceneCount
+    && inputSceneContexts.length === sceneCount
+
+  if (canRunParallel) {
+    // Parallel multi-chunk: all chunks run concurrently via Promise.all
+    console.log(`${debugTag} Start (parallel)`, {
+      storyName, protagonistName, supportingName, ageRange, sceneCount,
+      chunkSize, totalChunks,
+      characterImageCount: characterImagesBase64.length,
+    })
+
+    onProgress?.({
+      chunkIndex: -1,
+      totalChunks,
+      scenesGenerated: 0,
+      totalScenes: sceneCount,
+    })
+
+    const generateChunk = async (chunkIdx: number): Promise<{
+      meta: RawSceneMeta[]
+      images: Map<number, Array<{ data: string; mimeType: string }>>
+    }> => {
+      const startSceneIndex = chunkIdx * chunkSize
+      const endSceneIndex = Math.min(startSceneIndex + chunkSize, sceneCount)
+
+      const chunkPrompt = buildChunkedInterleavedDirectorScriptPrompt({
+        storyName,
+        protagonistName,
+        supportingName,
+        storyContent,
+        ageRange,
+        styleDesc,
+        locale,
+        characterPoolText,
+        characterProfileText,
+        sceneCount: endSceneIndex - startSceneIndex,
+        protagonistPronoun,
+        protagonistRole,
+        startSceneIndex,
+        endSceneIndex,
+        totalScenes: sceneCount,
+        sceneText: sceneTexts!.slice(startSceneIndex, endSceneIndex).join('\n\n'),
+        sceneContext: inputSceneContexts![startSceneIndex],
+      })
+
+      console.log(`${debugTag} Parallel chunk ${chunkIdx + 1}/${totalChunks}`, {
+        startSceneIndex, endSceneIndex,
+        promptChars: chunkPrompt.length,
+      })
+
+      const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
+        { text: chunkPrompt },
+        ...charRefParts,
+      ]
+
+      const MAX_CHUNK_RETRIES = 2
+      for (let attempt = 0; attempt <= MAX_CHUNK_RETRIES; attempt++) {
+        if (attempt > 0) {
+          console.log(`${debugTag} Retrying parallel chunk ${chunkIdx + 1}/${totalChunks} (attempt ${attempt + 1})`)
+        }
+
+        const response = (await genAI.models.generateContent({
+          model: IMAGE_MODEL,
+          contents: [{ role: 'user', parts }],
+          config: { responseModalities: ['TEXT', 'IMAGE'] },
+        })) as GeminiImageResponse
+
+        const responseParts = response.candidates?.[0]?.content?.parts ?? []
+        console.log(`${debugTag} Parallel chunk ${chunkIdx + 1} response`, {
+          totalParts: responseParts.length,
+          textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
+          imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
+          attempt: attempt + 1,
+        })
+
+        const globalOffset = startSceneIndex
+        const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
+
+        if (parsed.sceneMetaList.length > 0) {
+          onProgress?.({
+            chunkIndex: chunkIdx,
+            totalChunks,
+            scenesGenerated: parsed.sceneMetaList.length,
+            totalScenes: sceneCount,
+          })
+          return { meta: parsed.sceneMetaList, images: parsed.sceneImages }
+        }
+
+        console.warn(`${debugTag} Parallel chunk ${chunkIdx + 1} returned no scene metadata${attempt < MAX_CHUNK_RETRIES ? ', retrying...' : ''}`)
+      }
+
+      return { meta: [], images: new Map() }
+    }
+
+    const chunkResults = await Promise.all(
+      Array.from({ length: totalChunks }, (_, i) => generateChunk(i))
+    )
+
+    const allSceneMetaList: RawSceneMeta[] = []
+    const allSceneImages = new Map<number, Array<{ data: string; mimeType: string }>>()
+
+    for (const result of chunkResults) {
+      allSceneMetaList.push(...result.meta)
+      for (const [idx, frames] of result.images) {
+        allSceneImages.set(idx, frames)
+      }
+    }
+
+    const sceneImageCounts = Array.from(allSceneImages.entries())
+      .map(([idx, frames]) => `scene ${idx}: ${frames.length}`)
+      .join(', ')
+    console.log(`${debugTag} All parallel chunks complete`, {
+      totalSceneMeta: allSceneMetaList.length,
+      totalSceneImages: allSceneImages.size,
+      sceneImageCounts,
+      totalFrames: Array.from(allSceneImages.values()).reduce((sum, frames) => sum + frames.length, 0),
+    })
+
+    if (allSceneMetaList.length === 0) {
+      throw new Error('Interleaved director script returned no scene metadata across all parallel chunks')
+    }
+
+    const scenes = enrichSceneMeta(allSceneMetaList, canonicalByKey, detailsByKey, locale)
+    return { scenes, sceneImages: allSceneImages }
+  }
+
+  // Multi-chunk: sequential generation (fallback when scene contexts not available)
+  console.log(`${debugTag} Start (chunked, sequential)`, {
     storyName, protagonistName, supportingName, ageRange, sceneCount,
     chunkSize, totalChunks,
     characterImageCount: characterImagesBase64.length,
@@ -1305,11 +1445,11 @@ export async function generateStoryImage(
 
 // Child-appropriate voices targeting 5–8 year old characters
 const GEMINI_VOICES = [
-  { name: 'Puck',   tone: 'upbeat and playful',   gender: 'neutral', ageRange: 'young' },
+  { name: 'Puck',   tone: 'upbeat and playful',   gender: 'male',    ageRange: 'young' },
   { name: 'Leda',   tone: 'youthful and bright',  gender: 'female',  ageRange: 'young' },
-  { name: 'Zephyr', tone: 'bright and energetic', gender: 'neutral', ageRange: 'young' },
+  { name: 'Zephyr', tone: 'bright and energetic', gender: 'female',  ageRange: 'young' },
   { name: 'Fenrir', tone: 'excitable and lively', gender: 'male',    ageRange: 'young' },
-  { name: 'Aoede',  tone: 'breezy and warm',       gender: 'female',  ageRange: 'young' },
+  { name: 'Aoede',  tone: 'breezy and warm',      gender: 'female',  ageRange: 'young' },
 ]
 
 export async function assignCharacterVoice(
@@ -1318,7 +1458,8 @@ export async function assignCharacterVoice(
   style: string,
   excludeVoice?: string,
   locale: Locale = 'zh',
-  apiKey?: string
+  apiKey?: string,
+  pronoun?: string
 ): Promise<{ voiceName: string; reason: string }> {
   const genAI = getGeminiClient(apiKey)
   // Filter out the currently assigned voice so re-assign always picks a different one
@@ -1331,6 +1472,7 @@ export async function assignCharacterVoice(
     style,
     locale,
     availableVoices: available,
+    pronoun,
   })
 
   try {

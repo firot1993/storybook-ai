@@ -27,13 +27,13 @@ interface LanguageContextValue {
 }
 
 const LanguageContext = createContext<LanguageContextValue>({
-  locale: 'zh',
+  locale: 'en',
   setLocale: () => {},
   t: (key) => key,
 })
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>('zh')
+  const [locale, setLocaleState] = useState<Locale>('en')
 
   useEffect(() => {
     const saved = localStorage.getItem('locale') as Locale | null

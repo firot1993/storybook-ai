@@ -23,12 +23,12 @@ gcloud run deploy "${SERVICE_NAME}" \
   --platform managed \
   --region "${REGION}" \
   --allow-unauthenticated \
-  --memory 2Gi \
-  --cpu 2 \
+  --memory 4Gi \
+  --cpu 4 \
   --timeout 300 \
   --concurrency 10 \
   --set-env-vars "NODE_ENV=production" \
-  --set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest" \
+  --set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest,ELEVENLABS_API_KEY=ELEVENLABS_API_KEY:latest" \
   --set-env-vars "GEMINI_TTS_VOICE=${GEMINI_TTS_VOICE:-Kore}" \
   --set-env-vars "NEXT_PUBLIC_BASE_URL=https://${SERVICE_NAME}-$(gcloud config get-value project 2>/dev/null | tr ':' '-').${REGION}.run.app"
 

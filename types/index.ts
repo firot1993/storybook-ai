@@ -89,6 +89,16 @@ export interface Story {
   updatedAt: Date
 }
 
+// ── Scene Context (embedded in story for parallel director script generation) ──
+
+export interface SceneContext {
+  visualTheme: string
+  timeLighting: string
+  keyProp: string
+  actionFlow: string
+  characters: string[]
+}
+
 // ── Script ───────────────────────────────────────────────────
 
 export interface ScriptDialogueLine {

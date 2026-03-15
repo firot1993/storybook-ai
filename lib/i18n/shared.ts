@@ -1,6 +1,6 @@
 export type Locale = 'zh' | 'en'
 
-export function normalizeLocale(value: unknown, fallback: Locale = 'zh'): Locale {
+export function normalizeLocale(value: unknown, fallback: Locale = 'en'): Locale {
   if (typeof value !== 'string') return fallback
 
   const normalized = value.trim().toLowerCase()

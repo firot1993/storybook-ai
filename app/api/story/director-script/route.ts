@@ -4,6 +4,7 @@ import { generateInterleavedDirectorScript, generateStorybookDirectorScript, get
 import { resolveApiKey } from '@/lib/api-utils'
 import { normalizeLocale } from '@/lib/i18n/shared'
 import { resolveStorybookCharacters, resolveStorybookStyle, resolveStoryCharacterReferences } from '@/lib/storybook-helpers'
+import { extractSceneContexts, splitStoryIntoScenes } from '@/lib/story-scenes'
 import { saveFile } from '@/lib/storage'
 
 /**
@@ -184,8 +185,16 @@ export async function POST(request: NextRequest) {
         // Resolve character reference images for interleaved generation
         const charRefs = await resolveStoryCharacterReferences(storyId as string)
 
-        // Use the sceneCount from the request (min === max for new 3/5/7 options)
-        const sceneCount = minSceneCount
+        // Extract scene contexts from story content for parallel generation
+        const storySceneContexts = extractSceneContexts(story.content)
+        const storySceneTexts = storySceneContexts.length > 0
+          ? splitStoryIntoScenes(story.content)
+          : []
+
+        // When scene contexts exist, derive scene count from them; otherwise use request params
+        const sceneCount = storySceneContexts.length > 0
+          ? storySceneContexts.length
+          : minSceneCount
 
         let scenes: import('@/types').DirectorStoryboardScene[]
         let scriptId: string
@@ -208,6 +217,8 @@ export async function POST(request: NextRequest) {
             protagonistRole,
             characterImagesBase64: charRefs.imagesBase64,
             characterNames: charRefs.names,
+            sceneTexts: storySceneTexts.length === sceneCount ? storySceneTexts : undefined,
+            sceneContexts: storySceneContexts.length === sceneCount ? storySceneContexts : undefined,
             apiKey,
             onProgress: (event) => {
               send('progress', event)
