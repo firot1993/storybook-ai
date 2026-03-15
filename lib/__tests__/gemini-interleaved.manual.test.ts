@@ -309,7 +309,9 @@ describe.skipIf(!GEMINI_API_KEY)(
         const { generateSynopsisVersions, generateStoryWithAssets, generateInterleavedDirectorScript, generateStorybookDirectorScript } = await importGemini()
         const { getStorybook, getCharacter } = await import('../db')
         const { resolveStorybookCharacters, resolveStorybookStyle } = await import('../storybook-helpers')
+        const { imageToBase64 } = await import('../storage')
         const { normalizeLocale } = await import('../i18n/shared')
+        const { extractSceneContexts, splitStoryIntoScenes } = await import('../story-scenes')
 
         // Step 0: Load storybook from DB
         console.log('\n--- Step 0: Loading storybook from DB ---')
@@ -328,7 +330,7 @@ describe.skipIf(!GEMINI_API_KEY)(
         const protagonistImageUrl =
           protagonistStyleImages[storybook.styleId] || protagonistChar?.cartoonImage || ''
         const protagonistImageBase64 = protagonistImageUrl
-          ? protagonistImageUrl.replace(/^data:[^;]+;base64,/, '')
+          ? (await imageToBase64(protagonistImageUrl)) ?? (protagonistImageUrl.replace(/^data:[^;]+;base64,/, '') || undefined)
           : undefined
 
         console.log('Storybook:', {
@@ -499,7 +501,7 @@ describe.skipIf(!GEMINI_API_KEY)(
             const styleImages = (character.styleImages ?? {}) as Record<string, string>
             const preferredImage = styleImages[storybook.styleId] || character.cartoonImage || ''
             if (preferredImage) {
-              const base64 = preferredImage.replace(/^data:[^;]+;base64,/, '')
+              const base64 = (await imageToBase64(preferredImage)) ?? (preferredImage.replace(/^data:[^;]+;base64,/, '') || undefined)
               if (base64 && !characterImagesBase64.includes(base64)) {
                 characterImagesBase64.push(base64)
                 characterNames.push(resolvedName || `Character ${i + 1}`)
@@ -521,7 +523,26 @@ describe.skipIf(!GEMINI_API_KEY)(
         console.log('Character pool:', characterPool)
         console.log('Character images:', characterNames)
 
-        const sceneCount = Number(process.env.TEST_SCENE_COUNT) || 4
+        // Extract scene contexts from story for parallel director script generation
+        const storySceneContexts = extractSceneContexts(result.story)
+        const storySceneTexts = storySceneContexts.length > 0
+          ? splitStoryIntoScenes(result.story)
+          : []
+
+        console.log('Scene contexts extracted:', storySceneContexts.length)
+        console.log('Scene texts extracted:', storySceneTexts.length)
+        if (storySceneContexts.length > 0) {
+          fs.writeFileSync(
+            path.join(dir, 'scene-contexts.json'),
+            JSON.stringify(storySceneContexts, null, 2),
+            'utf-8'
+          )
+        }
+
+        // When scene contexts are available, derive scene count from them
+        const sceneCount = storySceneContexts.length > 0
+          ? storySceneContexts.length
+          : (Number(process.env.TEST_SCENE_COUNT) || 4)
 
         let directorScenes: import('@/types').DirectorStoryboardScene[]
         let sceneImages: Map<number, Array<{ data: string; mimeType: string }>> = new Map()
@@ -544,6 +565,8 @@ describe.skipIf(!GEMINI_API_KEY)(
             protagonistRole,
             characterImagesBase64,
             characterNames,
+            sceneTexts: storySceneTexts.length === sceneCount ? storySceneTexts : undefined,
+            sceneContexts: storySceneContexts.length === sceneCount ? storySceneContexts : undefined,
             onProgress: (event) => {
               console.log(`  Progress: chunk ${event.chunkIndex + 1}/${event.totalChunks}, scenes ${event.scenesGenerated}/${event.totalScenes}`)
             },
@@ -598,7 +621,7 @@ describe.skipIf(!GEMINI_API_KEY)(
         const totalDuration = directorScenes.reduce((sum, s) => sum + (s.estimatedDuration ?? 10), 0)
         console.log(`Director script: ${directorScenes.length} scenes, total duration ~${totalDuration}s`)
       },
-      360_000
+      600_000
     )
   }
 )
