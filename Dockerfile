@@ -1,4 +1,3 @@
-# ── Stage 1: deps ────────────────────────────────────────────
 FROM node:20-slim AS deps
 WORKDIR /app
 

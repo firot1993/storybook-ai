@@ -623,6 +623,42 @@ The lantern says "come closer".","dialogue":[{"speaker":"Milo","text":"He says "
     ])
   })
 
+  it('falls back to schema-aware SCENE_META parsing when inner quotes break generic JSON repair', async () => {
+    generateContentMock.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: 'SCENE_META:{"index":1,"sceneDescription":"Afternoon rest","cameraDesign":"slow push in","animationAction":"Vita whispers "Rest, little Cat," and tucks the blanket in.","voiceOver":"[softly] The room glows "golden," calm and still.","dialogue":[{"speaker":"Vita","text":"Rest, little Cat,"},{"speaker":"Cat","text":"Mm-hmm."}],"charactersUsed":["Vita","Cat"],"estimatedDuration":10,"openingFramePrompt":"opening one","midActionFramePrompt":"middle one","endingFramePrompt":"ending one"}',
+              },
+            ],
+          },
+        },
+      ],
+    })
+
+    const result = await generateInterleavedDirectorScript({
+      storyName: 'Amber Nap',
+      protagonistName: 'Vita',
+      supportingName: 'Cat',
+      storyContent: '[Scene 1] Vita and Cat settle in for a nap.',
+      ageRange: '4-6',
+      styleDesc: 'soft watercolor storybook',
+      locale: 'en',
+      characterPool: ['Vita', 'Cat'],
+      sceneCount: 1,
+    })
+
+    expect(result.scenes).toHaveLength(1)
+    expect(result.scenes[0].animationAction).toContain('Rest, little Cat,')
+    expect(result.scenes[0].narration).toContain('golden')
+    expect(result.scenes[0].dialogue).toEqual([
+      { speaker: 'Vita', text: 'Rest, little Cat,' },
+      { speaker: 'Cat', text: 'Mm-hmm.' },
+    ])
+  })
+
   it('requests localized voice reasons and falls back with a localized default reason', async () => {
     generateContentMock.mockResolvedValueOnce({
       text: '{"voiceName":"Puck","reason":"活泼温暖，适合孩子。"}',

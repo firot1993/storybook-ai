@@ -9,7 +9,7 @@ AR_REPO="${GCP_AR_REPO:-storybook}"
 IMAGE_NAME="${GCP_IMAGE_NAME:-app}"
 BUCKET="${GCS_BUCKET:-storybook-ai-files}"
 ENV_FILE="${ENV_FILE:-.env.local}"
-DOCKER_PLATFORM="${DOCKER_PLATFORM:-linux/amd64}"
+FORCE_BUILD="${FORCE_BUILD:-false}"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -18,29 +18,35 @@ require_command() {
   fi
 }
 
+env_value_from_file() {
+  local key="$1"
+  local file="$2"
+  local line
+
+  line="$(grep -E "^${key}=" "$file" | head -n 1 || true)"
+  if [[ -n "${line}" ]]; then
+    printf '%s\n' "${line#*=}"
+  fi
+}
+
 require_command gcloud
 require_command curl
-require_command docker
 
 if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
   echo "GCP project is not configured. Set GCP_PROJECT_ID or run: gcloud config set project <project-id>" >&2
   exit 1
 fi
 
-if ! docker info >/dev/null 2>&1; then
-  echo "Docker daemon is not available. Start Docker and retry." >&2
-  exit 1
-fi
-
-SOURCE_REF="manual"
-if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  SOURCE_REF="$(git rev-parse --short HEAD 2>/dev/null || echo manual)"
-  if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-    SOURCE_REF="${SOURCE_REF}-dirty"
+APP_VERSION="0.0.0"
+if [[ -f "package.json" ]]; then
+  parsed_version="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -n 1)"
+  if [[ -n "${parsed_version}" ]]; then
+    APP_VERSION="${parsed_version}"
   fi
 fi
+APP_VERSION_TAG="$(printf '%s' "${APP_VERSION}" | tr -c 'A-Za-z0-9._-' '-')"
 
-BUILD_TAG="$(date -u +%Y%m%d-%H%M%S)-${SOURCE_REF}"
+BUILD_TAG="v${APP_VERSION_TAG}"
 IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}"
 IMAGE="${IMAGE_BASE}:${BUILD_TAG}"
 IMAGE_LATEST="${IMAGE_BASE}:latest"
@@ -48,40 +54,37 @@ IMAGE_LATEST="${IMAGE_BASE}:latest"
 echo "▶ Redeploy ${SERVICE_NAME}"
 echo "  Project: ${PROJECT_ID}"
 echo "  Region:  ${REGION}"
-echo "  Docker:  ${DOCKER_PLATFORM}"
-echo "  Source:  ${SOURCE_REF}"
+echo "  Builder: Cloud Build"
+echo "  Version: ${APP_VERSION}"
 echo "  Image:   ${IMAGE}"
 echo "  Latest:  ${IMAGE_LATEST}"
-echo ""
-
-# ── Step 1: Auth ──────────────────────────────────────────────
-echo "── Configuring Docker auth ──"
-gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet >/dev/null
-echo "  Docker auth configured."
-echo ""
-
-# ── Step 2: Build + Push ──────────────────────────────────────
-echo "── Building and pushing Docker image ──"
-if docker buildx version >/dev/null 2>&1; then
-  docker buildx build \
-    --platform="${DOCKER_PLATFORM}" \
-    --tag="${IMAGE}" \
-    --tag="${IMAGE_LATEST}" \
-    --push \
-    .
-else
-  docker build \
-    --platform="${DOCKER_PLATFORM}" \
-    --tag="${IMAGE}" \
-    --tag="${IMAGE_LATEST}" \
-    .
-  docker push "${IMAGE}"
-  docker push "${IMAGE_LATEST}"
+if [[ "${FORCE_BUILD}" == "true" ]]; then
+  echo "  Rebuild: forced"
 fi
+echo ""
+
+# ── Step 1: Build + Push ──────────────────────────────────────
+echo "── Building and pushing image with Cloud Build ──"
+if [[ "${FORCE_BUILD}" != "true" ]] && gcloud artifacts docker images describe "${IMAGE}" --project="${PROJECT_ID}" &>/dev/null; then
+  echo "  Image already exists in Artifact Registry, skipping build."
+  echo "  To rebuild the same version, run: FORCE_BUILD=true ./redeploy.sh"
+else
+  gcloud builds submit \
+    --project="${PROJECT_ID}" \
+    --tag="${IMAGE}" \
+    .
+fi
+
+gcloud artifacts docker tags add \
+  "${IMAGE}" \
+  "${IMAGE_LATEST}" \
+  --project="${PROJECT_ID}" \
+  --quiet
+
 echo "  Image built and pushed."
 echo ""
 
-# ── Step 3: Deploy ────────────────────────────────────────────
+# ── Step 2: Deploy ────────────────────────────────────────────
 echo "── Deploying to Cloud Run ──"
 
 ENV_VARS="NODE_ENV=production,GCS_BUCKET=${BUCKET}"
@@ -89,7 +92,7 @@ if [[ -f "$ENV_FILE" ]]; then
   for key in GEMINI_TEXT_MODEL GEMINI_IMAGE_MODEL GEMINI_STT_MODEL \
              GEMINI_TTS_VOICE ELEVENLABS_MODEL_ID ELEVENLABS_CONCURRENCY \
              ELEVENLABS_SPEED ELEVENLABS_STABILITY ELEVENLABS_STYLE; do
-    val=$(grep -E "^${key}=" "$ENV_FILE" | cut -d'=' -f2-)
+    val="$(env_value_from_file "$key" "$ENV_FILE")"
     if [[ -n "$val" ]]; then
       ENV_VARS="${ENV_VARS},${key}=${val}"
     fi
@@ -118,7 +121,7 @@ gcloud run deploy "$SERVICE_NAME" \
 echo "  Deployed."
 echo ""
 
-# ── Step 4: Verify ────────────────────────────────────────────
+# ── Step 3: Verify ────────────────────────────────────────────
 SERVICE_URL="$(gcloud run services describe "$SERVICE_NAME" \
   --project="${PROJECT_ID}" \
   --region="${REGION}" \

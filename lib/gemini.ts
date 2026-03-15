@@ -944,6 +944,179 @@ type RawSceneMeta = {
   endingFramePrompt: string
 }
 
+function decodeJsonLikeStringValue(raw: string): string {
+  let text = raw.trim()
+  if (text.startsWith('"')) text = text.slice(1)
+  if (text.endsWith('"')) text = text.slice(0, -1)
+
+  try {
+    return JSON.parse(repairJsonStringLiterals(`"${text}"`)) as string
+  } catch {
+    return text
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\r')
+      .replace(/\\t/g, '\t')
+      .replace(/\\\\/g, '\\')
+      .trim()
+  }
+}
+
+function findSceneMetaFieldChunk(raw: string, key: string, nextKeys: string[]): string | null {
+  const keyRegex = new RegExp(`"${key}"\\s*:`, 'i')
+  const keyMatch = keyRegex.exec(raw)
+  if (!keyMatch) return null
+
+  let valueStart = keyMatch.index + keyMatch[0].length
+  while (valueStart < raw.length && /\s/.test(raw[valueStart])) {
+    valueStart += 1
+  }
+
+  let valueEnd = raw.length
+  for (const nextKey of nextKeys) {
+    const nextRegex = new RegExp(`,\\s*"${nextKey}"\\s*:`, 'i')
+    const relativeIndex = raw.slice(valueStart).search(nextRegex)
+    if (relativeIndex < 0) continue
+    const absoluteIndex = valueStart + relativeIndex
+    if (absoluteIndex < valueEnd) valueEnd = absoluteIndex
+  }
+
+  if (nextKeys.length === 0) {
+    const lastBrace = raw.lastIndexOf('}')
+    if (lastBrace >= valueStart) valueEnd = lastBrace
+  }
+
+  return raw.slice(valueStart, valueEnd).trim().replace(/,\s*$/, '')
+}
+
+function parseSceneMetaStringArray(raw: string): string[] {
+  const normalized = raw.trim()
+  try {
+    const parsed = JSON.parse(repairJsonStringLiterals(normalized)) as unknown
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item).trim()).filter(Boolean)
+    }
+  } catch {
+    // Fall back to tolerant quoted-string extraction below.
+  }
+
+  const values = Array.from(normalized.matchAll(/"([^"]*)"/g))
+    .map((match) => decodeJsonLikeStringValue(match[0]))
+    .map((value) => value.trim())
+    .filter(Boolean)
+
+  if (values.length > 0) return values
+
+  return normalized
+    .replace(/^\[/, '')
+    .replace(/\]$/, '')
+    .split(/[、,，/|]/)
+    .map((value) => value.trim().replace(/^"+|"+$/g, ''))
+    .filter(Boolean)
+}
+
+function parseSceneMetaDialogue(raw: string): Array<{ speaker: string; text: string }> {
+  const normalized = raw.trim()
+  try {
+    const parsed = JSON.parse(repairJsonStringLiterals(normalized)) as unknown
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((entry) => {
+          if (!entry || typeof entry !== 'object') return null
+          const typed = entry as { speaker?: unknown; text?: unknown }
+          return {
+            speaker: typeof typed.speaker === 'string' ? typed.speaker.trim() : '',
+            text: typeof typed.text === 'string' ? typed.text.trim() : '',
+          }
+        })
+        .filter((entry): entry is { speaker: string; text: string } => Boolean(entry?.speaker || entry?.text))
+    }
+  } catch {
+    // Fall back to tolerant chunk parsing below.
+  }
+
+  const objectChunks = normalized.match(/\{[\s\S]*?\}/g) ?? []
+  const dialogues = objectChunks
+    .map((chunk) => {
+      const speakerChunk = findSceneMetaFieldChunk(chunk, 'speaker', ['text'])
+      const textChunk = findSceneMetaFieldChunk(chunk, 'text', [])
+      if (!speakerChunk && !textChunk) return null
+      return {
+        speaker: speakerChunk ? decodeJsonLikeStringValue(speakerChunk) : '',
+        text: textChunk ? decodeJsonLikeStringValue(textChunk) : '',
+      }
+    })
+    .filter((entry): entry is { speaker: string; text: string } => Boolean(entry?.speaker || entry?.text))
+
+  return dialogues
+}
+
+function parseLooseRawSceneMeta(raw: string): RawSceneMeta | null {
+  const fieldOrder = [
+    'index',
+    'sceneDescription',
+    'cameraDesign',
+    'animationAction',
+    'voiceOver',
+    'dialogue',
+    'charactersUsed',
+    'estimatedDuration',
+    'openingFramePrompt',
+    'midActionFramePrompt',
+    'endingFramePrompt',
+  ] as const
+
+  const nextKeysMap = new Map<string, string[]>(
+    fieldOrder.map((field, index) => [field, fieldOrder.slice(index + 1) as string[]])
+  )
+
+  const indexChunk = findSceneMetaFieldChunk(raw, 'index', nextKeysMap.get('index') ?? [])
+  const estimatedDurationChunk = findSceneMetaFieldChunk(raw, 'estimatedDuration', nextKeysMap.get('estimatedDuration') ?? [])
+  const sceneDescriptionChunk = findSceneMetaFieldChunk(raw, 'sceneDescription', nextKeysMap.get('sceneDescription') ?? [])
+  const cameraDesignChunk = findSceneMetaFieldChunk(raw, 'cameraDesign', nextKeysMap.get('cameraDesign') ?? [])
+  const animationActionChunk = findSceneMetaFieldChunk(raw, 'animationAction', nextKeysMap.get('animationAction') ?? [])
+  const voiceOverChunk = findSceneMetaFieldChunk(raw, 'voiceOver', nextKeysMap.get('voiceOver') ?? [])
+  const dialogueChunk = findSceneMetaFieldChunk(raw, 'dialogue', nextKeysMap.get('dialogue') ?? [])
+  const charactersUsedChunk = findSceneMetaFieldChunk(raw, 'charactersUsed', nextKeysMap.get('charactersUsed') ?? [])
+  const openingFramePromptChunk = findSceneMetaFieldChunk(raw, 'openingFramePrompt', nextKeysMap.get('openingFramePrompt') ?? [])
+  const midActionFramePromptChunk = findSceneMetaFieldChunk(raw, 'midActionFramePrompt', nextKeysMap.get('midActionFramePrompt') ?? [])
+  const endingFramePromptChunk = findSceneMetaFieldChunk(raw, 'endingFramePrompt', [])
+
+  if (
+    !indexChunk ||
+    !sceneDescriptionChunk ||
+    !cameraDesignChunk ||
+    !animationActionChunk ||
+    !voiceOverChunk ||
+    !dialogueChunk ||
+    !charactersUsedChunk ||
+    !estimatedDurationChunk ||
+    !openingFramePromptChunk ||
+    !midActionFramePromptChunk ||
+    !endingFramePromptChunk
+  ) {
+    return null
+  }
+
+  const indexMatch = indexChunk.match(/-?\d+/)
+  const durationMatch = estimatedDurationChunk.match(/-?\d+/)
+  if (!indexMatch || !durationMatch) return null
+
+  return {
+    index: Number.parseInt(indexMatch[0], 10),
+    sceneDescription: decodeJsonLikeStringValue(sceneDescriptionChunk),
+    cameraDesign: decodeJsonLikeStringValue(cameraDesignChunk),
+    animationAction: decodeJsonLikeStringValue(animationActionChunk),
+    voiceOver: decodeJsonLikeStringValue(voiceOverChunk),
+    dialogue: parseSceneMetaDialogue(dialogueChunk),
+    charactersUsed: parseSceneMetaStringArray(charactersUsedChunk),
+    estimatedDuration: Number.parseInt(durationMatch[0], 10),
+    openingFramePrompt: decodeJsonLikeStringValue(openingFramePromptChunk),
+    midActionFramePrompt: decodeJsonLikeStringValue(midActionFramePromptChunk),
+    endingFramePrompt: decodeJsonLikeStringValue(endingFramePromptChunk),
+  }
+}
+
 /**
  * Parse SCENE_META markers and images from Gemini interleaved response parts.
  * The `globalSceneOffset` shifts local scene indices so images map to correct
@@ -1025,12 +1198,18 @@ async function parseInterleavedResponseParts(
       try {
         sceneMetaList.push(parseJsonObjectWithRepairs<RawSceneMeta>(jsonText))
       } catch (e) {
-        console.warn(
-          `${debugTag} Failed to parse SCENE_META:`,
-          e,
-          '\nRaw excerpt:',
-          jsonText.slice(0, 500)
-        )
+        const fallback = parseLooseRawSceneMeta(jsonText)
+        if (fallback) {
+          console.warn(`${debugTag} Parsed SCENE_META via tolerant fallback after JSON parse failure`)
+          sceneMetaList.push(fallback)
+        } else {
+          console.warn(
+            `${debugTag} Failed to parse SCENE_META:`,
+            e,
+            '\nRaw excerpt:',
+            jsonText.slice(0, 1200)
+          )
+        }
       }
 
       tokenRegex.lastIndex = jsonEnd + 1
