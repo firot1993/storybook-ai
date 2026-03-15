@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
         // Resolve character reference images for interleaved generation
         const charRefs = await resolveStoryCharacterReferences(storyId as string)
 
-        // Use the sceneCount from the request (min === max for new 3/5/7 options)
+        // Use the sceneCount from the request (min === max, default 4)
         const sceneCount = minSceneCount
 
         let scenes: import('@/types').DirectorStoryboardScene[]

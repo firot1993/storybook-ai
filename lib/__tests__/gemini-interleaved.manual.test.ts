@@ -306,8 +306,8 @@ describe.skipIf(!GEMINI_API_KEY)(
           return
         }
 
-        const { generateSynopsisVersions, generateStoryWithAssets } = await importGemini()
-        const { getStorybook } = await import('../db')
+        const { generateSynopsisVersions, generateStoryWithAssets, generateInterleavedDirectorScript, generateStorybookDirectorScript } = await importGemini()
+        const { getStorybook, getCharacter } = await import('../db')
         const { resolveStorybookCharacters, resolveStorybookStyle } = await import('../storybook-helpers')
         const { normalizeLocale } = await import('../i18n/shared')
 
@@ -442,8 +442,163 @@ describe.skipIf(!GEMINI_API_KEY)(
             expect(img.mimeType).toMatch(/^image\//)
           }
         }
+
+        // Step 3: Generate director script (same flow as production API route)
+        console.log('\n--- Step 3: Generating director script ---')
+
+        // Build character pool and profiles (mirrors route logic)
+        const characterPool: string[] = []
+        const characterProfiles: Array<{ name: string; description?: string }> = []
+        const seenName = new Set<string>()
+        const seenProfile = new Set<string>()
+
+        const pushName = (name: string | null | undefined) => {
+          const trimmed = name?.trim() || ''
+          if (!trimmed) return
+          const key = trimmed.toLowerCase()
+          if (seenName.has(key)) return
+          seenName.add(key)
+          characterPool.push(trimmed)
+        }
+        const pushProfile = (name: string | null | undefined, description: string | null | undefined) => {
+          const trimmed = name?.trim() || ''
+          if (!trimmed) return
+          const key = trimmed.toLowerCase()
+          if (seenProfile.has(key)) {
+            if (description?.trim()) {
+              const idx = characterProfiles.findIndex((p) => p.name.toLowerCase() === key)
+              if (idx >= 0 && !characterProfiles[idx].description) {
+                characterProfiles[idx].description = description.trim()
+              }
+            }
+            return
+          }
+          seenProfile.add(key)
+          characterProfiles.push({ name: trimmed, ...(description?.trim() ? { description: description.trim() } : {}) })
+        }
+
+        // Resolve character images from storybook (same as resolveStoryCharacterReferences)
+        const characterImagesBase64: string[] = []
+        const characterNames: string[] = []
+
+        const orderedChars = [...storybook.characters].sort((a: { role?: string }, b: { role?: string }) => {
+          if (a.role === b.role) return 0
+          return a.role === 'protagonist' ? -1 : 1
+        })
+        const charRecords = await Promise.all(
+          orderedChars.map((entry: { id?: string }) => (entry.id ? getCharacter(entry.id) : Promise.resolve(null)))
+        )
+        for (let i = 0; i < orderedChars.length; i++) {
+          const entry = orderedChars[i] as { id?: string; name?: string; role?: string; description?: string }
+          const character = charRecords[i]
+          const resolvedName = character?.name || entry.name
+          pushName(resolvedName)
+          pushProfile(resolvedName, entry.description)
+
+          if (character) {
+            const styleImages = (character.styleImages ?? {}) as Record<string, string>
+            const preferredImage = styleImages[storybook.styleId] || character.cartoonImage || ''
+            if (preferredImage) {
+              const base64 = preferredImage.replace(/^data:[^;]+;base64,/, '')
+              if (base64 && !characterImagesBase64.includes(base64)) {
+                characterImagesBase64.push(base64)
+                characterNames.push(resolvedName || `Character ${i + 1}`)
+              }
+            }
+          }
+        }
+
+        pushName(protagonistName)
+        pushProfile(protagonistName, undefined)
+        supportingName
+          .split(/[、,，/|]/)
+          .map((n: string) => n.trim())
+          .forEach((n: string) => {
+            pushName(n)
+            pushProfile(n, undefined)
+          })
+
+        console.log('Character pool:', characterPool)
+        console.log('Character images:', characterNames)
+
+        const sceneCount = Number(process.env.TEST_SCENE_COUNT) || 4
+
+        let directorScenes: import('@/types').DirectorStoryboardScene[]
+        let sceneImages: Map<number, Array<{ data: string; mimeType: string }>> = new Map()
+
+        // Try interleaved generation first, fall back to text-only
+        try {
+          console.log('Attempting interleaved director script generation...')
+          const directorResult = await generateInterleavedDirectorScript({
+            storyName: storybook.name,
+            protagonistName,
+            supportingName,
+            storyContent: result.story,
+            ageRange: storybook.ageRange,
+            styleDesc,
+            locale,
+            characterPool,
+            characterProfiles,
+            sceneCount,
+            protagonistPronoun,
+            protagonistRole,
+            characterImagesBase64,
+            characterNames,
+            onProgress: (event) => {
+              console.log(`  Progress: chunk ${event.chunkIndex + 1}/${event.totalChunks}, scenes ${event.scenesGenerated}/${event.totalScenes}`)
+            },
+          })
+
+          directorScenes = directorResult.scenes
+          sceneImages = directorResult.sceneImages
+          console.log(`Interleaved generation succeeded: ${directorScenes.length} scenes, ${sceneImages.size} scenes with images`)
+        } catch (interleavedError) {
+          console.warn('Interleaved generation failed, falling back to text-only:', interleavedError)
+          directorScenes = await generateStorybookDirectorScript({
+            storyName: storybook.name,
+            protagonistName,
+            supportingName,
+            storyContent: result.story,
+            ageRange: storybook.ageRange,
+            styleDesc,
+            locale,
+            characterPool,
+            characterProfiles,
+            minSceneCount: sceneCount,
+            maxSceneCount: sceneCount,
+            protagonistPronoun,
+            protagonistRole,
+          })
+          console.log(`Text-only generation succeeded: ${directorScenes.length} scenes`)
+        }
+
+        // Save director script output
+        fs.writeFileSync(
+          path.join(dir, 'director-script.json'),
+          JSON.stringify(directorScenes, null, 2),
+          'utf-8'
+        )
+        console.log('Saved director-script.json')
+
+        // Save scene images
+        for (const [sceneIdx, frames] of sceneImages) {
+          for (let frameIdx = 0; frameIdx < frames.length; frameIdx++) {
+            const img = frames[frameIdx]
+            saveImage(dir, `scene-${sceneIdx}-frame-${frameIdx}`, img)
+          }
+        }
+
+        // Assertions
+        expect(directorScenes.length).toBeGreaterThanOrEqual(1)
+        for (const scene of directorScenes) {
+          expect(scene.sceneDescription).toBeTruthy()
+          expect(scene.imagePrompts?.length).toBeGreaterThanOrEqual(1)
+        }
+
+        const totalDuration = directorScenes.reduce((sum, s) => sum + (s.estimatedDuration ?? 10), 0)
+        console.log(`Director script: ${directorScenes.length} scenes, total duration ~${totalDuration}s`)
       },
-      240_000
+      360_000
     )
   }
 )

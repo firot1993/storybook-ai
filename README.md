@@ -160,6 +160,7 @@ Optional env vars for the `db` test:
 | `TEST_LOCALE` | `zh` | Story locale (`en` or `zh`) |
 | `TEST_KEYWORDS` | `冒险, 友谊, 魔法` / `adventure, friendship, magic` | Synopsis background keywords |
 | `TEST_THEME` | `探索与友谊` / `exploration and friendship` | Story theme |
+| `TEST_SCENE_COUNT` | `4` | Number of director script scenes to generate |
 
 ### Output
 
@@ -177,6 +178,8 @@ lib/__tests__/test-output/<timestamp>/
     cover.jpg            # cover image
     storybook.json       # (db test only) resolved storybook metadata
     protagonist-ref.jpg  # (db test only) protagonist reference image
+    director-script.json # (db test only) generated director storyboard scenes
+    scene-*-frame-*.jpg  # (db test only) pre-generated scene frame images
 ```
 
 ## CI
