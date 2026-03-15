@@ -18,13 +18,13 @@ const baloo2 = Baloo_2({
 })
 
 export const metadata: Metadata = {
-  title: '童梦奇缘 - AI 绘本故事',
+  title: 'Storybook AI',
   description: 'Transform photos into storybook characters and generate personalized AI stories',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body className={`${spaceGrotesk.className} ${baloo2.variable} font-body`}>
         <LanguageProvider>
           <div className="min-h-screen bg-gray-50 relative">

@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { useLanguage } from '@/lib/i18n'
 
 type AuthTab = 'invite' | 'byok'
 
 export default function LoginPage() {
+  const { t } = useLanguage()
   const [tab, setTab] = useState<AuthTab>('invite')
   const [code, setCode] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -26,10 +28,10 @@ export default function LoginPage() {
       if (res.ok) {
         window.location.href = '/'
       } else {
-        setError('Invalid invite code')
+        setError(t('login.errors.invalidInvite'))
       }
     } catch {
-      setError('Something went wrong')
+      setError(t('login.errors.generic'))
     } finally {
       setLoading(false)
     }
@@ -51,10 +53,10 @@ export default function LoginPage() {
         window.location.href = '/'
       } else {
         const data = await res.json()
-        setError(data.error || 'Invalid API key')
+        setError(data.error || t('login.errors.invalidApiKey'))
       }
     } catch {
-      setError('Something went wrong')
+      setError(t('login.errors.generic'))
     } finally {
       setLoading(false)
     }
@@ -63,8 +65,8 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="card max-w-sm w-full text-center">
-        <h1 className="heading text-2xl text-slate-800 mb-2">童梦奇缘</h1>
-        <p className="text-slate-500 text-sm mb-6">Sign in to continue</p>
+        <h1 className="heading text-2xl text-slate-800 mb-2">{t('login.title')}</h1>
+        <p className="text-slate-500 text-sm mb-6">{t('login.subtitle')}</p>
 
         {/* Tabs */}
         <div className="flex border-b border-gray-200 mb-6">
@@ -77,7 +79,7 @@ export default function LoginPage() {
                 : 'border-transparent text-gray-400 hover:text-gray-600'
             }`}
           >
-            Invite Code
+            {t('login.inviteTab')}
           </button>
           <button
             type="button"
@@ -88,7 +90,7 @@ export default function LoginPage() {
                 : 'border-transparent text-gray-400 hover:text-gray-600'
             }`}
           >
-            Use Your Own Key
+            {t('login.byokTab')}
           </button>
         </div>
 
@@ -98,7 +100,7 @@ export default function LoginPage() {
               type="text"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="Invite code"
+              placeholder={t('login.invitePlaceholder')}
               className="input text-center"
               autoFocus
             />
@@ -110,7 +112,7 @@ export default function LoginPage() {
               disabled={loading || !code.trim()}
               className="btn-primary w-full disabled:opacity-50"
             >
-              {loading ? 'Verifying...' : 'Enter'}
+              {loading ? t('login.verifying') : t('login.enter')}
             </button>
           </form>
         ) : (
@@ -119,12 +121,12 @@ export default function LoginPage() {
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Gemini API key"
+              placeholder={t('login.apiKeyPlaceholder')}
               className="input text-center"
               autoFocus
             />
             <p className="text-xs text-gray-400">
-              Your key is encrypted and stored in a secure cookie. It is never logged or shared.
+              {t('login.byokHelp')}
             </p>
 
             {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -134,7 +136,7 @@ export default function LoginPage() {
               disabled={loading || !apiKey.trim()}
               className="btn-primary w-full disabled:opacity-50"
             >
-              {loading ? 'Validating...' : 'Connect'}
+              {loading ? t('login.validating') : t('login.connect')}
             </button>
           </form>
         )}
