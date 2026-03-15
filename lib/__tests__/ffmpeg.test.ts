@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  buildSceneLines,
   buildSubtitleCues,
   buildSubtitleCuesV2,
   clampFfmpegThreads,
@@ -22,6 +23,33 @@ function makeScene(overrides: Partial<ScriptScene> = {}): ScriptScene {
 }
 
 describe('buildSubtitleCues', () => {
+  it('preserves eleven_v3 control tags for TTS by default', () => {
+    const lines = buildSceneLines(makeScene({
+      narration: '[softly] Once upon a time.',
+      dialogue: [{ speaker: 'Alice', text: '[whispers] Hello there.' }],
+    }))
+
+    expect(lines).toEqual([
+      '[softly] Once upon a time.',
+      'Alice: [whispers] Hello there.',
+    ])
+  })
+
+  it('strips eleven_v3 control tags when building subtitle-safe lines', () => {
+    const lines = buildSceneLines(
+      makeScene({
+        narration: '[softly] Once upon a time.',
+        dialogue: [{ speaker: 'Alice', text: '[whispers] Hello there.' }],
+      }),
+      { stripVoiceControlTags: true }
+    )
+
+    expect(lines).toEqual([
+      'Once upon a time.',
+      'Alice: Hello there.',
+    ])
+  })
+
   it('returns empty array for empty scenes', () => {
     expect(buildSubtitleCues([], [])).toEqual([])
   })
@@ -36,6 +64,12 @@ describe('buildSubtitleCues', () => {
       endTime: 5000,
       text: 'Once upon a time',
     })
+  })
+
+  it('removes eleven_v3 control tags from subtitle cue text', () => {
+    const scenes = [makeScene({ narration: '[softly] Once upon a time', estimatedDuration: 10 })]
+    const cues = buildSubtitleCues(scenes, [5000])
+    expect(cues[0]?.text).toBe('Once upon a time')
   })
 
   it('creates cues from narration + dialogue', () => {
@@ -119,6 +153,17 @@ describe('buildSubtitleCuesV2', () => {
     expect(cues).toHaveLength(2)
     expect(cues[0]).toEqual({ index: 1, startTime: 0, endTime: 2000, text: 'Hello' })
     expect(cues[1]).toEqual({ index: 2, startTime: 2000, endTime: 5000, text: 'A: World' })
+  })
+
+  it('removes eleven_v3 control tags from V2 subtitle cue text', () => {
+    const scenes = [makeScene({
+      narration: '[warmly] Hello',
+      dialogue: [{ speaker: 'A', text: '[whispers] World' }],
+      estimatedDuration: 10,
+    })]
+    const cues = buildSubtitleCuesV2(scenes, [[2000, 3000]])
+    expect(cues[0]?.text).toBe('Hello')
+    expect(cues[1]?.text).toBe('A: World')
   })
 
   it('fills in missing line durations with averaged fallback', () => {

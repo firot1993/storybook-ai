@@ -12,10 +12,24 @@ AR_REPO="storybook"
 BUCKET="${GCS_BUCKET:-storybook-ai-files}"
 DB_NAME="storybook_ai"
 FORCE_BUILD="${FORCE_BUILD:-false}"
+APP_VERSION="0.0.0"
+
+if [[ -f "package.json" ]]; then
+  parsed_version="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -n 1)"
+  if [[ -n "${parsed_version}" ]]; then
+    APP_VERSION="${parsed_version}"
+  fi
+fi
+
+APP_VERSION_TAG="$(printf '%s' "${APP_VERSION}" | tr -c 'A-Za-z0-9._-' '-')"
+IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/app"
+IMAGE="${IMAGE_BASE}:v${APP_VERSION_TAG}"
+IMAGE_LATEST="${IMAGE_BASE}:latest"
 
 echo "▶ GCP Onboarding for ${SERVICE_NAME}"
 echo "  Project: ${PROJECT_ID}"
 echo "  Region:  ${REGION}"
+echo "  Version: ${APP_VERSION}"
 echo ""
 echo "Override defaults with env vars:"
 echo "  GCP_PROJECT_ID, GCP_REGION, GCP_SQL_TIER, GCS_BUCKET, FORCE_BUILD"
@@ -37,6 +51,17 @@ skip_if_exists() {
     return 0
   fi
   return 1
+}
+
+env_value_from_file() {
+  local key="$1"
+  local file="$2"
+  local line
+
+  line="$(grep -E "^${key}=" "$file" | head -n 1 || true)"
+  if [[ -n "${line}" ]]; then
+    printf '%s\n' "${line#*=}"
+  fi
 }
 
 # ── Prerequisites ─────────────────────────────────────────────
@@ -165,8 +190,8 @@ echo ""
 
 # ── Step 6: Build and push Docker image ──────────────────────
 step 6 "Build Docker image"
-IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/app:latest"
-echo "  Image: ${IMAGE}"
+echo "  Image:  ${IMAGE}"
+echo "  Latest: ${IMAGE_LATEST}"
 if [[ "$FORCE_BUILD" != "true" ]] && gcloud artifacts docker images describe "$IMAGE" &>/dev/null; then
   echo "  Image already exists, skipping build. To force rebuild:"
   echo "    FORCE_BUILD=true ./onboard.sh"
@@ -175,6 +200,8 @@ else
   gcloud builds submit --tag "$IMAGE" .
   echo "  Image built and pushed."
 fi
+gcloud artifacts docker tags add "$IMAGE" "$IMAGE_LATEST" --quiet
+echo "  Latest tag updated."
 echo ""
 
 # ── Step 7: Store secrets ─────────────────────────────────────
@@ -244,8 +271,9 @@ step 8 "Deploy to Cloud Run"
 ENV_VARS="NODE_ENV=production,GCS_BUCKET=${BUCKET}"
 if [[ -f "$ENV_FILE" ]]; then
   for key in GEMINI_TEXT_MODEL GEMINI_IMAGE_MODEL GEMINI_STT_MODEL \
-             GEMINI_TTS_VOICE ELEVENLABS_MODEL_ID ELEVENLABS_CONCURRENCY; do
-    val=$(grep -E "^${key}=" "$ENV_FILE" | cut -d'=' -f2-)
+             GEMINI_TTS_VOICE ELEVENLABS_MODEL_ID ELEVENLABS_CONCURRENCY \
+             ELEVENLABS_SPEED ELEVENLABS_STABILITY ELEVENLABS_STYLE; do
+    val="$(env_value_from_file "$key" "$ENV_FILE")"
     if [[ -n "$val" ]]; then
       ENV_VARS="${ENV_VARS},${key}=${val}"
     fi

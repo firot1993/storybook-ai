@@ -113,7 +113,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    const { protagonistName, supportingName, protagonistChar, protagonistPronoun, protagonistRole } = await resolveStorybookCharacters(storybook, locale)
+    const { protagonistName, supportingName, protagonistPronoun, protagonistRole } = await resolveStorybookCharacters(storybook, locale)
     const styleDesc = resolveStorybookStyle(storybook)
 
     // Check if the storybook already has a named supporting character
@@ -125,12 +125,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const title = storyName?.trim() || storybook.name
 
     // Single interleaved call: story text + cover image + NPC portraits
-    const protagonistStyleImages = (protagonistChar?.styleImages ?? {}) as Record<string, string>
-    const protagonistImageUrl =
-      protagonistStyleImages[storybook.styleId] || protagonistChar?.cartoonImage || ''
-    const protagonistImageBase64 = protagonistImageUrl
-      ? await imageToBase64(protagonistImageUrl)
-      : undefined
+    const orderedCharacters = [...storybook.characters].sort((a, b) => {
+      if (a.role === b.role) return 0
+      return a.role === 'protagonist' ? -1 : 1
+    })
+    const orderedCharacterRecords = await Promise.all(
+      orderedCharacters.map((entry) => (entry.id ? getCharacter(entry.id) : Promise.resolve(null)))
+    )
+    const characterImagesBase64: string[] = []
+    const characterNames: string[] = []
+    const seenCharacterRefs = new Set<string>()
+
+    for (let index = 0; index < orderedCharacters.length; index++) {
+      const entry = orderedCharacters[index]
+      const character = orderedCharacterRecords[index]
+
+      const styleImages = ((character?.styleImages ?? {}) as Record<string, string>)
+      const preferredImage = styleImages[storybook.styleId] || character?.cartoonImage || entry.image || ''
+      const base64 = preferredImage ? await imageToBase64(preferredImage) : undefined
+      if (!base64 || seenCharacterRefs.has(base64)) continue
+
+      seenCharacterRefs.add(base64)
+      characterImagesBase64.push(base64)
+      characterNames.push(character?.name || entry.name || `Character ${index + 1}`)
+    }
 
     const {
       story: storyText,
@@ -148,7 +166,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       styleDesc,
       locale,
       theme: theme ?? (locale === 'zh' ? '探索与友谊' : 'exploration and friendship'),
-      characterImageBase64: protagonistImageBase64,
+      characterImagesBase64,
+      characterNames,
       protagonistPronoun,
       protagonistRole,
       needsSupportingCharacter,

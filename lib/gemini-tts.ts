@@ -1,11 +1,16 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js'
 
-const TTS_MODEL = process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2'
+const TTS_MODEL = process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_v3'
 const DEFAULT_VOICE_NAME = 'Kore'
 const WAV_SAMPLE_RATE = 24000
 const WAV_CHANNELS = 1
 const WAV_BITS_PER_SAMPLE = 16
 const TTS_CONCURRENCY = Number(process.env.ELEVENLABS_CONCURRENCY ?? 5)
+const DEFAULT_TTS_SPEED = 0.9
+const MIN_TTS_SPEED = 0.7
+const MAX_TTS_SPEED = 1.2
+const DEFAULT_TTS_STABILITY = 0.5
+const DEFAULT_TTS_STYLE = 0.15
 
 // Map Gemini voice names to ElevenLabs voice IDs.
 // Gender alignment follows GEMINI_VOICES in lib/gemini.ts.
@@ -45,6 +50,17 @@ export function clampPositiveInt(value: number, fallback: number): number {
   if (!Number.isFinite(value)) return fallback
   const parsed = Math.trunc(value)
   return parsed > 0 ? parsed : fallback
+}
+
+export function clampTtsSpeed(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback
+  return Math.min(MAX_TTS_SPEED, Math.max(MIN_TTS_SPEED, value))
+}
+
+export function clampUnitInterval(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback
+  const normalized = value > 1 ? value / 100 : value
+  return Math.min(1, Math.max(0, normalized))
 }
 
 export function toDataUrl(base64: string, mimeType: string): string {
@@ -126,6 +142,24 @@ function resolveVoiceId(voiceName: string): string {
   return VOICE_MAP[voiceName] || voiceName
 }
 
+function resolveVoiceSpeed(): number {
+  return clampTtsSpeed(Number(process.env.ELEVENLABS_SPEED ?? DEFAULT_TTS_SPEED), DEFAULT_TTS_SPEED)
+}
+
+function resolveVoiceSettings() {
+  return {
+    speed: resolveVoiceSpeed(),
+    stability: clampUnitInterval(
+      Number(process.env.ELEVENLABS_STABILITY ?? DEFAULT_TTS_STABILITY),
+      DEFAULT_TTS_STABILITY
+    ),
+    style: clampUnitInterval(
+      Number(process.env.ELEVENLABS_STYLE ?? DEFAULT_TTS_STYLE),
+      DEFAULT_TTS_STYLE
+    ),
+  }
+}
+
 function createSemaphore(limit: number) {
   let active = 0
   const queue: Array<() => void> = []
@@ -169,6 +203,7 @@ async function requestElevenLabsAudio(
     text: normalizedText,
     modelId: TTS_MODEL,
     outputFormat: 'pcm_24000',
+    voiceSettings: resolveVoiceSettings(),
   })
 
   const pcmBuffer = await collectStream(stream)

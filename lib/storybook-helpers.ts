@@ -141,10 +141,13 @@ export async function resolveStoryCharacterReferences(storyId: string): Promise<
       for (let index = 0; index < orderedChars.length; index++) {
         const entry = orderedChars[index]
         const character = records[index]
-        if (!character) continue
-        const styleImages = parseStyleImages(character.styleImages)
-        const preferredImage = styleImages[storybook.styleId] || character.cartoonImage
-        await pushReference(preferredImage, character.name || entry.name || undefined, entry.description || undefined)
+        const styleImages = parseStyleImages(character?.styleImages)
+        const preferredImage = styleImages[storybook.styleId] || character?.cartoonImage || entry.image || ''
+        await pushReference(
+          preferredImage,
+          character?.name || entry.name || undefined,
+          entry.description || undefined
+        )
       }
     }
   }
