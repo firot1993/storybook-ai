@@ -138,6 +138,37 @@ function getElevenLabsClient(apiKey?: string): ElevenLabsClient {
   return client
 }
 
+export async function validateElevenLabsApiKey(apiKey: string): Promise<void> {
+  const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+  if (!trimmedKey) {
+    throw new GeminiTtsError({
+      status: 400,
+      message: 'ELEVENLABS_API_KEY is required.',
+    })
+  }
+
+  try {
+    const client = getElevenLabsClient(trimmedKey)
+    await client.user.get()
+  } catch (error) {
+    const apiError = error as { status?: number; statusCode?: number; message?: string; code?: number }
+    const status = apiError?.status ?? apiError?.statusCode ?? apiError?.code
+    const message = apiError?.message || 'Unknown error'
+
+    if (status === 401 || status === 403 || message.toLowerCase().includes('api key')) {
+      throw new GeminiTtsError({
+        status: 401,
+        message: 'Invalid ElevenLabs API key. Please check your ElevenLabs API key.',
+      })
+    }
+
+    throw new GeminiTtsError({
+      status: 502,
+      message: `Failed to validate ElevenLabs API key: ${message}`,
+    })
+  }
+}
+
 function resolveVoiceId(voiceName: string): string {
   return VOICE_MAP[voiceName] || voiceName
 }

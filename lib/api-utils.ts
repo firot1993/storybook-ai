@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server'
-import { getByokKey } from './byok'
+import { getByokElevenLabsKey, getByokKey } from './byok'
 
 /**
  * Resolve the Gemini API key from the request.
@@ -7,4 +7,12 @@ import { getByokKey } from './byok'
  */
 export function resolveApiKey(request: NextRequest): string | undefined {
   return getByokKey(request) ?? undefined
+}
+
+export function resolveGeminiApiKey(request: NextRequest): string | undefined {
+  return resolveApiKey(request)
+}
+
+export function resolveElevenLabsApiKey(request: NextRequest): string | undefined {
+  return getByokElevenLabsKey(request) ?? undefined
 }

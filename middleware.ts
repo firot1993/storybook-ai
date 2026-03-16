@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const PUBLIC_PATHS = ['/login', '/api/auth', '/api/auth/byok', '/api/health']
 const PUBLIC_PREFIXES = ['/_next/', '/favicon.ico']
+const BYOK_READY_COOKIE_NAME = 'storybook-byok-ready'
 
 async function hashCode(code: string): Promise<string> {
   const encoded = new TextEncoder().encode(code)
@@ -30,9 +31,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Allow access if user has a BYOK cookie (presence check only; decryption in API routes)
-  const byokCookie = request.cookies.get('storybook-byok')?.value
-  if (byokCookie) {
+  // Allow access only when BYOK completed both required keys.
+  const byokReadyCookie = request.cookies.get(BYOK_READY_COOKIE_NAME)?.value
+  if (byokReadyCookie === '1') {
     return NextResponse.next()
   }
 
