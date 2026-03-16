@@ -9,14 +9,183 @@ Current product flow is **v2 storybook-first**:
 4. Generate a chapter from selected synopsis
 5. Generate director-style script and produce video via FFmpeg pipeline
 
+## Quick Start (Local)
+
+Follow these steps to run the full app locally.
+
+### 1. Install prerequisites
+
+- Node.js 20+
+- npm
+- PostgreSQL 15+ (or Docker)
+- FFmpeg available on your shell `PATH`
+- `GEMINI_API_KEY`
+- `ELEVENLABS_API_KEY` if you want voice preview or narration audio
+
+FFmpeg install examples:
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Ubuntu / Debian
+sudo apt-get update
+sudo apt-get install -y ffmpeg
+```
+
+### 2. Start PostgreSQL
+
+Fastest option with Docker:
+
+```bash
+docker run --name storybook-ai-postgres \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=storybook_ai \
+  -p 5432:5432 \
+  -d postgres:15
+```
+
+If you already run PostgreSQL locally, create a database named `storybook_ai` and use its connection string for `DATABASE_URL`.
+
+### 3. Create `.env.local`
+
+```bash
+cp .env.local.example .env.local
+```
+
+Set at least these values:
+
+```bash
+GEMINI_API_KEY=your_real_key
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/storybook_ai
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
+STORAGE_LOCAL_PATH=.storybook-storage
+```
+
+Optional but commonly needed:
+
+```bash
+ELEVENLABS_API_KEY=your_real_key_if_you_need_audio
+FFMPEG_PATH=/absolute/path/to/ffmpeg
+```
+
+Notes:
+
+- `DATABASE_URL` is required for local runtime.
+- If `ffmpeg` is already on your `PATH`, leave `FFMPEG_PATH` unset.
+- Generated files are written to `STORAGE_LOCAL_PATH`. If you leave it unset, the app uses `/tmp/storybook`.
+
+### 4. Install dependencies and initialize the database
+
+```bash
+npm install
+npx prisma generate
+npx prisma db push
+```
+
+### 5. Run the app
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+### 6. Verify the local deployment
+
+Check the health endpoint:
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+You should get a `200` response with `"ready": true`.
+
+Then verify the main flow in the browser:
+
+- `http://localhost:3000/character`
+- `http://localhost:3000/storybook`
+- `http://localhost:3000/story/create`
+
+### 7. Run a local production build
+
+If you want to verify the production build locally:
+
+```bash
+npm run build
+npm run start
+```
+
+## Quick Start (Google Cloud)
+
+`./onboard.sh` is the one-command path for a fresh GCP deployment. It can:
+
+- Create or reuse a project
+- Link billing when it can resolve an open billing account
+- Create the GCS bucket, Cloud SQL instance, Artifact Registry repo, secrets, and Cloud Run service
+- Build the container with Cloud Build
+- Push the Prisma schema before deployment
+- Verify the deployed service at `/api/health`
+
+### Prerequisites
+
+- Node.js 20+
+- npm
+- `gcloud` CLI installed
+- `gcloud auth login` completed
+- A usable billing account, or `GCP_BILLING_ACCOUNT` exported
+- `GEMINI_API_KEY` exported or stored in `.env.local`
+
+Optional values can come from shell env vars or `.env.local`, including:
+
+- `ELEVENLABS_API_KEY`
+- `BANANA_API_URL`
+- `BANANA_API_KEY`
+- `BANANA_MODEL_KEY`
+- `INVITE_CODE`
+- `BYOK_ENCRYPTION_KEY`
+
+### Run it
+
+```bash
+cp .env.local.example .env.local
+./onboard.sh
+```
+
+For non-interactive use:
+
+```bash
+AUTO_APPROVE=true GCP_PROJECT_ID=your-project-id GCP_BILLING_ACCOUNT=XXXXXX-XXXXXX-XXXXXX ./onboard.sh
+```
+
+Useful overrides:
+
+- `GCP_PROJECT_ID`
+- `GCP_REGION`
+- `GCS_BUCKET`
+- `GCP_SQL_INSTANCE`
+- `GCP_SQL_TIER`
+- `GCP_SQL_AUTHORIZED_NETWORK`
+- `GCP_RUNTIME_SERVICE_ACCOUNT`
+- `GCP_CLOUD_RUN_MEMORY`
+- `GCP_CLOUD_RUN_CPU`
+- `GCP_CLOUD_RUN_TIMEOUT`
+- `GCP_CLOUD_RUN_CONCURRENCY`
+- `GCP_CLOUD_RUN_MAX_INSTANCES`
+- `GCP_CLOUD_RUN_MIN_INSTANCES`
+- `FORCE_BUILD`
+
+The script installs npm dependencies automatically when `node_modules/` is missing.
+
 ## Tech Stack
 
 - Framework: Next.js (App Router), React, TypeScript
 - Styling: Tailwind CSS
-- Data: Prisma + SQLite (local)
+- Data: Prisma + PostgreSQL
 - AI:
-  - Text/Image generation via Gemini models
-  - TTS via Gemini (configurable via `GEMINI_TTS_MODEL`)
+  - Text and image generation via Gemini models
+  - TTS via ElevenLabs
   - STT via Gemini (configurable via `GEMINI_STT_MODEL`)
 - Video composition: FFmpeg (`fluent-ffmpeg`)
 
@@ -50,13 +219,18 @@ Current product flow is **v2 storybook-first**:
 
 ## Environment Variables
 
-Required:
+Required for local runtime:
 - `GEMINI_API_KEY`
+- `DATABASE_URL`
+
+Recommended for local runtime:
+- `NEXT_PUBLIC_BASE_URL` (default: `http://localhost:3000`)
+- `STORAGE_LOCAL_PATH` (default: `/tmp/storybook`)
 
 Optional:
+- `ELEVENLABS_API_KEY` (required only for voice preview and narration)
 - `GEMINI_TEXT_MODEL` (default: `gemini-3-flash-preview`)
 - `GEMINI_IMAGE_MODEL` (default: `gemini-3.1-flash-image-preview`)
-- `GEMINI_TTS_MODEL` (default: `gemini-2.5-flash-preview-tts`)
 - `GEMINI_STT_MODEL` (default: `gemini-2.0-flash`)
 - `GEMINI_TTS_VOICE`
 - `ELEVENLABS_MODEL_ID` (default: `eleven_v3`)
@@ -73,8 +247,7 @@ Optional:
 - `FFMPEG_SUBTITLE_X264_PRESET` (default: same as `FFMPEG_X264_PRESET`)
 - `FFMPEG_CRF` (default: `24`)
 - `FFMPEG_AUDIO_BITRATE` (default: `128k`)
-- `STORAGE_LOCAL_PATH` (default: `/tmp/storybook`)
-- `NEXT_PUBLIC_BASE_URL` (default: `http://localhost:3000`)
+- `INVITE_CODE`
 
 Recommended for a Google Cloud runtime with 4 vCPU / 4 GB RAM:
 
@@ -88,31 +261,12 @@ FFMPEG_AUDIO_BITRATE=128k
 
 ## Local Development
 
-Install dependencies:
-
-```bash
-npm install
-```
-
-Run development server:
-
-```bash
-npm run dev
-```
-
-Run checks:
+After the quick start above, use these checks during development:
 
 ```bash
 npm run lint
 npx tsc --noEmit
 npm run test --if-present
-```
-
-Production build:
-
-```bash
-npm run build
-npm run start
 ```
 
 ## Manual Integration Tests
