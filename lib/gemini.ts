@@ -1276,6 +1276,106 @@ async function parseInterleavedResponseParts(
   return { sceneMetaList, sceneImages }
 }
 
+function buildExpectedSceneNumbers(startSceneIndex: number, endSceneIndex: number): number[] {
+  return Array.from(
+    { length: Math.max(0, endSceneIndex - startSceneIndex) },
+    (_, offset) => startSceneIndex + offset + 1
+  )
+}
+
+function normalizeSceneFingerprintText(raw: string | undefined): string {
+  return (raw ?? '')
+    .toLowerCase()
+    .replace(/\[[^\]]*]/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function buildSceneMetaFingerprint(scene: RawSceneMeta): string {
+  const dialogueText = (scene.dialogue ?? [])
+    .map((line) => `${line.speaker}: ${line.text}`)
+    .join(' ')
+
+  return [
+    scene.sceneDescription,
+    scene.voiceOver,
+    dialogueText,
+    scene.animationAction,
+  ]
+    .map(normalizeSceneFingerprintText)
+    .join(' | ')
+}
+
+function validateSceneMetaSequence(
+  sceneMetaList: RawSceneMeta[],
+  options: {
+    expectedSceneNumbers: number[]
+    label: string
+    debugTag: string
+  }
+): { ok: true } | { ok: false; reason: string } {
+  const { expectedSceneNumbers, label, debugTag } = options
+
+  if (sceneMetaList.length !== expectedSceneNumbers.length) {
+    return {
+      ok: false,
+      reason:
+        `${debugTag} ${label} returned ${sceneMetaList.length} scenes; ` +
+        `expected ${expectedSceneNumbers.length}.`,
+    }
+  }
+
+  const seenIndices = new Set<number>()
+  let previousFingerprint = ''
+  let previousSceneNumber: number | null = null
+
+  for (let order = 0; order < sceneMetaList.length; order++) {
+    const scene = sceneMetaList[order]
+    const expectedSceneNumber = expectedSceneNumbers[order]
+    const actualSceneNumber = Number(scene.index)
+
+    if (!Number.isInteger(actualSceneNumber)) {
+      return {
+        ok: false,
+        reason: `${debugTag} ${label} returned a non-integer scene index at position ${order + 1}.`,
+      }
+    }
+
+    if (seenIndices.has(actualSceneNumber)) {
+      return {
+        ok: false,
+        reason: `${debugTag} ${label} returned duplicate scene index ${actualSceneNumber}.`,
+      }
+    }
+    seenIndices.add(actualSceneNumber)
+
+    if (actualSceneNumber !== expectedSceneNumber) {
+      return {
+        ok: false,
+        reason:
+          `${debugTag} ${label} returned scene ${actualSceneNumber} at position ${order + 1}; ` +
+          `expected scene ${expectedSceneNumber}.`,
+      }
+    }
+
+    const fingerprint = buildSceneMetaFingerprint(scene)
+    if (previousFingerprint && fingerprint === previousFingerprint) {
+      return {
+        ok: false,
+        reason:
+          `${debugTag} ${label} returned duplicate adjacent scenes ` +
+          `${previousSceneNumber} and ${actualSceneNumber}.`,
+      }
+    }
+
+    previousFingerprint = fingerprint
+    previousSceneNumber = actualSceneNumber
+  }
+
+  return { ok: true }
+}
+
 /**
  * Enrich raw scene metadata into DirectorStoryboardScene with character normalization.
  */
@@ -1478,6 +1578,11 @@ export async function generateInterleavedDirectorScript(params: {
     })
 
     const { sceneMetaList, sceneImages } = await parseInterleavedResponseParts(responseParts, 0, debugTag)
+    const singleChunkValidation = validateSceneMetaSequence(sceneMetaList, {
+      expectedSceneNumbers: buildExpectedSceneNumbers(0, sceneCount),
+      label: 'single chunk',
+      debugTag,
+    })
 
     const sceneImageCounts = Array.from(sceneImages.entries())
       .map(([idx, frames]) => `scene ${idx}: ${frames.length}`)
@@ -1492,6 +1597,9 @@ export async function generateInterleavedDirectorScript(params: {
     if (sceneMetaList.length === 0) {
       throw new Error('Interleaved director script returned no scene metadata')
     }
+    if (!singleChunkValidation.ok) {
+      throw new Error(singleChunkValidation.reason)
+    }
 
     const scenes = enrichSceneMeta(sceneMetaList, canonicalByKey, locale)
     onProgress?.({
@@ -1504,9 +1612,7 @@ export async function generateInterleavedDirectorScript(params: {
   }
 
   // Check if we can run in parallel mode (scene texts + contexts provided and aligned)
-  const canRunParallel = sceneTexts && inputSceneContexts
-    && sceneTexts.length === sceneCount
-    && inputSceneContexts.length === sceneCount
+  const canRunParallel = sceneTexts && sceneTexts.length === sceneCount
 
   if (canRunParallel) {
     // Parallel multi-chunk: all chunks run concurrently via Promise.all
@@ -1522,6 +1628,7 @@ export async function generateInterleavedDirectorScript(params: {
       scenesGenerated: 0,
       totalScenes: sceneCount,
     })
+    const completedChunkSceneCounts = new Map<number, number>()
 
     const generateChunk = async (chunkIdx: number): Promise<{
       meta: RawSceneMeta[]
@@ -1529,6 +1636,18 @@ export async function generateInterleavedDirectorScript(params: {
     }> => {
       const startSceneIndex = chunkIdx * chunkSize
       const endSceneIndex = Math.min(startSceneIndex + chunkSize, sceneCount)
+      const chunkSceneInputs = Array.from(
+        { length: endSceneIndex - startSceneIndex },
+        (_, offset) => {
+          const sceneIndex = startSceneIndex + offset
+          return {
+            globalSceneNumber: sceneIndex + 1,
+            sceneText: sceneTexts![sceneIndex],
+            sceneContext: inputSceneContexts?.[sceneIndex],
+          }
+        }
+      )
+      const expectedSceneNumbers = chunkSceneInputs.map((input) => input.globalSceneNumber)
 
       const chunkPrompt = buildChunkedInterleavedDirectorScriptPrompt({
         storyName,
@@ -1545,8 +1664,7 @@ export async function generateInterleavedDirectorScript(params: {
         startSceneIndex,
         endSceneIndex,
         totalScenes: sceneCount,
-        sceneText: sceneTexts!.slice(startSceneIndex, endSceneIndex).join('\n\n'),
-        sceneContext: inputSceneContexts![startSceneIndex],
+        sceneInputs: chunkSceneInputs,
       })
 
       console.log(`${debugTag} Parallel chunk ${chunkIdx + 1}/${totalChunks}`, {
@@ -1560,6 +1678,7 @@ export async function generateInterleavedDirectorScript(params: {
       ]
 
       const MAX_CHUNK_RETRIES = 2
+      let lastChunkFailure = `${debugTag} Parallel chunk ${chunkIdx + 1}/${totalChunks} returned no scene metadata`
       for (let attempt = 0; attempt <= MAX_CHUNK_RETRIES; attempt++) {
         if (attempt > 0) {
           console.log(`${debugTag} Retrying parallel chunk ${chunkIdx + 1}/${totalChunks} (attempt ${attempt + 1})`)
@@ -1584,15 +1703,28 @@ export async function generateInterleavedDirectorScript(params: {
           const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
 
           if (parsed.sceneMetaList.length > 0) {
+            const validation = validateSceneMetaSequence(parsed.sceneMetaList, {
+              expectedSceneNumbers,
+              label: `parallel chunk ${chunkIdx + 1}/${totalChunks}`,
+              debugTag,
+            })
+            if (!validation.ok) {
+              lastChunkFailure = validation.reason
+              console.warn(validation.reason)
+              continue
+            }
+
+            completedChunkSceneCounts.set(chunkIdx, parsed.sceneMetaList.length)
             onProgress?.({
               chunkIndex: chunkIdx,
               totalChunks,
-              scenesGenerated: parsed.sceneMetaList.length,
+              scenesGenerated: Array.from(completedChunkSceneCounts.values()).reduce((sum, count) => sum + count, 0),
               totalScenes: sceneCount,
             })
             return { meta: parsed.sceneMetaList, images: parsed.sceneImages }
           }
 
+          lastChunkFailure = `${debugTag} Parallel chunk ${chunkIdx + 1}/${totalChunks} returned no scene metadata`
           console.warn(`${debugTag} Parallel chunk ${chunkIdx + 1} returned no scene metadata${attempt < MAX_CHUNK_RETRIES ? ', retrying...' : ''}`)
         } catch (error) {
           const retryable = isRetriableGeminiChunkError(error)
@@ -1607,7 +1739,7 @@ export async function generateInterleavedDirectorScript(params: {
         }
       }
 
-      return { meta: [], images: new Map() }
+      throw new Error(lastChunkFailure)
     }
 
     const chunkResults = await Promise.all(
@@ -1637,6 +1769,14 @@ export async function generateInterleavedDirectorScript(params: {
     if (allSceneMetaList.length === 0) {
       throw new Error('Interleaved director script returned no scene metadata across all parallel chunks')
     }
+    const allScenesValidation = validateSceneMetaSequence(allSceneMetaList, {
+      expectedSceneNumbers: buildExpectedSceneNumbers(0, sceneCount),
+      label: 'all parallel chunks',
+      debugTag,
+    })
+    if (!allScenesValidation.ok) {
+      throw new Error(allScenesValidation.reason)
+    }
 
     const scenes = enrichSceneMeta(allSceneMetaList, canonicalByKey, locale)
     return { scenes, sceneImages: allSceneImages }
@@ -1663,6 +1803,7 @@ export async function generateInterleavedDirectorScript(params: {
   for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
     const startSceneIndex = chunkIdx * chunkSize
     const endSceneIndex = Math.min(startSceneIndex + chunkSize, sceneCount)
+    const expectedSceneNumbers = buildExpectedSceneNumbers(startSceneIndex, endSceneIndex)
 
     const chunkPrompt = buildChunkedInterleavedDirectorScriptPrompt({
       storyName,
@@ -1696,6 +1837,7 @@ export async function generateInterleavedDirectorScript(params: {
     const MAX_CHUNK_RETRIES = 2
     let chunkMeta: RawSceneMeta[] = []
     let chunkImages = new Map<number, Array<{ data: string; mimeType: string }>>()
+    let lastChunkFailure = `${debugTag} Chunk ${chunkIdx + 1}/${totalChunks} returned no scene metadata`
 
     for (let attempt = 0; attempt <= MAX_CHUNK_RETRIES; attempt++) {
       if (attempt > 0) {
@@ -1722,8 +1864,21 @@ export async function generateInterleavedDirectorScript(params: {
         chunkMeta = parsed.sceneMetaList
         chunkImages = parsed.sceneImages
 
-        if (chunkMeta.length > 0) break
+        if (chunkMeta.length > 0) {
+          const validation = validateSceneMetaSequence(chunkMeta, {
+            expectedSceneNumbers,
+            label: `sequential chunk ${chunkIdx + 1}/${totalChunks}`,
+            debugTag,
+          })
+          if (validation.ok) break
+          lastChunkFailure = validation.reason
+          console.warn(validation.reason)
+          chunkMeta = []
+          chunkImages = new Map()
+          continue
+        }
 
+        lastChunkFailure = `${debugTag} Chunk ${chunkIdx + 1}/${totalChunks} returned no scene metadata`
         console.warn(`${debugTag} Chunk ${chunkIdx + 1} returned no scene metadata${attempt < MAX_CHUNK_RETRIES ? ', retrying...' : ''}`)
       } catch (error) {
         const retryable = isRetriableGeminiChunkError(error)
@@ -1736,6 +1891,10 @@ export async function generateInterleavedDirectorScript(params: {
         }
         throw error
       }
+    }
+
+    if (chunkMeta.length === 0) {
+      throw new Error(lastChunkFailure)
     }
 
     // Merge results
@@ -1771,6 +1930,14 @@ export async function generateInterleavedDirectorScript(params: {
 
   if (allSceneMetaList.length === 0) {
     throw new Error('Interleaved director script returned no scene metadata across all chunks')
+  }
+  const allScenesValidation = validateSceneMetaSequence(allSceneMetaList, {
+    expectedSceneNumbers: buildExpectedSceneNumbers(0, sceneCount),
+    label: 'all sequential chunks',
+    debugTag,
+  })
+  if (!allScenesValidation.ok) {
+    throw new Error(allScenesValidation.reason)
   }
 
   const scenes = enrichSceneMeta(allSceneMetaList, canonicalByKey, locale)

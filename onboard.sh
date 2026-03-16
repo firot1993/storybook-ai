@@ -313,7 +313,7 @@ echo "  Service URL: ${SERVICE_URL}"
 echo "  Updating NEXT_PUBLIC_BASE_URL..."
 gcloud run services update "$SERVICE_NAME" \
   --region="$REGION" \
-  --set-env-vars="NEXT_PUBLIC_BASE_URL=${SERVICE_URL}"
+  --update-env-vars="NEXT_PUBLIC_BASE_URL=${SERVICE_URL}"
 echo ""
 
 # ── Step 10: Verify ───────────────────────────────────────────

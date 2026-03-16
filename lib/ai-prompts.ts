@@ -525,8 +525,11 @@ interface ChunkedInterleavedDirectorScriptPromptParams extends InterleavedDirect
   endSceneIndex: number     // exclusive end index for this chunk
   totalScenes: number       // total scene count across all chunks
   previousSceneSummaries?: string[]  // summaries of scenes from prior chunks
-  sceneText?: string        // per-scene story text (replaces full storyContent when provided)
-  sceneContext?: import('@/types').SceneContext  // per-scene visual context (replaces previousSceneSummaries)
+  sceneInputs?: Array<{
+    globalSceneNumber: number
+    sceneText?: string
+    sceneContext?: import('@/types').SceneContext
+  }>
 }
 
 export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInterleavedDirectorScriptPromptParams): string {
@@ -543,8 +546,7 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     endSceneIndex,
     totalScenes,
     previousSceneSummaries = [],
-    sceneText,
-    sceneContext,
+    sceneInputs = [],
     protagonistPronoun,
     protagonistRole,
   } = params
@@ -556,15 +558,36 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
   const englishStyleLabel = styleDesc || DEFAULT_DIRECTOR_STYLE_LABEL
   const chunkSceneCount = endSceneIndex - startSceneIndex
 
-  // When scene context is provided (parallel mode), use it instead of previous summaries
-  const contextBlock = sceneContext
+  const normalizedSceneInputs = sceneInputs.filter(
+    (input) => Boolean(input.sceneText?.trim()) || Boolean(input.sceneContext)
+  )
+
+  const contextBlock = normalizedSceneInputs.length > 0
     ? dedentPrompt(`
-        [Scene Visual Context]
-        Visual Theme: ${sceneContext.visualTheme}
-        Time/Lighting: ${sceneContext.timeLighting}
-        Key Prop: ${sceneContext.keyProp}
-        Action Flow: ${sceneContext.actionFlow}
-        Characters: ${sceneContext.characters.join(', ')}
+        [Chunk Scene Inputs]
+        Generate exactly one output scene for each input below, in the same order and using the same global scene number.
+        Do not merge, skip, or repeat these inputs.
+        ${normalizedSceneInputs.map((input, index) => {
+          const context = input.sceneContext
+          const lines = [
+            `Input Scene ${index + 1} (global scene ${input.globalSceneNumber})`,
+            `Story excerpt:`,
+            input.sceneText?.trim() || '(story excerpt unavailable)',
+          ]
+
+          if (context) {
+            lines.push(
+              'Visual context:',
+              `- Visual Theme: ${context.visualTheme}`,
+              `- Time/Lighting: ${context.timeLighting}`,
+              `- Key Prop: ${context.keyProp}`,
+              `- Action Flow: ${context.actionFlow}`,
+              `- Characters: ${context.characters.join(', ')}`
+            )
+          }
+
+          return lines.join('\n')
+        }).join('\n\n')}
       `)
     : previousSceneSummaries.length > 0
       ? dedentPrompt(`
@@ -574,10 +597,12 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
         `)
       : ''
 
-  // When scene text is provided (parallel mode), use just the scene's text instead of full story
-  const storyTextForPrompt = sceneText ?? storyContent
-
   return dedentPrompt(`
+    [Hard Limit]
+    Return exactly ${chunkSceneCount} scene(s) and exactly ${chunkSceneCount * 3} images in this response.
+    Do not output any extra SCENE_META block, extra image, summary, epilogue, or commentary.
+    Stop immediately after the ENDING frame image for the last required scene in this chunk.
+
     [System Role]
     You are an elite children's animation director and storyboard designer. You transform warm fairy tales into visually rich, emotionally clear animated storyboards with strong pacing. You also illustrate each scene directly.
 
@@ -604,7 +629,7 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     Main roles: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}, ${supportingName}
     Available character pool: ${characterPoolText || roleList}
     Story text:
-    ${storyTextForPrompt}
+    ${normalizedSceneInputs.length > 0 ? '(See [Chunk Scene Inputs] below for scene-by-scene source material.)' : storyContent}
     Target audience age: ${ageRange}
     ${contextBlock}
 
@@ -614,6 +639,7 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
 
     [Output Format]
     Start scene numbering at ${startSceneIndex + 1}. For each scene, output in this exact order:
+    Use the matching global scene number from [Chunk Scene Inputs] for each SCENE_META index, in the same order as the inputs.
 
     1. The scene metadata as a comment marker:
     <!--SCENE_META:{"index":${startSceneIndex + 1},"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"[softly] Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
@@ -651,6 +677,11 @@ export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirector
   const englishStyleLabel = styleDesc || DEFAULT_DIRECTOR_STYLE_LABEL
 
   return dedentPrompt(`
+    [Hard Limit]
+    Return exactly ${sceneCount} scene(s) and exactly ${sceneCount * 3} images in this response.
+    Do not output any extra SCENE_META block, extra image, summary, epilogue, or commentary.
+    Stop immediately after the ENDING frame image for scene ${sceneCount}.
+
     [System Role]
     You are an elite children's animation director and storyboard designer. You transform warm fairy tales into visually rich, emotionally clear animated storyboards with strong pacing. You also illustrate each scene directly.
 

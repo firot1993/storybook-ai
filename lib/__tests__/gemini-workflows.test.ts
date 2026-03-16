@@ -336,6 +336,9 @@ describe('gemini workflow prompt composition', () => {
         'Every voiceOver must begin with one or two short eleven_v3 control tags in English square brackets'
       )
       expect(getPromptTextFromCall()).toContain(
+        'Return exactly 2 scene(s) and exactly 6 images in this response.'
+      )
+      expect(getPromptTextFromCall()).toContain(
         'Return JSON-safe text only: every JSON string value must stay on a single line, any internal double quotes must be escaped, and no field may contain raw line breaks.'
       )
       expect(result.sceneImages.get(0)).toHaveLength(3)
@@ -443,6 +446,172 @@ describe('gemini workflow prompt composition', () => {
       expect(result.scenes).toHaveLength(2)
       expect(result.sceneImages.get(0)).toHaveLength(3)
       expect(result.sceneImages.get(1)).toHaveLength(3)
+    } finally {
+      if (previousChunkSize === undefined) {
+        delete process.env.GEMINI_INTERLEAVED_CHUNK_SIZE
+      } else {
+        process.env.GEMINI_INTERLEAVED_CHUNK_SIZE = previousChunkSize
+      }
+    }
+  })
+
+  it('reports cumulative progress for multi-scene parallel chunks and builds ordered chunk inputs', async () => {
+    const progressEvents: number[] = []
+    const previousChunkSize = process.env.GEMINI_INTERLEAVED_CHUNK_SIZE
+    process.env.GEMINI_INTERLEAVED_CHUNK_SIZE = '2'
+
+    const buildChunkResponse = (startSceneNumber: number) => ({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text:
+                  `SCENE_META:{"index":${startSceneNumber},"sceneDescription":"Scene ${startSceneNumber}","cameraDesign":"wide glide ${startSceneNumber}","animationAction":"Action ${startSceneNumber}","voiceOver":"[softly] Narration ${startSceneNumber}.","dialogue":[{"speaker":"Luna","text":"Line ${startSceneNumber}."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening ${startSceneNumber}","midActionFramePrompt":"middle ${startSceneNumber}","endingFramePrompt":"ending ${startSceneNumber}"}\n` +
+                  `SCENE_META:{"index":${startSceneNumber + 1},"sceneDescription":"Scene ${startSceneNumber + 1}","cameraDesign":"wide glide ${startSceneNumber + 1}","animationAction":"Action ${startSceneNumber + 1}","voiceOver":"[softly] Narration ${startSceneNumber + 1}.","dialogue":[{"speaker":"Milo","text":"Line ${startSceneNumber + 1}."}],"charactersUsed":["Luna","Milo"],"estimatedDuration":10,"openingFramePrompt":"opening ${startSceneNumber + 1}","midActionFramePrompt":"middle ${startSceneNumber + 1}","endingFramePrompt":"ending ${startSceneNumber + 1}"}`,
+              },
+              ...Array.from({ length: 6 }, (_, i) => ({
+                inlineData: {
+                  data: Buffer.from(`batched-scene-${startSceneNumber}-image-${i}`).toString('base64'),
+                  mimeType: 'image/png',
+                },
+              })),
+            ],
+          },
+        },
+      ],
+    })
+
+    generateContentMock.mockImplementation(async (request) => {
+      const typedRequest = request as {
+        contents: Array<{ parts?: Array<{ text?: string }> }>
+      }
+      const prompt = typedRequest.contents[0]?.parts?.find((part) => typeof part.text === 'string')?.text ?? ''
+
+      if (prompt.includes('Generate scenes 1 to 2 of 4 total scenes')) {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        return buildChunkResponse(1)
+      }
+
+      if (prompt.includes('Generate scenes 3 to 4 of 4 total scenes')) {
+        return buildChunkResponse(3)
+      }
+
+      throw new Error(`Unexpected prompt: ${prompt.slice(0, 120)}`)
+    })
+
+    try {
+      const result = await generateInterleavedDirectorScript({
+        storyName: 'Moonlight Trip',
+        protagonistName: 'Luna',
+        supportingName: 'Milo',
+        storyContent: '[Scene 1] A lantern drifted.\n[Scene 2] Milo waved.\n[Scene 3] They crossed the bridge.\n[Scene 4] They found the lantern.',
+        ageRange: '4-6',
+        styleDesc: 'soft watercolor storybook',
+        locale: 'en',
+        characterPool: ['Luna', 'Milo'],
+        sceneCount: 4,
+        sceneTexts: [
+          '[Scene 1] A lantern drifted.',
+          '[Scene 2] Milo waved.',
+          '[Scene 3] They crossed the bridge.',
+          '[Scene 4] They found the lantern.',
+        ],
+        sceneContexts: [
+          {
+            visualTheme: 'moonlit path',
+            timeLighting: 'dusk glow',
+            keyProp: 'silver lantern',
+            actionFlow: 'Luna walks toward the light',
+            characters: ['Luna'],
+          },
+          {
+            visualTheme: 'bridge rail',
+            timeLighting: 'moonlight shimmer',
+            keyProp: 'wooden bridge',
+            actionFlow: 'Milo waves from the bridge',
+            characters: ['Luna', 'Milo'],
+          },
+          {
+            visualTheme: 'bridge crossing',
+            timeLighting: 'misty moonlight',
+            keyProp: 'arched bridge',
+            actionFlow: 'They cross together',
+            characters: ['Luna', 'Milo'],
+          },
+          {
+            visualTheme: 'lantern clearing',
+            timeLighting: 'soft starlight',
+            keyProp: 'floating lantern',
+            actionFlow: 'They stop and look up',
+            characters: ['Luna', 'Milo'],
+          },
+        ],
+        onProgress: (event) => {
+          progressEvents.push(event.scenesGenerated)
+        },
+      })
+
+      expect(result.scenes).toHaveLength(4)
+      expect(progressEvents).toEqual([0, 2, 4])
+      expect(getPromptTextFromCall(0)).toContain('Return exactly 2 scene(s) and exactly 6 images in this response.')
+      expect(getPromptTextFromCall(0)).toContain('Input Scene 1 (global scene 1)')
+      expect(getPromptTextFromCall(0)).toContain('Input Scene 2 (global scene 2)')
+      expect(getPromptTextFromCall(0)).toContain('A lantern drifted.')
+      expect(getPromptTextFromCall(0)).toContain('Milo waved.')
+      expect(getPromptTextFromCall(0)).toContain('- Visual Theme: moonlit path')
+      expect(getPromptTextFromCall(0)).toContain('- Visual Theme: bridge rail')
+      expect(getPromptTextFromCall(1)).toContain('Input Scene 1 (global scene 3)')
+      expect(getPromptTextFromCall(1)).toContain('Input Scene 2 (global scene 4)')
+    } finally {
+      if (previousChunkSize === undefined) {
+        delete process.env.GEMINI_INTERLEAVED_CHUNK_SIZE
+      } else {
+        process.env.GEMINI_INTERLEAVED_CHUNK_SIZE = previousChunkSize
+      }
+    }
+  })
+
+  it('rejects duplicate adjacent batched scenes before returning a script', async () => {
+    generateContentMock.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text:
+                  'SCENE_META:{"index":1,"sceneDescription":"Lantern path","cameraDesign":"wide glide","animationAction":"Luna follows the lantern","voiceOver":"[softly] The lantern hummed ahead.","dialogue":[{"speaker":"Luna","text":"Wait for me."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening one","midActionFramePrompt":"middle one","endingFramePrompt":"ending one"}\n' +
+                  'SCENE_META:{"index":2,"sceneDescription":"Lantern path","cameraDesign":"wide glide","animationAction":"Luna follows the lantern","voiceOver":"[softly] The lantern hummed ahead.","dialogue":[{"speaker":"Luna","text":"Wait for me."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening two","midActionFramePrompt":"middle two","endingFramePrompt":"ending two"}',
+              },
+              ...Array.from({ length: 6 }, (_, i) => ({
+                inlineData: {
+                  data: Buffer.from(`duplicate-scene-image-${i}`).toString('base64'),
+                  mimeType: 'image/png',
+                },
+              })),
+            ],
+          },
+        },
+      ],
+    })
+
+    const previousChunkSize = process.env.GEMINI_INTERLEAVED_CHUNK_SIZE
+    process.env.GEMINI_INTERLEAVED_CHUNK_SIZE = '2'
+
+    try {
+      await expect(
+        generateInterleavedDirectorScript({
+          storyName: 'Moonlight Trip',
+          protagonistName: 'Luna',
+          supportingName: 'Milo',
+          storyContent: '[Scene 1] A lantern drifted.\n[Scene 2] Milo waved.',
+          ageRange: '4-6',
+          styleDesc: 'soft watercolor storybook',
+          locale: 'en',
+          characterPool: ['Luna', 'Milo'],
+          sceneCount: 2,
+        })
+      ).rejects.toThrow(/duplicate adjacent scenes/i)
     } finally {
       if (previousChunkSize === undefined) {
         delete process.env.GEMINI_INTERLEAVED_CHUNK_SIZE
