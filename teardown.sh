@@ -8,7 +8,7 @@ SERVICE_NAME="storybook-ai"
 SQL_INSTANCE="storybook-db"
 AR_REPO="storybook"
 BUCKET="storybook-ai-files"
-SECRETS=("database-url" "gemini-api-key" "invite-code")
+SECRETS=("database-url" "gemini-api-key" "invite-code" "elevenlabs-api-key")
 
 echo "▶ GCP Teardown for ${SERVICE_NAME}"
 echo "  Project: ${PROJECT_ID}"

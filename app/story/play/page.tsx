@@ -17,6 +17,7 @@ import { Story, Character, VideoProject } from '@/types'
 import { getCurrentStoryFromIndexedDB, setCurrentStoryInIndexedDB } from '@/lib/client-story-store'
 import { showToast } from '@/components/toast'
 import { splitStoryIntoScenes, extractStoryChoices } from '@/lib/story-scenes'
+import { mergeMonotonicScriptProgress } from '@/lib/script-progress'
 import { useLanguage } from '@/lib/i18n'
 import { readSSEStream } from '@/lib/sse-client'
 
@@ -155,7 +156,12 @@ function VideoStartButton({
       let script: { id: string } | null = null
       await readSSEStream<{ script: { id: string } }>(scriptRes, {
         onProgress: (event) => {
-          setScriptProgress({ scenesGenerated: event.scenesGenerated, totalScenes: event.totalScenes })
+          setScriptProgress((prev) =>
+            mergeMonotonicScriptProgress(prev, {
+              scenesGenerated: event.scenesGenerated,
+              totalScenes: event.totalScenes,
+            })
+          )
         },
         onComplete: (data) => {
           script = data.script

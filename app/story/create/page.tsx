@@ -9,6 +9,7 @@ import { STYLES } from '@/lib/styles'
 import { showToast } from '@/components/toast'
 import { useLanguage } from '@/lib/i18n'
 import { normalizeStoryChoices } from '@/lib/story-scenes'
+import { mergeMonotonicScriptProgress } from '@/lib/script-progress'
 import { readSSEStream } from '@/lib/sse-client'
 
 const AGE_OPTION_VALUES = ['2-4', '4-6', '6-8'] as const
@@ -511,7 +512,12 @@ function CreateStoryWizard() {
       let script: { id: string } | null = null
       await readSSEStream<{ script: { id: string } }>(scriptRes, {
         onProgress: (event) => {
-          setScriptProgress({ scenesGenerated: event.scenesGenerated, totalScenes: event.totalScenes })
+          setScriptProgress((prev) =>
+            mergeMonotonicScriptProgress(prev, {
+              scenesGenerated: event.scenesGenerated,
+              totalScenes: event.totalScenes,
+            })
+          )
         },
         onComplete: (data) => {
           script = data.script

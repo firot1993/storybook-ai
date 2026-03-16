@@ -1,6 +1,6 @@
 {
   "name": "storybook-ai",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "scripts": {
     "dev": "NODE_USE_ENV_PROXY=1 HTTP_PROXY=${HTTP_PROXY:-$http_proxy} HTTPS_PROXY=${HTTPS_PROXY:-$https_proxy} ALL_PROXY=${ALL_PROXY:-$all_proxy} next dev",

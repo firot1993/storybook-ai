@@ -13,7 +13,7 @@ Protagonist portraits (5 style variants) + Character record
   ↓
 3 companion suggestions → user picks / names companions
   ↓
-  ↓  generateCompanionCharacterCartoon() [Banana primary, Gemini IMAGE_MODEL fallback] (per companion)
+  ↓  generateCompanionCharacterCartoon() [IMAGE_MODEL] (per companion)
   ↓
 Storybook created (protagonist + companion entries saved)
   ↓
@@ -36,7 +36,7 @@ Story text + cover + NPC/supporting portraits + choices
 Director script + scene images (all-or-partial)
   ↓
   ├─ Images: use pre-generated from interleaved call
-  │          ↳ missing scenes only: generateSceneIllustration() [Banana primary, Gemini IMAGE_MODEL fallback]
+  │          ↳ missing scenes only: generateSceneIllustration() [IMAGE_MODEL]
   ├─ Audio:  TTS per line [Gemini TTS]
   ├─ Clips:  FFmpeg (image + audio → mp4)
   ├─ Concat: FFmpeg (merge clips)
@@ -109,8 +109,8 @@ No Character records are created yet — these are name suggestions only.
 → `POST /api/storybook`
 
 For each supporting character without an existing Character record (AI-suggested companions with `id: ""`):
-- Generates a cartoon portrait via `generateCompanionCharacterCartoon()` in `lib/banana-img.ts`
-- **Model:** Banana image generation (configured by `BANANA_MODEL_KEY`), with Gemini `IMAGE_MODEL` as fallback
+- Generates a cartoon portrait via `generateCompanionCharacterCartoon()` in `lib/image-generation.ts`
+- **Model:** `IMAGE_MODEL`
 - **Prompt:** `buildCompanionCharacterCartoonPrompt()` — the current call site passes the character name, a generic `"Friendly supporting companion in a children's story."` description, and the selected style prompt. The prompt builder still infers human/animal/fantasy presentation from name/description semantics.
 - Creates a Character record with `cartoonImage` and `styleImages: { [styleId]: dataUrl }` when generation succeeds
 - Links the new Character ID back to the StorybookCharacter entry
@@ -226,7 +226,7 @@ User picks scene count (3 / 5 / 7). The frontend sends this as equal `minLength`
 
 | Stage | What happens | Gemini? |
 |-------|-------------|---------|
-| **1. Images** | Use pre-generated images from Step 3. Only call `generateSceneIllustration()` for scenes missing an image. That image helper uses Banana first and falls back to Gemini `generateStoryImage()`. | Only for missing |
+| **1. Images** | Use pre-generated images from Step 3. Only call `generateSceneIllustration()` for scenes missing an image. That helper uses Gemini `generateStoryImage()` with scene prompts plus character references. | Only for missing |
 | **2. Audio** | Per-line TTS via Gemini for narration + dialogue, concatenated per scene via FFmpeg. Fallback: single TTS call for entire scene. | Yes (TTS) |
 | **3. Clips** | FFmpeg combines each scene's image + audio into an MP4 clip. | No |
 | **4. Concat** | FFmpeg merges all clips into `raw.mp4`. | No |
@@ -240,11 +240,11 @@ The play page polls `GET /api/story/{storyId}` every 3 seconds and reads the emb
 |---|----------|-------|------------|------|
 | 1 | `generateCharacterWithStyleRef` × 5 | IMAGE_MODEL | image | Storybook setup (parallel) |
 | 2 | `generateCompanionSuggestions` | TEXT_MODEL | text | Storybook setup |
-| 3 | `generateCompanionCharacterCartoon` | Banana primary, Gemini IMAGE_MODEL fallback | image | Storybook creation (per companion) |
+| 3 | `generateCompanionCharacterCartoon` | IMAGE_MODEL | image | Storybook creation (per companion) |
 | 4 | `generateSynopsisVersions` | TEXT_MODEL | text | Chapter creation |
 | 5 | `generateStoryWithAssets` | IMAGE_MODEL | text+image | Chapter creation |
 | 6 | `generateInterleavedDirectorScript` | IMAGE_MODEL | text+image | Video pipeline |
 | 7 | `generateStorybookDirectorScript` | TEXT_MODEL | text | Video pipeline (fallback for #6) |
-| 8 | `generateSceneIllustration` | Banana primary, Gemini IMAGE_MODEL fallback | image | Video Stage 1 for scenes missing a pre-generated image |
+| 8 | `generateSceneIllustration` | IMAGE_MODEL | image | Video Stage 1 for scenes missing a pre-generated image |
 | 9 | TTS calls | Gemini TTS | audio | Video Stage 2 |
 | 10 | `assignCharacterVoice` | TEXT_MODEL | text | Character voice setup |

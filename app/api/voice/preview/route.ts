@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveElevenLabsApiKey } from '@/lib/api-utils'
 import { GeminiTtsError, generateVoicePreviewAudioUrl } from '@/lib/gemini-tts'
 
 function getPreviewText(charName: string, locale?: string): string {
@@ -9,6 +10,7 @@ function getPreviewText(charName: string, locale?: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const elevenLabsApiKey = resolveElevenLabsApiKey(request)
   try {
     const { voiceName, name, locale } = await request.json()
     if (!voiceName) {
@@ -16,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
     const charName = typeof name === 'string' && name.trim() ? name.trim() : (locale === 'en' ? 'little one' : '小朋友')
     const text = getPreviewText(charName, locale)
-    const audioDataUrl = await generateVoicePreviewAudioUrl(voiceName, text)
+    const audioDataUrl = await generateVoicePreviewAudioUrl(voiceName, text, elevenLabsApiKey)
     return NextResponse.json({ audioDataUrl })
   } catch (error) {
     if (error instanceof GeminiTtsError) {

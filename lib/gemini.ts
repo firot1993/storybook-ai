@@ -5,10 +5,9 @@ import {
   buildCharacterWithStyleRefPrompt,
   buildChunkedInterleavedDirectorScriptPrompt,
   buildCompanionSuggestionsPrompt,
+  buildDirectorScriptPrompt,
   buildInterleavedDirectorScriptPrompt,
   buildReferenceImageLabel,
-  buildDirectorScriptPrompt,
-  buildProtagonistReferencePrompt,
   buildStoryImagePrompt,
   buildStoryWithAssetsPrompt,
   buildSynopsisVersionsPrompt,
@@ -130,6 +129,31 @@ export function getGeminiErrorResponse(error: unknown): { status: number; messag
   };
 }
 
+function isRetriableGeminiChunkError(error: unknown): boolean {
+  const geminiError = error as GeminiErrorShape;
+  const status = geminiError?.status;
+  const message = geminiError?.message ?? '';
+  const causeCode = geminiError?.cause?.code ?? '';
+  const causeMessage = geminiError?.cause?.message ?? '';
+  const combinedMessage = `${message} ${causeMessage}`.toLowerCase();
+
+  if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+
+  if (
+    causeCode === 'UND_ERR_CONNECT_TIMEOUT' ||
+    causeCode === 'UND_ERR_HEADERS_TIMEOUT' ||
+    combinedMessage.includes('connect timeout') ||
+    combinedMessage.includes('headers timeout') ||
+    combinedMessage.includes('fetch failed')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function extractImageData(response: GeminiImageResponse): string | undefined {
   for (const candidate of response.candidates ?? []) {
     for (const part of candidate.content?.parts ?? []) {
@@ -223,6 +247,91 @@ function safeParseJsonArray(raw: string): unknown[] {
   text = text.replace(/,\s*([}\]])/g, '$1')
   const parsed = JSON.parse(text)
   return Array.isArray(parsed) ? parsed : []
+}
+
+function repairJsonStringLiterals(raw: string): string {
+  const text = raw.replace(/\r\n/g, '\n')
+  let repaired = ''
+  let inString = false
+  let isEscaped = false
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i]
+
+    if (!inString) {
+      repaired += char
+      if (char === '"') inString = true
+      continue
+    }
+
+    if (isEscaped) {
+      repaired += char
+      isEscaped = false
+      continue
+    }
+
+    if (char === '\\') {
+      repaired += char
+      isEscaped = true
+      continue
+    }
+
+    if (char === '"') {
+      let nextIndex = i + 1
+      while (nextIndex < text.length && /\s/.test(text[nextIndex])) {
+        nextIndex += 1
+      }
+      const nextChar = text[nextIndex]
+      const looksLikeClosingQuote =
+        nextChar == null ||
+        nextChar === ':' ||
+        nextChar === ',' ||
+        nextChar === '}' ||
+        nextChar === ']'
+
+      if (looksLikeClosingQuote) {
+        repaired += char
+        inString = false
+      } else {
+        repaired += '\\"'
+      }
+      continue
+    }
+
+    if (char === '\n') {
+      repaired += '\\n'
+      continue
+    }
+    if (char === '\r') {
+      repaired += '\\r'
+      continue
+    }
+    if (char === '\t') {
+      repaired += '\\t'
+      continue
+    }
+
+    const code = char.charCodeAt(0)
+    if (code < 0x20) {
+      repaired += `\\u${code.toString(16).padStart(4, '0')}`
+      continue
+    }
+
+    repaired += char
+  }
+
+  return repaired
+}
+
+function parseJsonObjectWithRepairs<T>(raw: string): T {
+  const normalized = raw.replace(/,\s*([}\]])/g, '$1')
+
+  try {
+    return JSON.parse(normalized) as T
+  } catch {
+    const repaired = repairJsonStringLiterals(normalized).replace(/,\s*([}\]])/g, '$1')
+    return JSON.parse(repaired) as T
+  }
 }
 
 // ── Storybook v2: 三版梗概生成 ───────────────────────────────
@@ -336,11 +445,11 @@ export async function generateCompanionSuggestions(params: {
   }
 }
 
-// ── Storybook v2: 单次交错生成（故事 + 封面 + NPC立绘） ──────
+// ── Storybook v2: 单次交错生成（故事 + 封面 + 限量角色立绘） ──────
 
 /**
- * Single interleaved Gemini call that generates story text, cover image,
- * and NPC character portrait images all at once using
+ * Single interleaved Gemini call that generates story text, a cover image,
+ * and limited supporting/NPC portrait images in one pass using
  * `responseModalities: ['TEXT', 'IMAGE']`.
  */
 export async function generateStoryWithAssets(params: {
@@ -352,7 +461,8 @@ export async function generateStoryWithAssets(params: {
   styleDesc: string
   locale?: Locale
   theme?: string
-  characterImageBase64?: string
+  characterImagesBase64?: string[]
+  characterNames?: string[]
   protagonistPronoun?: string
   protagonistRole?: string
   needsSupportingCharacter?: boolean
@@ -384,7 +494,8 @@ export async function generateStoryWithAssets(params: {
     styleDesc,
     locale = 'zh',
     theme,
-    characterImageBase64,
+    characterImagesBase64 = [],
+    characterNames = [],
     protagonistPronoun,
     protagonistRole,
     needsSupportingCharacter,
@@ -397,7 +508,7 @@ export async function generateStoryWithAssets(params: {
   const genAI = getGeminiClient(apiKey)
   const debugTag = '[generateStoryWithAssets]'
   const styleLabel = styleDesc || 'dreamlike watercolor, macaron palette, warm soft light'
-  const hasCharacterImageRef = Boolean(characterImageBase64)
+  const hasCharacterImageRef = characterImagesBase64.length > 0
 
   const prompt = buildStoryWithAssetsPrompt({
     storyName,
@@ -409,6 +520,7 @@ export async function generateStoryWithAssets(params: {
     locale,
     theme,
     hasCharacterImageRef,
+    referenceCharacterNames: characterNames,
     protagonistPronoun,
     protagonistRole,
     needsSupportingCharacter,
@@ -429,19 +541,21 @@ export async function generateStoryWithAssets(params: {
     promptChars: prompt.length,
   })
 
-  // Build content parts: text prompt + optional protagonist reference image
+  // Build content parts: text prompt + optional labeled character reference images
   const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
     { text: prompt },
   ]
 
-  if (characterImageBase64) {
-    const isJpeg = characterImageBase64.startsWith('/9j/')
+  for (let index = 0; index < characterImagesBase64.length; index++) {
+    const imageBase64 = characterImagesBase64[index]
+    const name = characterNames[index]?.trim() || `Character ${index + 1}`
+    const isJpeg = imageBase64.startsWith('/9j/')
     parts.push({
-      text: buildProtagonistReferencePrompt(protagonistName),
+      text: buildReferenceImageLabel(name),
     })
     parts.push({
       inlineData: {
-        data: characterImageBase64,
+        data: imageBase64,
         mimeType: isJpeg ? 'image/jpeg' : 'image/png',
       },
     })
@@ -830,6 +944,179 @@ type RawSceneMeta = {
   endingFramePrompt: string
 }
 
+function decodeJsonLikeStringValue(raw: string): string {
+  let text = raw.trim()
+  if (text.startsWith('"')) text = text.slice(1)
+  if (text.endsWith('"')) text = text.slice(0, -1)
+
+  try {
+    return JSON.parse(repairJsonStringLiterals(`"${text}"`)) as string
+  } catch {
+    return text
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\r')
+      .replace(/\\t/g, '\t')
+      .replace(/\\\\/g, '\\')
+      .trim()
+  }
+}
+
+function findSceneMetaFieldChunk(raw: string, key: string, nextKeys: string[]): string | null {
+  const keyRegex = new RegExp(`"${key}"\\s*:`, 'i')
+  const keyMatch = keyRegex.exec(raw)
+  if (!keyMatch) return null
+
+  let valueStart = keyMatch.index + keyMatch[0].length
+  while (valueStart < raw.length && /\s/.test(raw[valueStart])) {
+    valueStart += 1
+  }
+
+  let valueEnd = raw.length
+  for (const nextKey of nextKeys) {
+    const nextRegex = new RegExp(`,\\s*"${nextKey}"\\s*:`, 'i')
+    const relativeIndex = raw.slice(valueStart).search(nextRegex)
+    if (relativeIndex < 0) continue
+    const absoluteIndex = valueStart + relativeIndex
+    if (absoluteIndex < valueEnd) valueEnd = absoluteIndex
+  }
+
+  if (nextKeys.length === 0) {
+    const lastBrace = raw.lastIndexOf('}')
+    if (lastBrace >= valueStart) valueEnd = lastBrace
+  }
+
+  return raw.slice(valueStart, valueEnd).trim().replace(/,\s*$/, '')
+}
+
+function parseSceneMetaStringArray(raw: string): string[] {
+  const normalized = raw.trim()
+  try {
+    const parsed = JSON.parse(repairJsonStringLiterals(normalized)) as unknown
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item).trim()).filter(Boolean)
+    }
+  } catch {
+    // Fall back to tolerant quoted-string extraction below.
+  }
+
+  const values = Array.from(normalized.matchAll(/"([^"]*)"/g))
+    .map((match) => decodeJsonLikeStringValue(match[0]))
+    .map((value) => value.trim())
+    .filter(Boolean)
+
+  if (values.length > 0) return values
+
+  return normalized
+    .replace(/^\[/, '')
+    .replace(/\]$/, '')
+    .split(/[、,，/|]/)
+    .map((value) => value.trim().replace(/^"+|"+$/g, ''))
+    .filter(Boolean)
+}
+
+function parseSceneMetaDialogue(raw: string): Array<{ speaker: string; text: string }> {
+  const normalized = raw.trim()
+  try {
+    const parsed = JSON.parse(repairJsonStringLiterals(normalized)) as unknown
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((entry) => {
+          if (!entry || typeof entry !== 'object') return null
+          const typed = entry as { speaker?: unknown; text?: unknown }
+          return {
+            speaker: typeof typed.speaker === 'string' ? typed.speaker.trim() : '',
+            text: typeof typed.text === 'string' ? typed.text.trim() : '',
+          }
+        })
+        .filter((entry): entry is { speaker: string; text: string } => Boolean(entry?.speaker || entry?.text))
+    }
+  } catch {
+    // Fall back to tolerant chunk parsing below.
+  }
+
+  const objectChunks = normalized.match(/\{[\s\S]*?\}/g) ?? []
+  const dialogues = objectChunks
+    .map((chunk) => {
+      const speakerChunk = findSceneMetaFieldChunk(chunk, 'speaker', ['text'])
+      const textChunk = findSceneMetaFieldChunk(chunk, 'text', [])
+      if (!speakerChunk && !textChunk) return null
+      return {
+        speaker: speakerChunk ? decodeJsonLikeStringValue(speakerChunk) : '',
+        text: textChunk ? decodeJsonLikeStringValue(textChunk) : '',
+      }
+    })
+    .filter((entry): entry is { speaker: string; text: string } => Boolean(entry?.speaker || entry?.text))
+
+  return dialogues
+}
+
+function parseLooseRawSceneMeta(raw: string): RawSceneMeta | null {
+  const fieldOrder = [
+    'index',
+    'sceneDescription',
+    'cameraDesign',
+    'animationAction',
+    'voiceOver',
+    'dialogue',
+    'charactersUsed',
+    'estimatedDuration',
+    'openingFramePrompt',
+    'midActionFramePrompt',
+    'endingFramePrompt',
+  ] as const
+
+  const nextKeysMap = new Map<string, string[]>(
+    fieldOrder.map((field, index) => [field, fieldOrder.slice(index + 1) as string[]])
+  )
+
+  const indexChunk = findSceneMetaFieldChunk(raw, 'index', nextKeysMap.get('index') ?? [])
+  const estimatedDurationChunk = findSceneMetaFieldChunk(raw, 'estimatedDuration', nextKeysMap.get('estimatedDuration') ?? [])
+  const sceneDescriptionChunk = findSceneMetaFieldChunk(raw, 'sceneDescription', nextKeysMap.get('sceneDescription') ?? [])
+  const cameraDesignChunk = findSceneMetaFieldChunk(raw, 'cameraDesign', nextKeysMap.get('cameraDesign') ?? [])
+  const animationActionChunk = findSceneMetaFieldChunk(raw, 'animationAction', nextKeysMap.get('animationAction') ?? [])
+  const voiceOverChunk = findSceneMetaFieldChunk(raw, 'voiceOver', nextKeysMap.get('voiceOver') ?? [])
+  const dialogueChunk = findSceneMetaFieldChunk(raw, 'dialogue', nextKeysMap.get('dialogue') ?? [])
+  const charactersUsedChunk = findSceneMetaFieldChunk(raw, 'charactersUsed', nextKeysMap.get('charactersUsed') ?? [])
+  const openingFramePromptChunk = findSceneMetaFieldChunk(raw, 'openingFramePrompt', nextKeysMap.get('openingFramePrompt') ?? [])
+  const midActionFramePromptChunk = findSceneMetaFieldChunk(raw, 'midActionFramePrompt', nextKeysMap.get('midActionFramePrompt') ?? [])
+  const endingFramePromptChunk = findSceneMetaFieldChunk(raw, 'endingFramePrompt', [])
+
+  if (
+    !indexChunk ||
+    !sceneDescriptionChunk ||
+    !cameraDesignChunk ||
+    !animationActionChunk ||
+    !voiceOverChunk ||
+    !dialogueChunk ||
+    !charactersUsedChunk ||
+    !estimatedDurationChunk ||
+    !openingFramePromptChunk ||
+    !midActionFramePromptChunk ||
+    !endingFramePromptChunk
+  ) {
+    return null
+  }
+
+  const indexMatch = indexChunk.match(/-?\d+/)
+  const durationMatch = estimatedDurationChunk.match(/-?\d+/)
+  if (!indexMatch || !durationMatch) return null
+
+  return {
+    index: Number.parseInt(indexMatch[0], 10),
+    sceneDescription: decodeJsonLikeStringValue(sceneDescriptionChunk),
+    cameraDesign: decodeJsonLikeStringValue(cameraDesignChunk),
+    animationAction: decodeJsonLikeStringValue(animationActionChunk),
+    voiceOver: decodeJsonLikeStringValue(voiceOverChunk),
+    dialogue: parseSceneMetaDialogue(dialogueChunk),
+    charactersUsed: parseSceneMetaStringArray(charactersUsedChunk),
+    estimatedDuration: Number.parseInt(durationMatch[0], 10),
+    openingFramePrompt: decodeJsonLikeStringValue(openingFramePromptChunk),
+    midActionFramePrompt: decodeJsonLikeStringValue(midActionFramePromptChunk),
+    endingFramePrompt: decodeJsonLikeStringValue(endingFramePromptChunk),
+  }
+}
+
 /**
  * Parse SCENE_META markers and images from Gemini interleaved response parts.
  * The `globalSceneOffset` shifts local scene indices so images map to correct
@@ -909,9 +1196,20 @@ async function parseInterleavedResponseParts(
         .replace(/,\s*([}\]])/g, '$1')
 
       try {
-        sceneMetaList.push(JSON.parse(jsonText) as RawSceneMeta)
+        sceneMetaList.push(parseJsonObjectWithRepairs<RawSceneMeta>(jsonText))
       } catch (e) {
-        console.warn(`${debugTag} Failed to parse SCENE_META:`, e)
+        const fallback = parseLooseRawSceneMeta(jsonText)
+        if (fallback) {
+          console.warn(`${debugTag} Parsed SCENE_META via tolerant fallback after JSON parse failure`)
+          sceneMetaList.push(fallback)
+        } else {
+          console.warn(
+            `${debugTag} Failed to parse SCENE_META:`,
+            e,
+            '\nRaw excerpt:',
+            jsonText.slice(0, 1200)
+          )
+        }
       }
 
       tokenRegex.lastIndex = jsonEnd + 1
@@ -978,13 +1276,112 @@ async function parseInterleavedResponseParts(
   return { sceneMetaList, sceneImages }
 }
 
+function buildExpectedSceneNumbers(startSceneIndex: number, endSceneIndex: number): number[] {
+  return Array.from(
+    { length: Math.max(0, endSceneIndex - startSceneIndex) },
+    (_, offset) => startSceneIndex + offset + 1
+  )
+}
+
+function normalizeSceneFingerprintText(raw: string | undefined): string {
+  return (raw ?? '')
+    .toLowerCase()
+    .replace(/\[[^\]]*]/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function buildSceneMetaFingerprint(scene: RawSceneMeta): string {
+  const dialogueText = (scene.dialogue ?? [])
+    .map((line) => `${line.speaker}: ${line.text}`)
+    .join(' ')
+
+  return [
+    scene.sceneDescription,
+    scene.voiceOver,
+    dialogueText,
+    scene.animationAction,
+  ]
+    .map(normalizeSceneFingerprintText)
+    .join(' | ')
+}
+
+function validateSceneMetaSequence(
+  sceneMetaList: RawSceneMeta[],
+  options: {
+    expectedSceneNumbers: number[]
+    label: string
+    debugTag: string
+  }
+): { ok: true } | { ok: false; reason: string } {
+  const { expectedSceneNumbers, label, debugTag } = options
+
+  if (sceneMetaList.length !== expectedSceneNumbers.length) {
+    return {
+      ok: false,
+      reason:
+        `${debugTag} ${label} returned ${sceneMetaList.length} scenes; ` +
+        `expected ${expectedSceneNumbers.length}.`,
+    }
+  }
+
+  const seenIndices = new Set<number>()
+  let previousFingerprint = ''
+  let previousSceneNumber: number | null = null
+
+  for (let order = 0; order < sceneMetaList.length; order++) {
+    const scene = sceneMetaList[order]
+    const expectedSceneNumber = expectedSceneNumbers[order]
+    const actualSceneNumber = Number(scene.index)
+
+    if (!Number.isInteger(actualSceneNumber)) {
+      return {
+        ok: false,
+        reason: `${debugTag} ${label} returned a non-integer scene index at position ${order + 1}.`,
+      }
+    }
+
+    if (seenIndices.has(actualSceneNumber)) {
+      return {
+        ok: false,
+        reason: `${debugTag} ${label} returned duplicate scene index ${actualSceneNumber}.`,
+      }
+    }
+    seenIndices.add(actualSceneNumber)
+
+    if (actualSceneNumber !== expectedSceneNumber) {
+      return {
+        ok: false,
+        reason:
+          `${debugTag} ${label} returned scene ${actualSceneNumber} at position ${order + 1}; ` +
+          `expected scene ${expectedSceneNumber}.`,
+      }
+    }
+
+    const fingerprint = buildSceneMetaFingerprint(scene)
+    if (previousFingerprint && fingerprint === previousFingerprint) {
+      return {
+        ok: false,
+        reason:
+          `${debugTag} ${label} returned duplicate adjacent scenes ` +
+          `${previousSceneNumber} and ${actualSceneNumber}.`,
+      }
+    }
+
+    previousFingerprint = fingerprint
+    previousSceneNumber = actualSceneNumber
+  }
+
+  return { ok: true }
+}
+
 /**
  * Enrich raw scene metadata into DirectorStoryboardScene with character normalization.
  */
 function enrichSceneMeta(
   sceneMetaList: RawSceneMeta[],
   canonicalByKey: Map<string, string>,
-  detailsByKey: Map<string, string>,
   locale: string
 ): import('@/types').DirectorStoryboardScene[] {
   const normalizeName = (name: string) => name.replace(/\s+/g, '').toLowerCase()
@@ -1016,12 +1413,7 @@ function enrichSceneMeta(
     const withCharacters = (promptText: string | undefined) => {
       const base = (promptText ?? '').trim()
       if (usedList.length === 0) return base
-      const label = usedList
-        .map((name) => {
-          const detail = detailsByKey.get(normalizeName(name))
-          return detail ? `${name}(${detail})` : name
-        })
-        .join(', ')
+      const label = usedList.join(', ')
       const lc = base.toLowerCase()
       if (lc.includes('must include all characters') || lc.includes('characters in this frame')) {
         return base
@@ -1108,7 +1500,6 @@ export async function generateInterleavedDirectorScript(params: {
   // Build character name normalization maps
   const normalizeName = (name: string) => name.replace(/\s+/g, '').toLowerCase()
   const canonicalByKey = new Map<string, string>()
-  const detailsByKey = new Map<string, string>()
   for (const rawName of characterPool) {
     const trimmed = rawName.trim()
     if (!trimmed) continue
@@ -1120,21 +1511,11 @@ export async function generateInterleavedDirectorScript(params: {
     if (!name) continue
     const key = normalizeName(name)
     if (!canonicalByKey.has(key)) canonicalByKey.set(key, name)
-    const description = profile.description?.trim() || ''
-    if (description && !detailsByKey.has(key)) {
-      detailsByKey.set(key, description.slice(0, 120))
-    }
   }
   if (!canonicalByKey.has(normalizeName(protagonistName))) {
     canonicalByKey.set(normalizeName(protagonistName), protagonistName)
   }
   const characterPoolText = Array.from(canonicalByKey.values()).join(', ')
-  const characterProfileText = Array.from(canonicalByKey.entries())
-    .map(([key, name]) => {
-      const detail = detailsByKey.get(key)
-      return detail ? `${name}: ${detail}` : name
-    })
-    .join('\n')
 
   // Build character reference image parts (shared across all chunks)
   const charRefParts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = []
@@ -1167,7 +1548,6 @@ export async function generateInterleavedDirectorScript(params: {
       styleDesc,
       locale,
       characterPoolText,
-      characterProfileText,
       sceneCount,
       protagonistPronoun,
       protagonistRole,
@@ -1198,6 +1578,11 @@ export async function generateInterleavedDirectorScript(params: {
     })
 
     const { sceneMetaList, sceneImages } = await parseInterleavedResponseParts(responseParts, 0, debugTag)
+    const singleChunkValidation = validateSceneMetaSequence(sceneMetaList, {
+      expectedSceneNumbers: buildExpectedSceneNumbers(0, sceneCount),
+      label: 'single chunk',
+      debugTag,
+    })
 
     const sceneImageCounts = Array.from(sceneImages.entries())
       .map(([idx, frames]) => `scene ${idx}: ${frames.length}`)
@@ -1212,8 +1597,11 @@ export async function generateInterleavedDirectorScript(params: {
     if (sceneMetaList.length === 0) {
       throw new Error('Interleaved director script returned no scene metadata')
     }
+    if (!singleChunkValidation.ok) {
+      throw new Error(singleChunkValidation.reason)
+    }
 
-    const scenes = enrichSceneMeta(sceneMetaList, canonicalByKey, detailsByKey, locale)
+    const scenes = enrichSceneMeta(sceneMetaList, canonicalByKey, locale)
     onProgress?.({
       chunkIndex: 0,
       totalChunks: 1,
@@ -1224,9 +1612,7 @@ export async function generateInterleavedDirectorScript(params: {
   }
 
   // Check if we can run in parallel mode (scene texts + contexts provided and aligned)
-  const canRunParallel = sceneTexts && inputSceneContexts
-    && sceneTexts.length === sceneCount
-    && inputSceneContexts.length === sceneCount
+  const canRunParallel = sceneTexts && sceneTexts.length === sceneCount
 
   if (canRunParallel) {
     // Parallel multi-chunk: all chunks run concurrently via Promise.all
@@ -1242,6 +1628,7 @@ export async function generateInterleavedDirectorScript(params: {
       scenesGenerated: 0,
       totalScenes: sceneCount,
     })
+    const completedChunkSceneCounts = new Map<number, number>()
 
     const generateChunk = async (chunkIdx: number): Promise<{
       meta: RawSceneMeta[]
@@ -1249,6 +1636,18 @@ export async function generateInterleavedDirectorScript(params: {
     }> => {
       const startSceneIndex = chunkIdx * chunkSize
       const endSceneIndex = Math.min(startSceneIndex + chunkSize, sceneCount)
+      const chunkSceneInputs = Array.from(
+        { length: endSceneIndex - startSceneIndex },
+        (_, offset) => {
+          const sceneIndex = startSceneIndex + offset
+          return {
+            globalSceneNumber: sceneIndex + 1,
+            sceneText: sceneTexts![sceneIndex],
+            sceneContext: inputSceneContexts?.[sceneIndex],
+          }
+        }
+      )
+      const expectedSceneNumbers = chunkSceneInputs.map((input) => input.globalSceneNumber)
 
       const chunkPrompt = buildChunkedInterleavedDirectorScriptPrompt({
         storyName,
@@ -1259,15 +1658,13 @@ export async function generateInterleavedDirectorScript(params: {
         styleDesc,
         locale,
         characterPoolText,
-        characterProfileText,
         sceneCount: endSceneIndex - startSceneIndex,
         protagonistPronoun,
         protagonistRole,
         startSceneIndex,
         endSceneIndex,
         totalScenes: sceneCount,
-        sceneText: sceneTexts!.slice(startSceneIndex, endSceneIndex).join('\n\n'),
-        sceneContext: inputSceneContexts![startSceneIndex],
+        sceneInputs: chunkSceneInputs,
       })
 
       console.log(`${debugTag} Parallel chunk ${chunkIdx + 1}/${totalChunks}`, {
@@ -1281,42 +1678,68 @@ export async function generateInterleavedDirectorScript(params: {
       ]
 
       const MAX_CHUNK_RETRIES = 2
+      let lastChunkFailure = `${debugTag} Parallel chunk ${chunkIdx + 1}/${totalChunks} returned no scene metadata`
       for (let attempt = 0; attempt <= MAX_CHUNK_RETRIES; attempt++) {
         if (attempt > 0) {
           console.log(`${debugTag} Retrying parallel chunk ${chunkIdx + 1}/${totalChunks} (attempt ${attempt + 1})`)
         }
 
-        const response = (await genAI.models.generateContent({
-          model: IMAGE_MODEL,
-          contents: [{ role: 'user', parts }],
-          config: { responseModalities: ['TEXT', 'IMAGE'] },
-        })) as GeminiImageResponse
+        try {
+          const response = (await genAI.models.generateContent({
+            model: IMAGE_MODEL,
+            contents: [{ role: 'user', parts }],
+            config: { responseModalities: ['TEXT', 'IMAGE'] },
+          })) as GeminiImageResponse
 
-        const responseParts = response.candidates?.[0]?.content?.parts ?? []
-        console.log(`${debugTag} Parallel chunk ${chunkIdx + 1} response`, {
-          totalParts: responseParts.length,
-          textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
-          imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
-          attempt: attempt + 1,
-        })
-
-        const globalOffset = startSceneIndex
-        const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
-
-        if (parsed.sceneMetaList.length > 0) {
-          onProgress?.({
-            chunkIndex: chunkIdx,
-            totalChunks,
-            scenesGenerated: parsed.sceneMetaList.length,
-            totalScenes: sceneCount,
+          const responseParts = response.candidates?.[0]?.content?.parts ?? []
+          console.log(`${debugTag} Parallel chunk ${chunkIdx + 1} response`, {
+            totalParts: responseParts.length,
+            textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
+            imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
+            attempt: attempt + 1,
           })
-          return { meta: parsed.sceneMetaList, images: parsed.sceneImages }
-        }
 
-        console.warn(`${debugTag} Parallel chunk ${chunkIdx + 1} returned no scene metadata${attempt < MAX_CHUNK_RETRIES ? ', retrying...' : ''}`)
+          const globalOffset = startSceneIndex
+          const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
+
+          if (parsed.sceneMetaList.length > 0) {
+            const validation = validateSceneMetaSequence(parsed.sceneMetaList, {
+              expectedSceneNumbers,
+              label: `parallel chunk ${chunkIdx + 1}/${totalChunks}`,
+              debugTag,
+            })
+            if (!validation.ok) {
+              lastChunkFailure = validation.reason
+              console.warn(validation.reason)
+              continue
+            }
+
+            completedChunkSceneCounts.set(chunkIdx, parsed.sceneMetaList.length)
+            onProgress?.({
+              chunkIndex: chunkIdx,
+              totalChunks,
+              scenesGenerated: Array.from(completedChunkSceneCounts.values()).reduce((sum, count) => sum + count, 0),
+              totalScenes: sceneCount,
+            })
+            return { meta: parsed.sceneMetaList, images: parsed.sceneImages }
+          }
+
+          lastChunkFailure = `${debugTag} Parallel chunk ${chunkIdx + 1}/${totalChunks} returned no scene metadata`
+          console.warn(`${debugTag} Parallel chunk ${chunkIdx + 1} returned no scene metadata${attempt < MAX_CHUNK_RETRIES ? ', retrying...' : ''}`)
+        } catch (error) {
+          const retryable = isRetriableGeminiChunkError(error)
+          if (retryable && attempt < MAX_CHUNK_RETRIES) {
+            console.warn(
+              `${debugTag} Parallel chunk ${chunkIdx + 1} request failed with retryable error, retrying...`,
+              error
+            )
+            continue
+          }
+          throw error
+        }
       }
 
-      return { meta: [], images: new Map() }
+      throw new Error(lastChunkFailure)
     }
 
     const chunkResults = await Promise.all(
@@ -1346,8 +1769,16 @@ export async function generateInterleavedDirectorScript(params: {
     if (allSceneMetaList.length === 0) {
       throw new Error('Interleaved director script returned no scene metadata across all parallel chunks')
     }
+    const allScenesValidation = validateSceneMetaSequence(allSceneMetaList, {
+      expectedSceneNumbers: buildExpectedSceneNumbers(0, sceneCount),
+      label: 'all parallel chunks',
+      debugTag,
+    })
+    if (!allScenesValidation.ok) {
+      throw new Error(allScenesValidation.reason)
+    }
 
-    const scenes = enrichSceneMeta(allSceneMetaList, canonicalByKey, detailsByKey, locale)
+    const scenes = enrichSceneMeta(allSceneMetaList, canonicalByKey, locale)
     return { scenes, sceneImages: allSceneImages }
   }
 
@@ -1372,6 +1803,7 @@ export async function generateInterleavedDirectorScript(params: {
   for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
     const startSceneIndex = chunkIdx * chunkSize
     const endSceneIndex = Math.min(startSceneIndex + chunkSize, sceneCount)
+    const expectedSceneNumbers = buildExpectedSceneNumbers(startSceneIndex, endSceneIndex)
 
     const chunkPrompt = buildChunkedInterleavedDirectorScriptPrompt({
       storyName,
@@ -1382,7 +1814,6 @@ export async function generateInterleavedDirectorScript(params: {
       styleDesc,
       locale,
       characterPoolText,
-      characterProfileText,
       sceneCount: endSceneIndex - startSceneIndex,
       protagonistPronoun,
       protagonistRole,
@@ -1406,34 +1837,64 @@ export async function generateInterleavedDirectorScript(params: {
     const MAX_CHUNK_RETRIES = 2
     let chunkMeta: RawSceneMeta[] = []
     let chunkImages = new Map<number, Array<{ data: string; mimeType: string }>>()
+    let lastChunkFailure = `${debugTag} Chunk ${chunkIdx + 1}/${totalChunks} returned no scene metadata`
 
     for (let attempt = 0; attempt <= MAX_CHUNK_RETRIES; attempt++) {
       if (attempt > 0) {
         console.log(`${debugTag} Retrying chunk ${chunkIdx + 1}/${totalChunks} (attempt ${attempt + 1})`)
       }
 
-      const response = (await genAI.models.generateContent({
-        model: IMAGE_MODEL,
-        contents: [{ role: 'user', parts }],
-        config: { responseModalities: ['TEXT', 'IMAGE'] },
-      })) as GeminiImageResponse
+      try {
+        const response = (await genAI.models.generateContent({
+          model: IMAGE_MODEL,
+          contents: [{ role: 'user', parts }],
+          config: { responseModalities: ['TEXT', 'IMAGE'] },
+        })) as GeminiImageResponse
 
-      const responseParts = response.candidates?.[0]?.content?.parts ?? []
-      console.log(`${debugTag} Chunk ${chunkIdx + 1} response`, {
-        totalParts: responseParts.length,
-        textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
-        imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
-        attempt: attempt + 1,
-      })
+        const responseParts = response.candidates?.[0]?.content?.parts ?? []
+        console.log(`${debugTag} Chunk ${chunkIdx + 1} response`, {
+          totalParts: responseParts.length,
+          textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
+          imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
+          attempt: attempt + 1,
+        })
 
-      const globalOffset = allSceneMetaList.length
-      const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
-      chunkMeta = parsed.sceneMetaList
-      chunkImages = parsed.sceneImages
+        const globalOffset = allSceneMetaList.length
+        const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
+        chunkMeta = parsed.sceneMetaList
+        chunkImages = parsed.sceneImages
 
-      if (chunkMeta.length > 0) break
+        if (chunkMeta.length > 0) {
+          const validation = validateSceneMetaSequence(chunkMeta, {
+            expectedSceneNumbers,
+            label: `sequential chunk ${chunkIdx + 1}/${totalChunks}`,
+            debugTag,
+          })
+          if (validation.ok) break
+          lastChunkFailure = validation.reason
+          console.warn(validation.reason)
+          chunkMeta = []
+          chunkImages = new Map()
+          continue
+        }
 
-      console.warn(`${debugTag} Chunk ${chunkIdx + 1} returned no scene metadata${attempt < MAX_CHUNK_RETRIES ? ', retrying...' : ''}`)
+        lastChunkFailure = `${debugTag} Chunk ${chunkIdx + 1}/${totalChunks} returned no scene metadata`
+        console.warn(`${debugTag} Chunk ${chunkIdx + 1} returned no scene metadata${attempt < MAX_CHUNK_RETRIES ? ', retrying...' : ''}`)
+      } catch (error) {
+        const retryable = isRetriableGeminiChunkError(error)
+        if (retryable && attempt < MAX_CHUNK_RETRIES) {
+          console.warn(
+            `${debugTag} Chunk ${chunkIdx + 1} request failed with retryable error, retrying...`,
+            error
+          )
+          continue
+        }
+        throw error
+      }
+    }
+
+    if (chunkMeta.length === 0) {
+      throw new Error(lastChunkFailure)
     }
 
     // Merge results
@@ -1470,8 +1931,16 @@ export async function generateInterleavedDirectorScript(params: {
   if (allSceneMetaList.length === 0) {
     throw new Error('Interleaved director script returned no scene metadata across all chunks')
   }
+  const allScenesValidation = validateSceneMetaSequence(allSceneMetaList, {
+    expectedSceneNumbers: buildExpectedSceneNumbers(0, sceneCount),
+    label: 'all sequential chunks',
+    debugTag,
+  })
+  if (!allScenesValidation.ok) {
+    throw new Error(allScenesValidation.reason)
+  }
 
-  const scenes = enrichSceneMeta(allSceneMetaList, canonicalByKey, detailsByKey, locale)
+  const scenes = enrichSceneMeta(allSceneMetaList, canonicalByKey, locale)
   return { scenes, sceneImages: allSceneImages }
 }
 

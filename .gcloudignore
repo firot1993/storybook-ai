@@ -1,0 +1,39 @@
+# Keep Cloud Build source uploads explicit instead of inheriting .gitignore.
+.gcloudignore
+.git
+.gitignore
+
+# Local environment and generated output
+.env*
+node_modules
+.next
+coverage
+build
+out
+.pnp
+.pnp.js
+
+# Local platform state
+.DS_Store
+*.pem
+*.log
+.firebase
+.vercel
+
+# Local docs and agent instructions not needed for the container build
+README.md
+ARCHITECTURE.md
+GEMINI.md
+MODIFICATION_PLAN.md
+AGENTS.md
+
+# Local Prisma dev database
+prisma/dev.db
+prisma/dev.db-journal
+
+# Generated TypeScript metadata
+*.tsbuildinfo
+next-env.d.ts
+
+# Local scratch path
+image-file

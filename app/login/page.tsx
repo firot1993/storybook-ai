@@ -9,7 +9,8 @@ export default function LoginPage() {
   const { t } = useLanguage()
   const [tab, setTab] = useState<AuthTab>('invite')
   const [code, setCode] = useState('')
-  const [apiKey, setApiKey] = useState('')
+  const [geminiApiKey, setGeminiApiKey] = useState('')
+  const [elevenLabsApiKey, setElevenLabsApiKey] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -46,7 +47,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/byok', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey }),
+        body: JSON.stringify({ geminiApiKey, elevenLabsApiKey }),
       })
 
       if (res.ok) {
@@ -119,11 +120,18 @@ export default function LoginPage() {
           <form onSubmit={handleByokSubmit} className="space-y-4">
             <input
               type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder={t('login.apiKeyPlaceholder')}
+              value={geminiApiKey}
+              onChange={(e) => setGeminiApiKey(e.target.value)}
+              placeholder={t('login.geminiApiKeyPlaceholder')}
               className="input text-center"
               autoFocus
+            />
+            <input
+              type="password"
+              value={elevenLabsApiKey}
+              onChange={(e) => setElevenLabsApiKey(e.target.value)}
+              placeholder={t('login.elevenLabsApiKeyPlaceholder')}
+              className="input text-center"
             />
             <p className="text-xs text-gray-400">
               {t('login.byokHelp')}
@@ -133,7 +141,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading || !apiKey.trim()}
+              disabled={loading || !geminiApiKey.trim() || !elevenLabsApiKey.trim()}
               className="btn-primary w-full disabled:opacity-50"
             >
               {loading ? t('login.validating') : t('login.connect')}

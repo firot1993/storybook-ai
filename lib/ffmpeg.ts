@@ -244,14 +244,28 @@ export function splitNarrationIntoLines(narration: string, maxChars = 60): strin
   return lines.length > 0 ? lines : [trimmed]
 }
 
+function stripElevenV3ControlTags(text: string): string {
+  return text
+    .replace(/\s*\[[A-Za-z][A-Za-z' -]{0,40}\]\s*/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
 /**
  * Build the per-line script for a scene: narration split into subtitle-
  * friendly chunks, followed by dialogue lines.
  */
-export function buildSceneLines(scene: ScriptScene): string[] {
+export function buildSceneLines(
+  scene: ScriptScene,
+  options: { stripVoiceControlTags?: boolean } = {}
+): string[] {
+  const normalizeLine = (line: string) =>
+    options.stripVoiceControlTags ? stripElevenV3ControlTags(line) : line
+
   return [
-    ...splitNarrationIntoLines(scene.narration),
-    ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`),
+    ...splitNarrationIntoLines(scene.narration).map(normalizeLine),
+    ...scene.dialogue.map((d) => `${d.speaker}: ${d.text}`).map(normalizeLine),
   ].filter(Boolean)
 }
 
@@ -534,7 +548,7 @@ export function buildSubtitleCues(
     const scene = scenes[i]
     const totalMs = sceneDurationsMs[i] ?? scene.estimatedDuration * 1000
 
-    const lines = buildSceneLines(scene)
+    const lines = buildSceneLines(scene, { stripVoiceControlTags: true })
 
     if (lines.length === 0) {
       timeMs += totalMs
@@ -571,7 +585,7 @@ export function buildSubtitleCuesV2(
 
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i]
-    const lines = buildSceneLines(scene)
+    const lines = buildSceneLines(scene, { stripVoiceControlTags: true })
 
     if (lines.length === 0) {
       timeMs += sceneDurationsMsFallback[i] ?? scene.estimatedDuration * 1000

@@ -1,7 +1,8 @@
 import fs from 'fs/promises'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveElevenLabsApiKey } from '@/lib/api-utils'
 import { createVideoProject, getScript, updateVideoProject } from '@/lib/db'
-import { generateSceneIllustration } from '@/lib/banana-img'
+import { generateSceneIllustration } from '@/lib/image-generation'
 import { generateSceneLineNarrationAudioUrlsV2, generateSceneNarrationAudioUrl } from '@/lib/gemini-tts'
 import {
   buildSceneLines,
@@ -178,6 +179,7 @@ function buildImagePromptWithCharacterGuard(
 
 // POST /api/video/start — Start async video production pipeline
 export async function POST(request: NextRequest) {
+  const elevenLabsApiKey = resolveElevenLabsApiKey(request)
   try {
     const { scriptId, storyId, videoSettings } = await request.json()
 
@@ -195,7 +197,7 @@ export async function POST(request: NextRequest) {
     const { imagesBase64, names, descriptions } = await resolveStoryCharacterReferences(storyId)
 
     // Fire-and-forget: run pipeline in background
-    runPipeline(project.id, scriptId, script.scenes, settings, imagesBase64, names, descriptions).catch((err) => {
+    runPipeline(project.id, scriptId, script.scenes, settings, imagesBase64, names, descriptions, elevenLabsApiKey).catch((err) => {
       console.error(`[Video Pipeline] Project ${project.id} crashed:`, err)
     })
 
@@ -217,7 +219,8 @@ async function runPipeline(
   settings: VideoSettings,
   characterImagesBase64: string[],
   characterNames: string[],
-  characterDescriptions: string[]
+  characterDescriptions: string[],
+  elevenLabsApiKey?: string
 ): Promise<void> {
   const base = `videos/${projectId}`
   const clipPaths: string[] = []
@@ -356,7 +359,7 @@ async function runPipeline(
 
       try {
         // V2: generate per-line audio then concatenate into scene audio.
-        const lineAudioDataUrls = await generateSceneLineNarrationAudioUrlsV2(sceneLines)
+        const lineAudioDataUrls = await generateSceneLineNarrationAudioUrlsV2(sceneLines, elevenLabsApiKey)
         const lineLocalPaths: string[] = []
         const lineDurationsMs: number[] = []
 
@@ -388,7 +391,7 @@ async function runPipeline(
       } catch (err) {
         console.warn(`[Pipeline] Scene ${i} V2 audio failed, fallback to legacy scene TTS:`, err)
         try {
-          const audioDataUrl = await generateSceneNarrationAudioUrl(sceneText)
+          const audioDataUrl = await generateSceneNarrationAudioUrl(sceneText, elevenLabsApiKey)
           const b64 = audioDataUrl.split('base64,')[1]
           const relPath = `${base}/scene-${i}.wav`
           await saveFile(Buffer.from(b64, 'base64'), relPath)
