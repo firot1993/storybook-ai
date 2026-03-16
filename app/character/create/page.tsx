@@ -95,7 +95,7 @@ export default function CharacterCreatePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageBase64: photoBase64,
-          styleId: STYLES[0].id,
+          styleId: activeStyleId,
           name: name.trim(),
           ...(ageNum ? { age: ageNum } : {}),
         }),
@@ -104,8 +104,11 @@ export default function CharacterCreatePage() {
         const data = await res.json()
         const char: Character = data.character
         setCharacter(char)
-        const first = STYLES.find((s) => char.styleImages?.[s.id]) ?? STYLES[0]
-        setActiveStyleId(first.id)
+        const initialStyle =
+          STYLES.find((s) => s.id === char.style && char.styleImages?.[s.id]) ??
+          STYLES.find((s) => char.styleImages?.[s.id]) ??
+          STYLES[0]
+        setActiveStyleId(initialStyle.id)
         localStorage.setItem('currentCharacter', JSON.stringify(char))
         if (char.voiceName) setVoiceName(char.voiceName)
       } else {
@@ -124,10 +127,16 @@ export default function CharacterCreatePage() {
     setAssigningVoice(true)
     try {
       const ageNum = age ? parseInt(age, 10) : null
+      const activeImage = character.styleImages?.[activeStyleId] ?? character.cartoonImage
       await fetch(`/api/character/${character.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim() || character.name, ...(ageNum !== null ? { age: ageNum } : {}) }),
+        body: JSON.stringify({
+          name: name.trim() || character.name,
+          ...(ageNum !== null ? { age: ageNum } : {}),
+          style: activeStyleId,
+          cartoonImage: activeImage,
+        }),
       })
       const res = await fetch(`/api/character/${character.id}`, {
         method: 'PATCH',
@@ -137,7 +146,12 @@ export default function CharacterCreatePage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || t('characterCreate.errors.voiceFailed'))
       setVoiceName(data.voiceName); setVoiceReason(data.reason || '')
-      const updated = { ...character, voiceName: data.voiceName }
+      const updated = {
+        ...character,
+        voiceName: data.voiceName,
+        style: activeStyleId,
+        cartoonImage: activeImage,
+      }
       setCharacter(updated); localStorage.setItem('currentCharacter', JSON.stringify(updated))
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('characterCreate.errors.voiceFailed'), 'error')
@@ -194,6 +208,8 @@ export default function CharacterCreatePage() {
           name: name.trim(),
           ...(ageNum !== null ? { age: ageNum } : {}),
           ...(voiceName ? { voiceName } : {}),
+          style: activeStyleId,
+          cartoonImage: activeImage,
           pronoun: resolvedPronoun,
           role: characterRole.trim(),
         }),
@@ -231,7 +247,7 @@ export default function CharacterCreatePage() {
                   const isActive = activeStyleId === s.id
                   return (
                     <button key={s.id} type="button"
-                      onClick={() => { if (hasGenerated) setActiveStyleId(s.id) }}
+                      onClick={() => setActiveStyleId(s.id)}
                       className={`relative flex flex-col items-center rounded-xl overflow-hidden border-2 transition-all ${
                         isActive ? 'border-forest-500 shadow ring-2 ring-forest-200 scale-105' : 'border-transparent hover:border-forest-200'
                       } ${!hasGenerated && character ? 'opacity-40' : ''}`}

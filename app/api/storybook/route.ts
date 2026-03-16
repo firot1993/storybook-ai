@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCharacter, createStorybook, getCharacter, listStorybooks } from '@/lib/db'
-import { generateCompanionCharacterCartoon } from '@/lib/banana-img'
+import { generateCompanionCharacterCartoon } from '@/lib/image-generation'
 import { saveImageFromBase64 } from '@/lib/storage'
 import { getStyleById } from '@/lib/styles'
 import type { StorybookCharacter } from '@/types'

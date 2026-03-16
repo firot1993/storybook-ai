@@ -33,7 +33,15 @@ export async function createCharacter(data: {
 
 export async function updateCharacter(
   id: string,
-  data: { name?: string; age?: number | null; voiceName?: string; pronoun?: string; role?: string }
+  data: {
+    name?: string
+    age?: number | null
+    voiceName?: string
+    pronoun?: string
+    role?: string
+    style?: string
+    cartoonImage?: string
+  }
 ) {
   return prisma.character.update({ where: { id }, data })
 }

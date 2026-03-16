@@ -550,18 +550,6 @@ if ! is_placeholder_value "$ELEVENLABS_API_KEY_VALUE"; then
   echo "  Stored elevenlabs-api-key."
 fi
 
-BANANA_API_KEY_VALUE="$(resolve_value BANANA_API_KEY)"
-if ! is_placeholder_value "$BANANA_API_KEY_VALUE"; then
-  upsert_secret banana-api-key "$BANANA_API_KEY_VALUE" >/dev/null
-  echo "  Stored banana-api-key."
-fi
-
-BANANA_MODEL_KEY_VALUE="$(resolve_value BANANA_MODEL_KEY)"
-if ! is_placeholder_value "$BANANA_MODEL_KEY_VALUE"; then
-  upsert_secret banana-model-key "$BANANA_MODEL_KEY_VALUE" >/dev/null
-  echo "  Stored banana-model-key."
-fi
-
 INVITE_CODE_VALUE="$(resolve_value INVITE_CODE)"
 if ! is_placeholder_value "$INVITE_CODE_VALUE"; then
   upsert_secret invite-code "$INVITE_CODE_VALUE" >/dev/null
@@ -586,7 +574,6 @@ for key in \
   ELEVENLABS_SPEED \
   ELEVENLABS_STABILITY \
   ELEVENLABS_STYLE \
-  BANANA_API_URL \
   FFMPEG_THREADS \
   FFMPEG_X264_PRESET \
   FFMPEG_SUBTITLE_X264_PRESET \
@@ -603,12 +590,6 @@ done
 SECRETS_FLAG="GEMINI_API_KEY=gemini-api-key:latest,DATABASE_URL=database-url:latest,BYOK_ENCRYPTION_KEY=byok-encryption-key:latest"
 if gcloud secrets describe elevenlabs-api-key --project="$PROJECT_ID" >/dev/null 2>&1; then
   SECRETS_FLAG="${SECRETS_FLAG},ELEVENLABS_API_KEY=elevenlabs-api-key:latest"
-fi
-if gcloud secrets describe banana-api-key --project="$PROJECT_ID" >/dev/null 2>&1; then
-  SECRETS_FLAG="${SECRETS_FLAG},BANANA_API_KEY=banana-api-key:latest"
-fi
-if gcloud secrets describe banana-model-key --project="$PROJECT_ID" >/dev/null 2>&1; then
-  SECRETS_FLAG="${SECRETS_FLAG},BANANA_MODEL_KEY=banana-model-key:latest"
 fi
 if gcloud secrets describe invite-code --project="$PROJECT_ID" >/dev/null 2>&1; then
   SECRETS_FLAG="${SECRETS_FLAG},INVITE_CODE=invite-code:latest"

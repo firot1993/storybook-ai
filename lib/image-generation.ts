@@ -1,75 +1,19 @@
 import sharp from 'sharp'
 import { generateStoryImage } from './gemini'
 import {
-  CHARACTER_CARTOON_NEGATIVE_PROMPT,
-  COMPANION_CARTOON_NEGATIVE_PROMPT,
-  DEFAULT_IMAGE_NEGATIVE_PROMPT,
-  SCENE_ILLUSTRATION_NEGATIVE_PROMPT,
   buildCharacterNamesReference,
   buildCharacterCartoonPrompt,
   buildCompanionCharacterCartoonPrompt,
   buildSceneIllustrationPrompt,
 } from './ai-prompts'
 
-const BANANA_API_URL = process.env.BANANA_API_URL || 'https://api.banana.dev'
-const BANANA_API_KEY = process.env.BANANA_API_KEY || ''
-const BANANA_MODEL_KEY = process.env.BANANA_MODEL_KEY || ''
-
-export class BananaImageError extends Error {
+export class ImageGenerationError extends Error {
   status: number
   constructor(status: number, message: string) {
     super(message)
     this.status = status
-    this.name = 'BananaImageError'
+    this.name = 'ImageGenerationError'
   }
-}
-
-interface BananaResponse {
-  id?: string
-  message?: string
-  modelOutputs?: Array<{ image_base64?: string }>
-  outputs?: Array<{ image?: string; images?: string[] }>
-}
-
-function isBananaConfigured(): boolean {
-  return Boolean(BANANA_API_KEY && BANANA_MODEL_KEY)
-}
-
-async function callBananaApi(modelInputs: Record<string, unknown>): Promise<string> {
-  let response: Response
-  try {
-    response = await fetch(`${BANANA_API_URL}/start/v4/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${BANANA_API_KEY}`,
-      },
-      body: JSON.stringify({
-        modelKey: BANANA_MODEL_KEY,
-        modelInputs,
-        startOnly: false,
-      }),
-    })
-  } catch {
-    throw new BananaImageError(503, 'Cannot reach Banana API. Check BANANA_API_URL.')
-  }
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new BananaImageError(response.status, `Banana API ${response.status}: ${text.slice(0, 200)}`)
-  }
-
-  const data: BananaResponse = await response.json()
-
-  const base64 =
-    data.modelOutputs?.[0]?.image_base64 ||
-    data.outputs?.[0]?.image ||
-    (data.outputs?.[0]?.images ?? [])[0]
-
-  if (!base64) {
-    throw new BananaImageError(502, 'Banana API returned no image data.')
-  }
-  return base64
 }
 
 /**
@@ -110,7 +54,7 @@ async function normalizeReferenceImages(characterImagesBase64: string[]): Promis
   return refs
 }
 
-async function buildReferenceSheetForBanana(referenceImagesBase64: string[]): Promise<string | undefined> {
+async function buildReferenceSheet(referenceImagesBase64: string[]): Promise<string | undefined> {
   const limited = referenceImagesBase64.slice(0, 4)
   if (limited.length === 0) return undefined
   if (limited.length === 1) return limited[0]
@@ -154,50 +98,21 @@ async function buildReferenceSheetForBanana(referenceImagesBase64: string[]): Pr
 
 /**
  * Generate an image from a text prompt.
- * Falls back to Gemini Image if Banana is not configured.
  */
 export async function generateImageFromPrompt(
   prompt: string,
   options: {
-    width?: number
-    height?: number
-    negativePrompt?: string
-    steps?: number
-    guidanceScale?: number
     referenceImageBase64?: string
     referenceImagesBase64?: string[]
     characterNames?: string[]
   } = {}
 ): Promise<{ data: string; mimeType: 'image/jpeg' }> {
   const {
-    width = 768,
-    height = 768,
-    negativePrompt = DEFAULT_IMAGE_NEGATIVE_PROMPT,
-    steps = 20,
-    guidanceScale = 7.5,
     referenceImageBase64,
     referenceImagesBase64,
     characterNames,
   } = options
 
-  if (isBananaConfigured()) {
-    try {
-      const raw = await callBananaApi({
-        prompt,
-        negative_prompt: negativePrompt,
-        width,
-        height,
-        num_inference_steps: steps,
-        guidance_scale: guidanceScale,
-        ...(referenceImageBase64 ? { image: referenceImageBase64, strength: 0.7 } : {}),
-      })
-      return compressImage(raw, Math.max(width, height))
-    } catch (err) {
-      console.warn('[Banana] Failed, falling back to Gemini Image:', err)
-    }
-  }
-
-  // Fallback: Gemini Image
   const geminiRefs = (referenceImagesBase64 ?? []).filter(Boolean)
   if (geminiRefs.length > 0 || referenceImageBase64) {
     const refs = geminiRefs.length > 0 ? geminiRefs : [referenceImageBase64 as string]
@@ -214,7 +129,7 @@ export async function generateImageFromPrompt(
     if (result) return { data: result.data, mimeType: 'image/jpeg' }
   }
 
-  throw new BananaImageError(502, 'Image generation failed (both Banana and Gemini returned no image).')
+  throw new ImageGenerationError(502, 'Image generation failed (Gemini returned no image).')
 }
 
 /**
@@ -231,9 +146,6 @@ export async function generateCharacterCartoon(
   const prompt = buildCharacterCartoonPrompt(description, style, Boolean(photoBase64))
 
   return generateImageFromPrompt(prompt, {
-    width: 768,
-    height: 768,
-    negativePrompt: CHARACTER_CARTOON_NEGATIVE_PROMPT,
     referenceImageBase64: photoBase64,
   })
 }
@@ -251,12 +163,7 @@ export async function generateCompanionCharacterCartoon(
   style = 'cute cartoon character'
 ): Promise<{ data: string; mimeType: 'image/jpeg' }> {
   const prompt = buildCompanionCharacterCartoonPrompt(name, description, style)
-
-  return generateImageFromPrompt(prompt, {
-    width: 768,
-    height: 768,
-    negativePrompt: COMPANION_CARTOON_NEGATIVE_PROMPT,
-  })
+  return generateImageFromPrompt(prompt)
 }
 
 /**
@@ -269,13 +176,10 @@ export async function generateSceneIllustration(
 ): Promise<{ data: string; mimeType: 'image/jpeg' }> {
   const fullPrompt = buildSceneIllustrationPrompt(imagePrompt)
   const referenceImages = await normalizeReferenceImages(characterImagesBase64)
-  const bananaReferenceSheet = await buildReferenceSheetForBanana(referenceImages)
+  const referenceSheet = await buildReferenceSheet(referenceImages)
 
   return generateImageFromPrompt(fullPrompt, {
-    width: 1280,
-    height: 720,
-    negativePrompt: SCENE_ILLUSTRATION_NEGATIVE_PROMPT,
-    referenceImageBase64: bananaReferenceSheet,
+    referenceImageBase64: referenceSheet,
     referenceImagesBase64: referenceImages,
     characterNames,
   })

@@ -65,7 +65,7 @@ Output files are written under local storage path and served via `/api/files/...
 - `lib/gemini.ts`: text/image generation helpers, director script, synopsis/storybook helpers
 - `lib/gemini-tts.ts`: narration + voice preview
 - `lib/gemini-stt.ts`: audio transcription
-- `lib/banana-img.ts`: Banana image path + Gemini fallback
+- `lib/image-generation.ts`: Gemini image generation helpers for companion art and scene illustrations
 - `lib/ffmpeg.ts`: clip compose, concat, subtitle burn, duration/subtitle cue helpers
 - `lib/storage.ts`: local file storage helpers
 - `lib/db.ts`: Prisma data access layer
@@ -76,9 +76,6 @@ Required:
 
 Optional:
 - `GEMINI_TTS_VOICE`
-- `BANANA_API_URL`
-- `BANANA_API_KEY`
-- `BANANA_MODEL_KEY`
 - `FFMPEG_PATH`
 - `STORAGE_LOCAL_PATH` (default `/tmp/storybook`)
 - `NEXT_PUBLIC_BASE_URL` (default `http://localhost:3000`)

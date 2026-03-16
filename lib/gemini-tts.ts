@@ -5,7 +5,7 @@ const DEFAULT_VOICE_NAME = 'Kore'
 const WAV_SAMPLE_RATE = 24000
 const WAV_CHANNELS = 1
 const WAV_BITS_PER_SAMPLE = 16
-const TTS_CONCURRENCY = Number(process.env.ELEVENLABS_CONCURRENCY ?? 5)
+const TTS_CONCURRENCY = Number(process.env.ELEVENLABS_CONCURRENCY ?? 3)
 const DEFAULT_TTS_SPEED = 0.9
 const MIN_TTS_SPEED = 0.7
 const MAX_TTS_SPEED = 1.2
@@ -321,7 +321,7 @@ export async function generateSceneLineNarrationAudioUrlV2(lineText: string, api
  * Uses parallel requests with a semaphore for concurrency control.
  */
 export async function generateSceneLineNarrationAudioUrlsV2(lines: string[], apiKey?: string): Promise<string[]> {
-  const sem = createSemaphore(clampPositiveInt(TTS_CONCURRENCY, 5))
+  const sem = createSemaphore(clampPositiveInt(TTS_CONCURRENCY, 3))
   return Promise.all(
     lines.map((line, i) =>
       sem(async () => {
@@ -337,7 +337,7 @@ export async function generateSceneLineNarrationAudioUrlsV2(lines: string[], api
 }
 
 export async function generateSceneNarrationAudioUrls(scenes: string[], apiKey?: string): Promise<string[]> {
-  const sem = createSemaphore(clampPositiveInt(TTS_CONCURRENCY, 5))
+  const sem = createSemaphore(clampPositiveInt(TTS_CONCURRENCY, 3))
   return Promise.all(
     scenes.map((scene) =>
       sem(async () => {

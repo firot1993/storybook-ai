@@ -59,7 +59,6 @@ Set at least these values:
 ```bash
 GEMINI_API_KEY=your_real_key
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/storybook_ai
-NEXT_PUBLIC_BASE_URL=http://localhost:3000
 STORAGE_LOCAL_PATH=.storybook-storage
 ```
 
@@ -140,9 +139,6 @@ npm run start
 Optional values can come from shell env vars or `.env.local`, including:
 
 - `ELEVENLABS_API_KEY`
-- `BANANA_API_URL`
-- `BANANA_API_KEY`
-- `BANANA_MODEL_KEY`
 - `INVITE_CODE`
 - `BYOK_ENCRYPTION_KEY`
 
@@ -186,7 +182,7 @@ The script installs npm dependencies automatically when `node_modules/` is missi
 - AI:
   - Text and image generation via Gemini models
   - TTS via ElevenLabs
-  - STT via Gemini (configurable via `GEMINI_STT_MODEL`)
+  - STT via Gemini
 - Video composition: FFmpeg (`fluent-ffmpeg`)
 
 ## Main Routes
@@ -224,23 +220,19 @@ Required for local runtime:
 - `DATABASE_URL`
 
 Recommended for local runtime:
-- `NEXT_PUBLIC_BASE_URL` (default: `http://localhost:3000`)
 - `STORAGE_LOCAL_PATH` (default: `/tmp/storybook`)
 
 Optional:
 - `ELEVENLABS_API_KEY` (required only for voice preview and narration)
 - `GEMINI_TEXT_MODEL` (default: `gemini-3-flash-preview`)
 - `GEMINI_IMAGE_MODEL` (default: `gemini-3.1-flash-image-preview`)
-- `GEMINI_STT_MODEL` (default: `gemini-2.0-flash`)
+- `GEMINI_INTERLEAVED_CHUNK_SIZE` (default: `1`)
 - `GEMINI_TTS_VOICE`
 - `ELEVENLABS_MODEL_ID` (default: `eleven_v3`)
-- `ELEVENLABS_CONCURRENCY` (default: `5`)
+- `ELEVENLABS_CONCURRENCY` (default: `3`)
 - `ELEVENLABS_SPEED` (default: `0.9`, range: `0.7-1.2`)
 - `ELEVENLABS_STABILITY` (default: `0.5` / `50%`)
 - `ELEVENLABS_STYLE` (default: `0.15` / `15%`)
-- `BANANA_API_URL`
-- `BANANA_API_KEY`
-- `BANANA_MODEL_KEY`
 - `FFMPEG_PATH`
 - `FFMPEG_THREADS` (default: auto; tuned to leave CPU headroom, `3` on a 4 vCPU machine)
 - `FFMPEG_X264_PRESET` (default: `veryfast`)

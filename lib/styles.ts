@@ -38,7 +38,7 @@ export interface StyleConfig {
   characterPrompt: string
   /** Negative prompt — what to suppress */
   negativePrompt: string
-  /** Style reference image served from /public (shown in UI + passed to Banana/Gemini) */
+  /** Style reference image served from /public (shown in UI + passed to Gemini prompts) */
   referenceImageUrl: string
   /** Example character portrait generated for this style, served from /public */
   exampleImageUrl: string

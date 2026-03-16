@@ -2,7 +2,7 @@ import fs from 'fs/promises'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveElevenLabsApiKey } from '@/lib/api-utils'
 import { createVideoProject, getScript, updateVideoProject } from '@/lib/db'
-import { generateSceneIllustration } from '@/lib/banana-img'
+import { generateSceneIllustration } from '@/lib/image-generation'
 import { generateSceneLineNarrationAudioUrlsV2, generateSceneNarrationAudioUrl } from '@/lib/gemini-tts'
 import {
   buildSceneLines,
