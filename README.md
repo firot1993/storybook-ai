@@ -60,12 +60,12 @@ Set at least these values:
 GEMINI_API_KEY=your_real_key
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/storybook_ai
 STORAGE_LOCAL_PATH=.storybook-storage
+ELEVENLABS_API_KEY=your_real_key_if_you_need_audio
 ```
 
 Optional but commonly needed:
 
 ```bash
-ELEVENLABS_API_KEY=your_real_key_if_you_need_audio
 FFMPEG_PATH=/absolute/path/to/ffmpeg
 ```
 
