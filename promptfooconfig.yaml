@@ -59,6 +59,7 @@ prompts:
 
       Character: {{characterName}}, age {{characterAge}}, style: {{characterStyle}}
       Available voices: Puck (upbeat, male), Leda (bright, female), Zephyr (energetic, female), Fenrir (lively, male), Aoede (warm, female)
+      Note: Keep this voice list in sync with GEMINI_VOICES in lib/gemini.ts.
 
       Return JSON: { "voiceName": "VoiceName", "reason": "brief reason" }
 
@@ -68,7 +69,8 @@ providers:
     config:
       apiBaseUrl: https://generativelanguage.googleapis.com/v1beta/openai
       apiKey: '{{GEMINI_API_KEY}}'
-      model: gemini-2.0-flash
+    # Note: model should match GEMINI_TEXT_MODEL in .env or lib/providers/gemini-text.ts
+      model: gemini-3-flash-preview
 
   # Uncomment to also evaluate with DeepSeek:
   # - id: openai:chat:deepseek
