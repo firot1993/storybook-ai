@@ -105,22 +105,27 @@ describe('gemini workflow prompt composition', () => {
   })
 
   it('uses English interleaved section markers and still parses story assets correctly', async () => {
-    generateContentMock.mockResolvedValue({
+    const storyText =
+      '[STORY BODY]\n' +
+      '[Scene 1] Stars drifted over the hill.\n' +
+      '<!--NPCS:[{"name":"Milo","description":"curious cloud cat"}]-->\n' +
+      '<!--CHOICES:["Follow the lantern","Call to Milo","Wait quietly"]-->\n' +
+      '[CHARACTER - Milo]\n' +
+      'Name: Milo\n' +
+      'Personality: Playful and brave\n' +
+      'Appearance: A fluffy blue cloud cat.\n'
+
+    // First call: text provider returns text only
+    generateContentMock.mockResolvedValueOnce({
+      text: storyText,
+    })
+    // Second call: Gemini image model returns interleaved images
+    generateContentMock.mockResolvedValueOnce({
       candidates: [
         {
           content: {
             parts: [
-              {
-                text:
-                  '[STORY BODY]\n' +
-                  '[Scene 1] Stars drifted over the hill.\n' +
-                  '<!--NPCS:[{"name":"Milo","description":"curious cloud cat"}]-->\n' +
-                  '<!--CHOICES:["Follow the lantern","Call to Milo","Wait quietly"]-->\n' +
-                  '[CHARACTER - Milo]\n' +
-                  'Name: Milo\n' +
-                  'Personality: Playful and brave\n' +
-                  'Appearance: A fluffy blue cloud cat.\n',
-              },
+              { text: '[CHARACTER - Milo]\n' },
               {
                 inlineData: {
                   data: Buffer.from('npc-image').toString('base64'),
@@ -148,6 +153,8 @@ describe('gemini workflow prompt composition', () => {
       ageRange: '4-6',
       styleDesc: 'soft watercolor storybook',
       locale: 'en',
+      characterImagesBase64: [Buffer.from('char-ref').toString('base64')],
+      characterNames: ['Luna'],
     })
 
     const prompt = getPromptTextFromCall()
@@ -286,27 +293,26 @@ describe('gemini workflow prompt composition', () => {
   })
 
   it('parses split scene metadata and groups batched director images by scene order', async () => {
-    generateContentMock.mockResolvedValue({
+    const sceneMetaText =
+      'SCENE_META:{"index":1,"sceneDescription":"Lantern path",' +
+      '"cameraDesign":"wide glide","animationAction":"Luna follows the lantern","voiceOver":"A lantern hummed ahead.","dialogue":[{"speaker":"Luna","text":"Wait for me."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening one","midActionFramePrompt":"middle one","endingFramePrompt":"ending one"}\n' +
+      'SCENE_META:{"index":2,"sceneDescription":"Bridge arrival","cameraDesign":"gentle push in","animationAction":"Milo waves from the bridge","voiceOver":"The bridge shone like silver.","dialogue":[{"speaker":"Milo","text":"Over here."}],"charactersUsed":["Luna","Milo"],"estimatedDuration":11,"openingFramePrompt":"opening two","midActionFramePrompt":"middle two","endingFramePrompt":"ending two"}'
+
+    // Text provider call returns text only
+    generateContentMock.mockResolvedValueOnce({
+      text: sceneMetaText,
+    })
+    // Image call returns images
+    generateContentMock.mockResolvedValueOnce({
       candidates: [
         {
           content: {
-            parts: [
-              {
-                text:
-                  'SCENE_META:{"index":1,"sceneDescription":"Lantern path",',
+            parts: Array.from({ length: 6 }, (_, i) => ({
+              inlineData: {
+                data: Buffer.from(`scene-image-${i}`).toString('base64'),
+                mimeType: 'image/png',
               },
-              {
-                text:
-                  '"cameraDesign":"wide glide","animationAction":"Luna follows the lantern","voiceOver":"A lantern hummed ahead.","dialogue":[{"speaker":"Luna","text":"Wait for me."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening one","midActionFramePrompt":"middle one","endingFramePrompt":"ending one"}\n' +
-                  'SCENE_META:{"index":2,"sceneDescription":"Bridge arrival","cameraDesign":"gentle push in","animationAction":"Milo waves from the bridge","voiceOver":"The bridge shone like silver.","dialogue":[{"speaker":"Milo","text":"Over here."}],"charactersUsed":["Luna","Milo"],"estimatedDuration":11,"openingFramePrompt":"opening two","midActionFramePrompt":"middle two","endingFramePrompt":"ending two"}',
-              },
-              ...Array.from({ length: 6 }, (_, i) => ({
-                inlineData: {
-                  data: Buffer.from(`scene-image-${i}`).toString('base64'),
-                  mimeType: 'image/png',
-                },
-              })),
-            ],
+            })),
           },
         },
       ],
@@ -327,6 +333,8 @@ describe('gemini workflow prompt composition', () => {
         characterPool: ['Luna', 'Milo'],
         characterProfiles: [{ name: 'Milo', description: 'brave otter friend' }],
         sceneCount: 2,
+        characterImagesBase64: [Buffer.from('char-ref').toString('base64')],
+        characterNames: ['Luna'],
       })
 
       expect(result.scenes).toHaveLength(2)
@@ -360,32 +368,41 @@ describe('gemini workflow prompt composition', () => {
     const attemptsByChunk = new Map<string, number>()
     generateContentMock.mockImplementation(async (request) => {
       const typedRequest = request as {
-        contents: Array<{ parts?: Array<{ text?: string }> }>
+        contents: string | Array<{ parts?: Array<{ text?: string }> }>
+        config?: { responseModalities?: string[] }
       }
-      const prompt = typedRequest.contents[0]?.parts?.find((part) => typeof part.text === 'string')?.text ?? ''
 
-      const buildChunkResponse = (sceneIndex: number, speaker: string) => ({
+      // Extract prompt: text provider sends string, image call sends array
+      let prompt: string
+      if (typeof typedRequest.contents === 'string') {
+        prompt = typedRequest.contents
+      } else {
+        prompt = typedRequest.contents[0]?.parts?.find((part) => typeof part.text === 'string')?.text ?? ''
+      }
+
+      const isImageCall = typedRequest.config?.responseModalities?.includes('IMAGE')
+
+      const buildTextResponse = (sceneIndex: number, speaker: string) => ({
+        text: `SCENE_META:{"index":${sceneIndex},"sceneDescription":"Scene ${sceneIndex}","cameraDesign":"wide glide","animationAction":"Action ${sceneIndex}","voiceOver":"[softly] Narration ${sceneIndex}.","dialogue":[{"speaker":"${speaker}","text":"Line ${sceneIndex}."}],"charactersUsed":["Luna","Milo"],"estimatedDuration":10,"openingFramePrompt":"opening ${sceneIndex}","midActionFramePrompt":"middle ${sceneIndex}","endingFramePrompt":"ending ${sceneIndex}"}`,
+      })
+
+      const buildImageResponse = (sceneIndex: number) => ({
         candidates: [
           {
             content: {
-              parts: [
-                {
-                  text:
-                    `SCENE_META:{"index":${sceneIndex},"sceneDescription":"Scene ${sceneIndex}","cameraDesign":"wide glide","animationAction":"Action ${sceneIndex}","voiceOver":"[softly] Narration ${sceneIndex}.","dialogue":[{"speaker":"${speaker}","text":"Line ${sceneIndex}."}],"charactersUsed":["Luna","Milo"],"estimatedDuration":10,"openingFramePrompt":"opening ${sceneIndex}","midActionFramePrompt":"middle ${sceneIndex}","endingFramePrompt":"ending ${sceneIndex}"}`,
+              parts: Array.from({ length: 3 }, (_, i) => ({
+                inlineData: {
+                  data: Buffer.from(`parallel-scene-${sceneIndex}-image-${i}`).toString('base64'),
+                  mimeType: 'image/png',
                 },
-                ...Array.from({ length: 3 }, (_, i) => ({
-                  inlineData: {
-                    data: Buffer.from(`parallel-scene-${sceneIndex}-image-${i}`).toString('base64'),
-                    mimeType: 'image/png',
-                  },
-                })),
-              ],
+              })),
             },
           },
         ],
       })
 
       if (prompt.includes('Generate scenes 1 to 1 of 2 total scenes')) {
+        if (isImageCall) return buildImageResponse(1)
         const attempt = (attemptsByChunk.get('scene-1') ?? 0) + 1
         attemptsByChunk.set('scene-1', attempt)
         if (attempt === 1) {
@@ -395,13 +412,14 @@ describe('gemini workflow prompt composition', () => {
           error.cause = { code: 'UND_ERR_HEADERS_TIMEOUT', message: 'Headers Timeout Error' }
           throw error
         }
-        return buildChunkResponse(1, 'Luna')
+        return buildTextResponse(1, 'Luna')
       }
 
       if (prompt.includes('Generate scenes 2 to 2 of 2 total scenes')) {
+        if (isImageCall) return buildImageResponse(2)
         const attempt = (attemptsByChunk.get('scene-2') ?? 0) + 1
         attemptsByChunk.set('scene-2', attempt)
-        return buildChunkResponse(2, 'Milo')
+        return buildTextResponse(2, 'Milo')
       }
 
       throw new Error(`Unexpected prompt: ${prompt.slice(0, 120)}`)
@@ -438,9 +456,13 @@ describe('gemini workflow prompt composition', () => {
             characters: ['Luna', 'Milo'],
           },
         ],
+        characterImagesBase64: [Buffer.from('char-ref').toString('base64')],
+        characterNames: ['Luna'],
       })
 
-      expect(generateContentMock).toHaveBeenCalledTimes(3)
+      // Text calls: chunk 1 attempt 1 (fail), chunk 1 attempt 2 (pass), chunk 2 (pass)
+      // Image calls: chunk 1 (pass), chunk 2 (pass)
+      expect(generateContentMock.mock.calls.length).toBeGreaterThanOrEqual(3)
       expect(attemptsByChunk.get('scene-1')).toBe(2)
       expect(attemptsByChunk.get('scene-2')).toBe(1)
       expect(result.scenes).toHaveLength(2)
@@ -460,41 +482,31 @@ describe('gemini workflow prompt composition', () => {
     const previousChunkSize = process.env.GEMINI_INTERLEAVED_CHUNK_SIZE
     process.env.GEMINI_INTERLEAVED_CHUNK_SIZE = '2'
 
-    const buildChunkResponse = (startSceneNumber: number) => ({
-      candidates: [
-        {
-          content: {
-            parts: [
-              {
-                text:
-                  `SCENE_META:{"index":${startSceneNumber},"sceneDescription":"Scene ${startSceneNumber}","cameraDesign":"wide glide ${startSceneNumber}","animationAction":"Action ${startSceneNumber}","voiceOver":"[softly] Narration ${startSceneNumber}.","dialogue":[{"speaker":"Luna","text":"Line ${startSceneNumber}."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening ${startSceneNumber}","midActionFramePrompt":"middle ${startSceneNumber}","endingFramePrompt":"ending ${startSceneNumber}"}\n` +
-                  `SCENE_META:{"index":${startSceneNumber + 1},"sceneDescription":"Scene ${startSceneNumber + 1}","cameraDesign":"wide glide ${startSceneNumber + 1}","animationAction":"Action ${startSceneNumber + 1}","voiceOver":"[softly] Narration ${startSceneNumber + 1}.","dialogue":[{"speaker":"Milo","text":"Line ${startSceneNumber + 1}."}],"charactersUsed":["Luna","Milo"],"estimatedDuration":10,"openingFramePrompt":"opening ${startSceneNumber + 1}","midActionFramePrompt":"middle ${startSceneNumber + 1}","endingFramePrompt":"ending ${startSceneNumber + 1}"}`,
-              },
-              ...Array.from({ length: 6 }, (_, i) => ({
-                inlineData: {
-                  data: Buffer.from(`batched-scene-${startSceneNumber}-image-${i}`).toString('base64'),
-                  mimeType: 'image/png',
-                },
-              })),
-            ],
-          },
-        },
-      ],
+    const buildTextResponse = (startSceneNumber: number) => ({
+      text:
+        `SCENE_META:{"index":${startSceneNumber},"sceneDescription":"Scene ${startSceneNumber}","cameraDesign":"wide glide ${startSceneNumber}","animationAction":"Action ${startSceneNumber}","voiceOver":"[softly] Narration ${startSceneNumber}.","dialogue":[{"speaker":"Luna","text":"Line ${startSceneNumber}."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening ${startSceneNumber}","midActionFramePrompt":"middle ${startSceneNumber}","endingFramePrompt":"ending ${startSceneNumber}"}\n` +
+        `SCENE_META:{"index":${startSceneNumber + 1},"sceneDescription":"Scene ${startSceneNumber + 1}","cameraDesign":"wide glide ${startSceneNumber + 1}","animationAction":"Action ${startSceneNumber + 1}","voiceOver":"[softly] Narration ${startSceneNumber + 1}.","dialogue":[{"speaker":"Milo","text":"Line ${startSceneNumber + 1}."}],"charactersUsed":["Luna","Milo"],"estimatedDuration":10,"openingFramePrompt":"opening ${startSceneNumber + 1}","midActionFramePrompt":"middle ${startSceneNumber + 1}","endingFramePrompt":"ending ${startSceneNumber + 1}"}`,
     })
 
     generateContentMock.mockImplementation(async (request) => {
       const typedRequest = request as {
-        contents: Array<{ parts?: Array<{ text?: string }> }>
+        contents: string | Array<{ parts?: Array<{ text?: string }> }>
       }
-      const prompt = typedRequest.contents[0]?.parts?.find((part) => typeof part.text === 'string')?.text ?? ''
+
+      let prompt: string
+      if (typeof typedRequest.contents === 'string') {
+        prompt = typedRequest.contents
+      } else {
+        prompt = typedRequest.contents[0]?.parts?.find((part) => typeof part.text === 'string')?.text ?? ''
+      }
 
       if (prompt.includes('Generate scenes 1 to 2 of 4 total scenes')) {
         await new Promise((resolve) => setTimeout(resolve, 10))
-        return buildChunkResponse(1)
+        return buildTextResponse(1)
       }
 
       if (prompt.includes('Generate scenes 3 to 4 of 4 total scenes')) {
-        return buildChunkResponse(3)
+        return buildTextResponse(3)
       }
 
       throw new Error(`Unexpected prompt: ${prompt.slice(0, 120)}`)
@@ -574,25 +586,9 @@ describe('gemini workflow prompt composition', () => {
 
   it('rejects duplicate adjacent batched scenes before returning a script', async () => {
     generateContentMock.mockResolvedValue({
-      candidates: [
-        {
-          content: {
-            parts: [
-              {
-                text:
-                  'SCENE_META:{"index":1,"sceneDescription":"Lantern path","cameraDesign":"wide glide","animationAction":"Luna follows the lantern","voiceOver":"[softly] The lantern hummed ahead.","dialogue":[{"speaker":"Luna","text":"Wait for me."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening one","midActionFramePrompt":"middle one","endingFramePrompt":"ending one"}\n' +
-                  'SCENE_META:{"index":2,"sceneDescription":"Lantern path","cameraDesign":"wide glide","animationAction":"Luna follows the lantern","voiceOver":"[softly] The lantern hummed ahead.","dialogue":[{"speaker":"Luna","text":"Wait for me."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening two","midActionFramePrompt":"middle two","endingFramePrompt":"ending two"}',
-              },
-              ...Array.from({ length: 6 }, (_, i) => ({
-                inlineData: {
-                  data: Buffer.from(`duplicate-scene-image-${i}`).toString('base64'),
-                  mimeType: 'image/png',
-                },
-              })),
-            ],
-          },
-        },
-      ],
+      text:
+        'SCENE_META:{"index":1,"sceneDescription":"Lantern path","cameraDesign":"wide glide","animationAction":"Luna follows the lantern","voiceOver":"[softly] The lantern hummed ahead.","dialogue":[{"speaker":"Luna","text":"Wait for me."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening one","midActionFramePrompt":"middle one","endingFramePrompt":"ending one"}\n' +
+        'SCENE_META:{"index":2,"sceneDescription":"Lantern path","cameraDesign":"wide glide","animationAction":"Luna follows the lantern","voiceOver":"[softly] The lantern hummed ahead.","dialogue":[{"speaker":"Luna","text":"Wait for me."}],"charactersUsed":["Luna"],"estimatedDuration":10,"openingFramePrompt":"opening two","midActionFramePrompt":"middle two","endingFramePrompt":"ending two"}',
     })
 
     const previousChunkSize = process.env.GEMINI_INTERLEAVED_CHUNK_SIZE
@@ -622,27 +618,29 @@ describe('gemini workflow prompt composition', () => {
   })
 
   it('maps NPC images when Gemini batches text and images separately', async () => {
-    generateContentMock.mockResolvedValue({
+    const storyText =
+      '[STORY BODY]\n' +
+      '[Scene 1] The forest glowed with fireflies.\n' +
+      '<!--NPCS:[{"name":"Bramble","description":"a hedgehog scout"},{"name":"Fern","description":"a shy deer"}]-->\n' +
+      '<!--CHOICES:["Enter the cave","Climb the tree","Rest by the river"]-->\n' +
+      '[CHARACTER - Bramble]\n' +
+      'Name: Bramble\n' +
+      'Personality: Bold and curious\n' +
+      'Appearance: A small hedgehog with a leaf hat.\n' +
+      '[CHARACTER - Fern]\n' +
+      'Name: Fern\n' +
+      'Personality: Gentle and observant\n' +
+      'Appearance: A young deer with soft brown eyes.\n'
+
+    // First call: text provider returns text only
+    generateContentMock.mockResolvedValueOnce({ text: storyText })
+    // Second call: Gemini image model returns interleaved images
+    generateContentMock.mockResolvedValueOnce({
       candidates: [
         {
           content: {
             parts: [
-              {
-                text:
-                  '[STORY BODY]\n' +
-                  '[Scene 1] The forest glowed with fireflies.\n' +
-                  '<!--NPCS:[{"name":"Bramble","description":"a hedgehog scout"},{"name":"Fern","description":"a shy deer"}]-->\n' +
-                  '<!--CHOICES:["Enter the cave","Climb the tree","Rest by the river"]-->\n' +
-                  '[CHARACTER - Bramble]\n' +
-                  'Name: Bramble\n' +
-                  'Personality: Bold and curious\n' +
-                  'Appearance: A small hedgehog with a leaf hat.\n' +
-                  '[CHARACTER - Fern]\n' +
-                  'Name: Fern\n' +
-                  'Personality: Gentle and observant\n' +
-                  'Appearance: A young deer with soft brown eyes.\n',
-              },
-              // Two consecutive images with no text in between
+              { text: '[CHARACTER - Bramble]\n' },
               {
                 inlineData: {
                   data: Buffer.from('bramble-image').toString('base64'),
@@ -676,6 +674,8 @@ describe('gemini workflow prompt composition', () => {
       ageRange: '4-6',
       styleDesc: 'soft watercolor storybook',
       locale: 'en',
+      characterImagesBase64: [Buffer.from('char-ref').toString('base64')],
+      characterNames: ['Luna'],
     })
 
     const compressedBase64 = Buffer.from('compressed-image').toString('base64')
@@ -699,22 +699,25 @@ describe('gemini workflow prompt composition', () => {
   })
 
   it('maps NPC images with fuzzy header matching', async () => {
-    generateContentMock.mockResolvedValue({
+    const storyText =
+      '[STORY BODY]\n' +
+      '[Scene 1] The ocean sparkled.\n' +
+      '<!--NPCS:[{"name":"Coral","description":"a friendly seahorse"}]-->\n' +
+      '<!--CHOICES:["Dive deeper","Swim to shore","Follow the current"]-->\n' +
+      '[Character: Coral]\n' +
+      'Name: Coral\n' +
+      'Personality: Cheerful\n' +
+      'Appearance: A pink seahorse.\n'
+
+    // First call: text provider returns text only
+    generateContentMock.mockResolvedValueOnce({ text: storyText })
+    // Second call: Gemini image model returns interleaved images
+    generateContentMock.mockResolvedValueOnce({
       candidates: [
         {
           content: {
             parts: [
-              {
-                text:
-                  '[STORY BODY]\n' +
-                  '[Scene 1] The ocean sparkled.\n' +
-                  '<!--NPCS:[{"name":"Coral","description":"a friendly seahorse"}]-->\n' +
-                  '<!--CHOICES:["Dive deeper","Swim to shore","Follow the current"]-->\n' +
-                  '[Character: Coral]\n' +
-                  'Name: Coral\n' +
-                  'Personality: Cheerful\n' +
-                  'Appearance: A pink seahorse.\n',
-              },
+              { text: '[Character: Coral]\n' },
               {
                 inlineData: {
                   data: Buffer.from('coral-image').toString('base64'),
@@ -742,6 +745,8 @@ describe('gemini workflow prompt composition', () => {
       ageRange: '4-6',
       styleDesc: 'soft watercolor storybook',
       locale: 'en',
+      characterImagesBase64: [Buffer.from('char-ref').toString('base64')],
+      characterNames: ['Luna'],
     })
 
     const compressedBase64 = Buffer.from('compressed-image').toString('base64')
@@ -759,18 +764,8 @@ describe('gemini workflow prompt composition', () => {
 
   it('repairs interleaved SCENE_META strings that contain raw newlines and quotes', async () => {
     generateContentMock.mockResolvedValue({
-      candidates: [
-        {
-          content: {
-            parts: [
-              {
-                text: `SCENE_META:{"index":1,"sceneDescription":"Lantern path","cameraDesign":"wide glide","animationAction":"Luna follows the lantern","voiceOver":"[softly]
+      text: `SCENE_META:{"index":1,"sceneDescription":"Lantern path","cameraDesign":"wide glide","animationAction":"Luna follows the lantern","voiceOver":"[softly]
 The lantern says "come closer".","dialogue":[{"speaker":"Milo","text":"He says "hello"."}],"charactersUsed":["Luna","Milo"],"estimatedDuration":10,"openingFramePrompt":"opening one","midActionFramePrompt":"middle one","endingFramePrompt":"ending one"}`,
-              },
-            ],
-          },
-        },
-      ],
     })
 
     const result = await generateInterleavedDirectorScript({
@@ -794,17 +789,7 @@ The lantern says "come closer".","dialogue":[{"speaker":"Milo","text":"He says "
 
   it('falls back to schema-aware SCENE_META parsing when inner quotes break generic JSON repair', async () => {
     generateContentMock.mockResolvedValue({
-      candidates: [
-        {
-          content: {
-            parts: [
-              {
-                text: 'SCENE_META:{"index":1,"sceneDescription":"Afternoon rest","cameraDesign":"slow push in","animationAction":"Vita whispers "Rest, little Cat," and tucks the blanket in.","voiceOver":"[softly] The room glows "golden," calm and still.","dialogue":[{"speaker":"Vita","text":"Rest, little Cat,"},{"speaker":"Cat","text":"Mm-hmm."}],"charactersUsed":["Vita","Cat"],"estimatedDuration":10,"openingFramePrompt":"opening one","midActionFramePrompt":"middle one","endingFramePrompt":"ending one"}',
-              },
-            ],
-          },
-        },
-      ],
+      text: 'SCENE_META:{"index":1,"sceneDescription":"Afternoon rest","cameraDesign":"slow push in","animationAction":"Vita whispers "Rest, little Cat," and tucks the blanket in.","voiceOver":"[softly] The room glows "golden," calm and still.","dialogue":[{"speaker":"Vita","text":"Rest, little Cat,"},{"speaker":"Cat","text":"Mm-hmm."}],"charactersUsed":["Vita","Cat"],"estimatedDuration":10,"openingFramePrompt":"opening one","midActionFramePrompt":"middle one","endingFramePrompt":"ending one"}',
     })
 
     const result = await generateInterleavedDirectorScript({

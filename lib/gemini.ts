@@ -15,10 +15,19 @@ import {
   DEFAULT_STORY_IMAGE_REFERENCE_HINT,
 } from './ai-prompts'
 import { getGeminiClient } from './gemini-client'
+import { getTextProvider, type TextProvider } from './providers'
 import type { Locale } from './i18n/shared'
 
-const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL?.trim() || 'gemini-3-flash-preview';
 const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL?.trim() || 'gemini-3.1-flash-image-preview';
+
+/**
+ * Resolve a TextProvider for the current request context.
+ * When apiKey is supplied (BYOK) and the active provider is Gemini,
+ * the key is forwarded to the Gemini provider.
+ */
+function resolveTextProvider(apiKey?: string): TextProvider {
+  return getTextProvider({ apiKey })
+}
 
 /**
  * Compress a base64 PNG image: resize to fit within maxDim and convert to JPEG.
@@ -368,7 +377,7 @@ export async function generateSynopsisVersions(params: {
     apiKey,
   } = params
 
-  const genAI = getGeminiClient(apiKey)
+  const textProvider = resolveTextProvider(apiKey)
   const prompt = buildSynopsisVersionsPrompt({
     storyName,
     protagonistName,
@@ -383,10 +392,10 @@ export async function generateSynopsisVersions(params: {
     previousStoryChoices,
   })
 
-  const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
+  const responseText = await textProvider.generateText(prompt)
 
   try {
-    const parsed = safeParseJsonObject(response.text ?? '{}') as Record<string, unknown>
+    const parsed = safeParseJsonObject(responseText || '{}') as Record<string, unknown>
     const pick = (v: unknown) => {
       if (!v) return { title: '', content: '' }
       if (typeof v === 'string') return { title: '', content: v }
@@ -396,7 +405,7 @@ export async function generateSynopsisVersions(params: {
     return { A: pick(parsed.A), B: pick(parsed.B), C: pick(parsed.C) }
   } catch (e) {
     console.error('[generateSynopsisVersions] Failed to parse JSON:', e)
-    const raw = response.text ?? ''
+    const raw = responseText || ''
     const extractVersion = (key: string) => {
       // try "key": {"title": ..., "content": ...} or "key": "..."
       const objM = raw.match(new RegExp(`"${key}"\\s*:\\s*\\{[^}]*"content"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"[^}]*\\}`))
@@ -424,7 +433,7 @@ export async function generateCompanionSuggestions(params: {
 }): Promise<CompanionSuggestion[]> {
   const { protagonistName, backgroundKeywords, ageRange, locale = 'zh', protagonistPronoun, protagonistRole, apiKey } = params
 
-  const genAI = getGeminiClient(apiKey)
+  const textProvider = resolveTextProvider(apiKey)
   const prompt = buildCompanionSuggestionsPrompt({
     protagonistName,
     backgroundKeywords,
@@ -434,10 +443,10 @@ export async function generateCompanionSuggestions(params: {
     protagonistRole,
   })
 
-  const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
+  const responseText = await textProvider.generateText(prompt)
 
   try {
-    const parsed = safeParseJsonArray(response.text ?? '')
+    const parsed = safeParseJsonArray(responseText || '')
     return parsed.slice(0, 3) as CompanionSuggestion[]
   } catch (e) {
     console.error('[generateCompanionSuggestions] Failed to parse JSON:', e)
@@ -506,6 +515,7 @@ export async function generateStoryWithAssets(params: {
   } = params
 
   const genAI = getGeminiClient(apiKey)
+  const textProvider = resolveTextProvider(apiKey)
   const debugTag = '[generateStoryWithAssets]'
   const styleLabel = styleDesc || 'dreamlike watercolor, macaron palette, warm soft light'
   const hasCharacterImageRef = characterImagesBase64.length > 0
@@ -529,7 +539,7 @@ export async function generateStoryWithAssets(params: {
     previousStoryChoices,
   })
 
-  console.log(`${debugTag} Start`, {
+  console.log(`${debugTag} Start (split: text via ${textProvider.name}, images via Gemini)`, {
     storyName,
     protagonistName,
     supportingName,
@@ -541,70 +551,66 @@ export async function generateStoryWithAssets(params: {
     promptChars: prompt.length,
   })
 
-  // Build content parts: text prompt + optional labeled character reference images
-  const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
-    { text: prompt },
-  ]
+  // ── Step 1: Text-only generation via TextProvider ──
+  const responseText = await textProvider.generateText(prompt)
 
-  for (let index = 0; index < characterImagesBase64.length; index++) {
-    const imageBase64 = characterImagesBase64[index]
-    const name = characterNames[index]?.trim() || `Character ${index + 1}`
-    const isJpeg = imageBase64.startsWith('/9j/')
-    parts.push({
-      text: buildReferenceImageLabel(name),
-    })
-    parts.push({
-      inlineData: {
-        data: imageBase64,
-        mimeType: isJpeg ? 'image/jpeg' : 'image/png',
-      },
-    })
-  }
-
-  const response = (await genAI.models.generateContent({
-    model: IMAGE_MODEL,
-    contents: [{ role: 'user', parts }],
-    config: { responseModalities: ['TEXT', 'IMAGE'] },
-  })) as GeminiImageResponse
-
-  // Walk response parts sequentially to extract text + images
-  const responseParts = response.candidates?.[0]?.content?.parts ?? []
-  const textPartCount = responseParts.filter((part) => Boolean(part.text)).length
-  const imagePartCount = responseParts.filter((part) => Boolean(part.inlineData?.data)).length
-  console.log(`${debugTag} Response`, {
-    candidateCount: response.candidates?.length ?? 0,
-    totalParts: responseParts.length,
-    textPartCount,
-    imagePartCount,
-  })
-
-  let allText = ''
+  // ── Step 2: Separate image generation via Gemini (cover + NPC portraits) ──
   const images: Array<{ data: string; mimeType: string }> = []
-  // Track which section each image belongs to based on preceding text.
-  // Each image consumes (and clears) the accumulated text since the last image,
-  // so that a single text chunk containing multiple section headers is only
-  // matched against the first image that follows it.
   const imageSectionLabels: string[] = []
-  let pendingTextSinceLastImage = ''
   const debugParts: Array<{ type: 'text'; text: string } | { type: 'image'; mimeType: string }> = []
+  debugParts.push({ type: 'text', text: responseText })
 
-  for (const part of responseParts) {
-    if (part.text) {
-      allText += part.text
-      pendingTextSinceLastImage += part.text
-      debugParts.push({ type: 'text', text: part.text })
-    } else if (part.inlineData?.data) {
-      const rawData = part.inlineData.data
-      const compressed = await compressImage(rawData, 768, 80)
-      images.push({ data: compressed.data, mimeType: compressed.mimeType })
-      imageSectionLabels.push(pendingTextSinceLastImage)
-      pendingTextSinceLastImage = ''
-      debugParts.push({ type: 'image', mimeType: part.inlineData.mimeType ?? 'unknown' })
+  // Generate images via Gemini interleaved call only when we have reference images
+  if (hasCharacterImageRef) {
+    const imageParts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
+      { text: prompt },
+    ]
+    for (let index = 0; index < characterImagesBase64.length; index++) {
+      const imageBase64 = characterImagesBase64[index]
+      const name = characterNames[index]?.trim() || `Character ${index + 1}`
+      const isJpeg = imageBase64.startsWith('/9j/')
+      imageParts.push({ text: buildReferenceImageLabel(name) })
+      imageParts.push({
+        inlineData: {
+          data: imageBase64,
+          mimeType: isJpeg ? 'image/jpeg' : 'image/png',
+        },
+      })
+    }
+
+    try {
+      const imageResponse = (await genAI.models.generateContent({
+        model: IMAGE_MODEL,
+        contents: [{ role: 'user', parts: imageParts }],
+        config: { responseModalities: ['TEXT', 'IMAGE'] },
+      })) as GeminiImageResponse
+
+      const imgResponseParts = imageResponse.candidates?.[0]?.content?.parts ?? []
+      let pendingTextSinceLastImage = ''
+      for (const part of imgResponseParts) {
+        if (part.text) {
+          pendingTextSinceLastImage += part.text
+        } else if (part.inlineData?.data) {
+          const compressed = await compressImage(part.inlineData.data, 768, 80)
+          images.push({ data: compressed.data, mimeType: compressed.mimeType })
+          imageSectionLabels.push(pendingTextSinceLastImage)
+          pendingTextSinceLastImage = ''
+          debugParts.push({ type: 'image', mimeType: part.inlineData.mimeType ?? 'unknown' })
+        }
+      }
+    } catch (imgError) {
+      console.warn(`${debugTag} Image generation failed, continuing with text only:`, imgError)
     }
   }
 
+  console.log(`${debugTag} Response`, {
+    textChars: responseText.length,
+    imageCount: images.length,
+    provider: textProvider.name,
+  })
+
   // Parse story text, choices, and NPCs from collected text
-  const rawText = allText.trim()
+  const rawText = responseText.trim()
 
   const choicesMatch = rawText.match(/<!--CHOICES:(.*?)-->/)
   let choices: string[] = []
@@ -741,7 +747,7 @@ export async function generateStoryWithAssets(params: {
     coverImage,
     npcImages,
     sceneContexts,
-    _debug: { rawResponse: response, rawText: allText, imageSectionLabels, responseParts: debugParts },
+    _debug: { rawResponse: undefined, rawText: responseText, imageSectionLabels, responseParts: debugParts },
   }
 }
 
@@ -787,7 +793,7 @@ export async function generateStorybookDirectorScript(params: {
     apiKey,
   } = params
 
-  const genAI = getGeminiClient(apiKey)
+  const textProvider = resolveTextProvider(apiKey)
   const minScenes = Math.max(1, Math.trunc(minSceneCount))
   const maxScenes = Math.max(minScenes, Math.trunc(maxSceneCount))
   const normalizeName = (name: string) => name.replace(/\s+/g, '').toLowerCase()
@@ -836,10 +842,10 @@ export async function generateStorybookDirectorScript(params: {
     protagonistRole,
   })
 
-  const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
+  const responseText = await textProvider.generateText(prompt)
 
   try {
-    const rawScenes = safeParseJsonArray(response.text ?? '') as Array<{
+    const rawScenes = safeParseJsonArray(responseText || '') as Array<{
       index: number
       sceneDescription: string
       cameraDesign: string
@@ -916,7 +922,7 @@ export async function generateStorybookDirectorScript(params: {
       }
     })
   } catch (e) {
-    console.error('[generateStorybookDirectorScript] Parse error:', e, '\nRaw:', response.text?.slice(0, 500))
+    console.error('[generateStorybookDirectorScript] Parse error:', e, '\nRaw:', responseText?.slice(0, 500))
     return []
   }
 }
@@ -1276,6 +1282,40 @@ async function parseInterleavedResponseParts(
   return { sceneMetaList, sceneImages }
 }
 
+/**
+ * Distribute images evenly across known scene indices when the image response
+ * doesn't contain its own SCENE_META markers (common in split text/image generation).
+ */
+function distributeImagesToScenes(
+  images: Array<{ data: string; mimeType: string }>,
+  sceneIndices: number[],
+  maxFramesPerScene = 3
+): Map<number, Array<{ data: string; mimeType: string }>> {
+  const result = new Map<number, Array<{ data: string; mimeType: string }>>()
+  if (sceneIndices.length === 0 || images.length === 0) return result
+
+  const framesPerScene = Math.max(
+    1,
+    Math.min(maxFramesPerScene, Math.round(images.length / sceneIndices.length))
+  )
+
+  let cursor = 0
+  for (let i = 0; i < sceneIndices.length && cursor < images.length; i++) {
+    const remaining = images.length - cursor
+    const remainingScenes = sceneIndices.length - i
+    let count = Math.min(framesPerScene, remaining, maxFramesPerScene)
+    if (remainingScenes > 1) {
+      count = Math.min(count, remaining - (remainingScenes - 1))
+    }
+    if (count <= 0) count = 1
+
+    result.set(sceneIndices[i], images.slice(cursor, cursor + count))
+    cursor += count
+  }
+
+  return result
+}
+
 function buildExpectedSceneNumbers(startSceneIndex: number, endSceneIndex: number): number[] {
   return Array.from(
     { length: Math.max(0, endSceneIndex - startSceneIndex) },
@@ -1495,6 +1535,7 @@ export async function generateInterleavedDirectorScript(params: {
   } = params
 
   const genAI = getGeminiClient(apiKey)
+  const textProvider = resolveTextProvider(apiKey)
   const debugTag = '[generateInterleavedDirectorScript]'
 
   // Build character name normalization maps
@@ -1537,7 +1578,7 @@ export async function generateInterleavedDirectorScript(params: {
   const chunkSize = Number.isFinite(chunkSizeEnv) && chunkSizeEnv > 0 ? chunkSizeEnv : 1
   const totalChunks = Math.ceil(sceneCount / chunkSize)
 
-  // Single chunk: use original single-call path (no regression)
+  // Single chunk: split text (via TextProvider) and image (via Gemini) generation
   if (totalChunks <= 1) {
     const prompt = buildInterleavedDirectorScriptPrompt({
       storyName,
@@ -1553,45 +1594,22 @@ export async function generateInterleavedDirectorScript(params: {
       protagonistRole,
     })
 
-    console.log(`${debugTag} Start (single chunk)`, {
+    console.log(`${debugTag} Start (single chunk, text via ${textProvider.name})`, {
       storyName, protagonistName, supportingName, ageRange, sceneCount,
       characterImageCount: characterImagesBase64.length,
       promptChars: prompt.length,
     })
 
-    const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
-      { text: prompt },
-      ...charRefParts,
-    ]
+    // Step 1: Text generation via TextProvider
+    const textResponse = await textProvider.generateText(prompt)
 
-    const response = (await genAI.models.generateContent({
-      model: IMAGE_MODEL,
-      contents: [{ role: 'user', parts }],
-      config: { responseModalities: ['TEXT', 'IMAGE'] },
-    })) as GeminiImageResponse
-
-    const responseParts = response.candidates?.[0]?.content?.parts ?? []
-    console.log(`${debugTag} Response`, {
-      totalParts: responseParts.length,
-      textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
-      imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
-    })
-
-    const { sceneMetaList, sceneImages } = await parseInterleavedResponseParts(responseParts, 0, debugTag)
+    // Parse text-only response for scene metadata
+    const textParts: GeminiPart[] = [{ text: textResponse }]
+    const { sceneMetaList } = await parseInterleavedResponseParts(textParts, 0, debugTag)
     const singleChunkValidation = validateSceneMetaSequence(sceneMetaList, {
       expectedSceneNumbers: buildExpectedSceneNumbers(0, sceneCount),
       label: 'single chunk',
       debugTag,
-    })
-
-    const sceneImageCounts = Array.from(sceneImages.entries())
-      .map(([idx, frames]) => `scene ${idx}: ${frames.length}`)
-      .join(', ')
-    console.log(`${debugTag} Parsed`, {
-      sceneMetaCount: sceneMetaList.length,
-      sceneImageCount: sceneImages.size,
-      sceneImageCounts,
-      totalImages: Array.from(sceneImages.values()).reduce((sum, frames) => sum + frames.length, 0),
     })
 
     if (sceneMetaList.length === 0) {
@@ -1600,6 +1618,55 @@ export async function generateInterleavedDirectorScript(params: {
     if (!singleChunkValidation.ok) {
       throw new Error(singleChunkValidation.reason)
     }
+
+    // Step 2: Image generation via Gemini (separate call)
+    let sceneImages = new Map<number, Array<{ data: string; mimeType: string }>>()
+    if (charRefParts.length > 0) {
+      try {
+        const imageParts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
+          { text: prompt },
+          ...charRefParts,
+        ]
+
+        const imageResponse = (await genAI.models.generateContent({
+          model: IMAGE_MODEL,
+          contents: [{ role: 'user', parts: imageParts }],
+          config: { responseModalities: ['TEXT', 'IMAGE'] },
+        })) as GeminiImageResponse
+
+        const imgParts = imageResponse.candidates?.[0]?.content?.parts ?? []
+        const imgResult = await parseInterleavedResponseParts(imgParts, 0, debugTag)
+        sceneImages = imgResult.sceneImages
+
+        // If the image response lacks SCENE_META markers, distribute images
+        // across known scene indices from the text response
+        if (sceneImages.size === 0) {
+          const looseImages: Array<{ data: string; mimeType: string }> = []
+          for (const part of imgParts) {
+            if (part.inlineData?.data) {
+              const compressed = await compressImage(part.inlineData.data, 768, 80)
+              looseImages.push(compressed)
+            }
+          }
+          if (looseImages.length > 0) {
+            const sceneIndices = sceneMetaList.map((s) => Math.trunc(s.index) - 1)
+            sceneImages = distributeImagesToScenes(looseImages, sceneIndices)
+          }
+        }
+
+        console.log(`${debugTag} Image generation complete`, {
+          sceneImageCount: sceneImages.size,
+          totalImages: Array.from(sceneImages.values()).reduce((sum, frames) => sum + frames.length, 0),
+        })
+      } catch (imgError) {
+        console.warn(`${debugTag} Image generation failed, continuing with text only:`, imgError)
+      }
+    }
+
+    console.log(`${debugTag} Parsed`, {
+      sceneMetaCount: sceneMetaList.length,
+      sceneImageCount: sceneImages.size,
+    })
 
     const scenes = enrichSceneMeta(sceneMetaList, canonicalByKey, locale)
     onProgress?.({
@@ -1672,11 +1739,6 @@ export async function generateInterleavedDirectorScript(params: {
         promptChars: chunkPrompt.length,
       })
 
-      const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
-        { text: chunkPrompt },
-        ...charRefParts,
-      ]
-
       const MAX_CHUNK_RETRIES = 2
       let lastChunkFailure = `${debugTag} Parallel chunk ${chunkIdx + 1}/${totalChunks} returned no scene metadata`
       for (let attempt = 0; attempt <= MAX_CHUNK_RETRIES; attempt++) {
@@ -1685,22 +1747,60 @@ export async function generateInterleavedDirectorScript(params: {
         }
 
         try {
-          const response = (await genAI.models.generateContent({
-            model: IMAGE_MODEL,
-            contents: [{ role: 'user', parts }],
-            config: { responseModalities: ['TEXT', 'IMAGE'] },
-          })) as GeminiImageResponse
+          // Step 1: Text generation via TextProvider
+          const textResponse = await textProvider.generateText(chunkPrompt)
 
-          const responseParts = response.candidates?.[0]?.content?.parts ?? []
+          const textParts: GeminiPart[] = [{ text: textResponse }]
+          const globalOffset = startSceneIndex
+          const parsed = await parseInterleavedResponseParts(textParts, globalOffset, debugTag)
+
+          // Step 2: Image generation via Gemini (if character refs available)
+          if (charRefParts.length > 0 && parsed.sceneMetaList.length > 0) {
+            try {
+              const imageParts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
+                { text: chunkPrompt },
+                ...charRefParts,
+              ]
+
+              const imageResponse = (await genAI.models.generateContent({
+                model: IMAGE_MODEL,
+                contents: [{ role: 'user', parts: imageParts }],
+                config: { responseModalities: ['TEXT', 'IMAGE'] },
+              })) as GeminiImageResponse
+
+              const imgParts = imageResponse.candidates?.[0]?.content?.parts ?? []
+              const imgResult = await parseInterleavedResponseParts(imgParts, globalOffset, debugTag)
+              // Merge images from the image-only pass
+              for (const [idx, frames] of imgResult.sceneImages) {
+                parsed.sceneImages.set(idx, frames)
+              }
+              // Distribute loose images if no SCENE_META in image response
+              if (imgResult.sceneImages.size === 0) {
+                const looseImages: Array<{ data: string; mimeType: string }> = []
+                for (const part of imgParts) {
+                  if (part.inlineData?.data) {
+                    const compressed = await compressImage(part.inlineData.data, 768, 80)
+                    looseImages.push(compressed)
+                  }
+                }
+                if (looseImages.length > 0) {
+                  const indices = parsed.sceneMetaList.map((s) => Math.trunc(s.index) - 1)
+                  const distributed = distributeImagesToScenes(looseImages, indices)
+                  for (const [idx, frames] of distributed) {
+                    parsed.sceneImages.set(idx, frames)
+                  }
+                }
+              }
+            } catch (imgError) {
+              console.warn(`${debugTag} Parallel chunk ${chunkIdx + 1} image generation failed:`, imgError)
+            }
+          }
+
           console.log(`${debugTag} Parallel chunk ${chunkIdx + 1} response`, {
-            totalParts: responseParts.length,
-            textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
-            imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
+            sceneMetaCount: parsed.sceneMetaList.length,
+            sceneImageCount: parsed.sceneImages.size,
             attempt: attempt + 1,
           })
-
-          const globalOffset = startSceneIndex
-          const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
 
           if (parsed.sceneMetaList.length > 0) {
             const validation = validateSceneMetaSequence(parsed.sceneMetaList, {
@@ -1829,11 +1929,6 @@ export async function generateInterleavedDirectorScript(params: {
       previousSummaryCount: previousSceneSummaries.length,
     })
 
-    const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
-      { text: chunkPrompt },
-      ...charRefParts,
-    ]
-
     const MAX_CHUNK_RETRIES = 2
     let chunkMeta: RawSceneMeta[] = []
     let chunkImages = new Map<number, Array<{ data: string; mimeType: string }>>()
@@ -1845,24 +1940,61 @@ export async function generateInterleavedDirectorScript(params: {
       }
 
       try {
-        const response = (await genAI.models.generateContent({
-          model: IMAGE_MODEL,
-          contents: [{ role: 'user', parts }],
-          config: { responseModalities: ['TEXT', 'IMAGE'] },
-        })) as GeminiImageResponse
+        // Step 1: Text generation via TextProvider
+        const textResponse = await textProvider.generateText(chunkPrompt)
 
-        const responseParts = response.candidates?.[0]?.content?.parts ?? []
-        console.log(`${debugTag} Chunk ${chunkIdx + 1} response`, {
-          totalParts: responseParts.length,
-          textPartCount: responseParts.filter((p) => Boolean(p.text)).length,
-          imagePartCount: responseParts.filter((p) => Boolean(p.inlineData?.data)).length,
-          attempt: attempt + 1,
-        })
-
+        const textParts: GeminiPart[] = [{ text: textResponse }]
         const globalOffset = allSceneMetaList.length
-        const parsed = await parseInterleavedResponseParts(responseParts, globalOffset, debugTag)
+        const parsed = await parseInterleavedResponseParts(textParts, globalOffset, debugTag)
         chunkMeta = parsed.sceneMetaList
         chunkImages = parsed.sceneImages
+
+        // Step 2: Image generation via Gemini (if character refs available)
+        if (charRefParts.length > 0 && chunkMeta.length > 0) {
+          try {
+            const imageParts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
+              { text: chunkPrompt },
+              ...charRefParts,
+            ]
+
+            const imageResponse = (await genAI.models.generateContent({
+              model: IMAGE_MODEL,
+              contents: [{ role: 'user', parts: imageParts }],
+              config: { responseModalities: ['TEXT', 'IMAGE'] },
+            })) as GeminiImageResponse
+
+            const imgParts = imageResponse.candidates?.[0]?.content?.parts ?? []
+            const imgResult = await parseInterleavedResponseParts(imgParts, globalOffset, debugTag)
+            for (const [idx, frames] of imgResult.sceneImages) {
+              chunkImages.set(idx, frames)
+            }
+            // Distribute loose images if no SCENE_META in image response
+            if (imgResult.sceneImages.size === 0) {
+              const looseImages: Array<{ data: string; mimeType: string }> = []
+              for (const part of imgParts) {
+                if (part.inlineData?.data) {
+                  const compressed = await compressImage(part.inlineData.data, 768, 80)
+                  looseImages.push(compressed)
+                }
+              }
+              if (looseImages.length > 0) {
+                const indices = chunkMeta.map((s) => Math.trunc(s.index) - 1)
+                const distributed = distributeImagesToScenes(looseImages, indices)
+                for (const [idx, frames] of distributed) {
+                  chunkImages.set(idx, frames)
+                }
+              }
+            }
+          } catch (imgError) {
+            console.warn(`${debugTag} Chunk ${chunkIdx + 1} image generation failed:`, imgError)
+          }
+        }
+
+        console.log(`${debugTag} Chunk ${chunkIdx + 1} response`, {
+          sceneMetaCount: chunkMeta.length,
+          sceneImageCount: chunkImages.size,
+          attempt: attempt + 1,
+        })
 
         if (chunkMeta.length > 0) {
           const validation = validateSceneMetaSequence(chunkMeta, {
@@ -2033,7 +2165,7 @@ export async function assignCharacterVoice(
   apiKey?: string,
   pronoun?: string
 ): Promise<{ voiceName: string; reason: string }> {
-  const genAI = getGeminiClient(apiKey)
+  const textProvider = resolveTextProvider(apiKey)
   // Filter out the currently assigned voice so re-assign always picks a different one
   const available = excludeVoice
     ? GEMINI_VOICES.filter(v => v.name !== excludeVoice)
@@ -2048,8 +2180,8 @@ export async function assignCharacterVoice(
   })
 
   try {
-    const response = await genAI.models.generateContent({ model: TEXT_MODEL, contents: prompt })
-    const parsed = safeParseJsonObject(response.text ?? '') as Record<string, string>
+    const responseText = await textProvider.generateText(prompt)
+    const parsed = safeParseJsonObject(responseText || '') as Record<string, string>
     if (parsed.voiceName && available.some(v => v.name === parsed.voiceName)) {
       return { voiceName: parsed.voiceName, reason: parsed.reason ?? '' }
     }
