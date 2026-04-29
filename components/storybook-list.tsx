@@ -86,7 +86,7 @@ export default function StorybookList({
               <div className="flex-1 min-w-0">
                 <p className="font-accent font-bold text-forest-800 truncate">{book.name}</p>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs bg-forest-100 text-forest-600 px-1.5 py-0.5 rounded-full font-bold">{book.ageRange}{t('storybook.ageUnit')}</span>
+                  {book.ageRange && <span className="text-xs bg-forest-100 text-forest-600 px-1.5 py-0.5 rounded-full font-bold">{book.ageRange}</span>}
                   {styleConfig && (
                     <span className="text-xs text-gray-500 font-medium">{t(`styles.${styleConfig.id}.label`)}</span>
                   )}

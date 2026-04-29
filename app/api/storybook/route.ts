@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
 
     const storybook = await createStorybook({
       name: name.trim(),
-      ageRange: ageRange ?? '4-6',
+      ageRange: ageRange ?? '',
       styleId: styleId ?? '',
       characters: enrichedCharacters,
     })
