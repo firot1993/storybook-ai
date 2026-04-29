@@ -67,7 +67,7 @@ function CreateStoryWizard() {
   const [selectedCompanionNames, setSelectedCompanionNames] = useState<string[]>([])
   const [customCompanion, setCustomCompanion] = useState('')
   const [newBookName, setNewBookName] = useState('')
-  const [newBookAge, setNewBookAge] = useState('')
+  const [newBookAudience, setNewBookAudience] = useState('')
   const [companionSuggestions, setCompanionSuggestions] = useState<CompanionSuggestion[]>([])
   const [loadingCompanions, setLoadingCompanions] = useState(false)
 
@@ -77,7 +77,7 @@ function CreateStoryWizard() {
 
   // ── Step 1 — Episode creation ("灵感种子") ───────────────
   const [keywords, setKeywords] = useState('')
-  const [episodeAge, setEpisodeAge] = useState('')
+  const [episodeAudience, setEpisodeAudience] = useState('')
   const [previousEpisodeChoices, setPreviousEpisodeChoices] = useState<string[]>([])
   const [loadingPreviousChoices, setLoadingPreviousChoices] = useState(false)
   const [previousChoicesStatus, setPreviousChoicesStatus] = useState<PreviousChoicesStatus>('idle')
@@ -144,10 +144,10 @@ function CreateStoryWizard() {
     fetchData()
   }, [preselectedBookId])
 
-  // Sync episodeAge when selecting existing book
+  // Sync episodeAudience when selecting existing book
   useEffect(() => {
     const book = storybooks.find((b) => b.id === selectedStorybookId)
-    if (book) setEpisodeAge(book.ageRange as string)
+    if (book) setEpisodeAudience(book.ageRange as string)
   }, [selectedStorybookId, storybooks])
 
   // Pre-fill keywords from query params:
@@ -337,7 +337,7 @@ function CreateStoryWizard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newBookName.trim(),
-          ageRange: newBookAge,
+          ageRange: newBookAudience,
           styleId: newBookStyleId,
           characters,
         }),
@@ -348,7 +348,7 @@ function CreateStoryWizard() {
       setStorybooks((prev) => [newBook, ...prev])
       setSelectedStorybookId(newBook.id)
       setCreatingNew(false)
-      setEpisodeAge(newBookAge)
+      setEpisodeAudience(newBookAudience)
       setStep(1)
     } catch {
       showToast(t('storyCreate.errors.createBookFailed'), 'error')
@@ -412,7 +412,7 @@ function CreateStoryWizard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           backgroundKeywords: keywords.trim(),
-          ageRange: episodeAge,
+          ageRange: episodeAudience,
           locale,
           ...(previousStoryId ? { fromStoryId: previousStoryId } : {}),
         }),
@@ -456,7 +456,7 @@ function CreateStoryWizard() {
           storyName: title,
           selectedSynopsis: synopsis.content,
           synopsisVersion: synopsis.version,
-          ageRange: episodeAge,
+          ageRange: episodeAudience,
           locale,
           ...(previousStoryId ? { fromStoryId: previousStoryId } : {}),
         }),
@@ -626,8 +626,8 @@ function CreateStoryWizard() {
                 fetchCompanions={fetchCompanions}
                 newBookName={newBookName}
                 setNewBookName={setNewBookName}
-                newBookAge={newBookAge}
-                setNewBookAge={setNewBookAge}
+                newBookAudience={newBookAudience}
+                setNewBookAudience={setNewBookAudience}
                 savingBook={savingBook}
                 handleCreateNewBook={handleCreateNewBook}
                 onCancel={storybooks.length > 0 ? () => setCreatingNew(false) : undefined}
@@ -797,9 +797,9 @@ function CreateStoryWizard() {
                         <button
                           key={value}
                           type="button"
-                          onClick={() => setEpisodeAge(value)}
+                          onClick={() => setEpisodeAudience(value)}
                           className={`py-2 px-3 rounded-xl border-2 text-xs font-bold transition-all ${
-                            episodeAge === value
+                            episodeAudience === value
                               ? 'border-forest-500 bg-forest-100 text-forest-700 animate-soft-pop'
                               : 'border-gray-200 text-gray-500 hover:border-forest-200'
                           }`}
@@ -810,8 +810,8 @@ function CreateStoryWizard() {
                     </div>
                     <input
                       type="text"
-                      value={episodeAge}
-                      onChange={(e) => setEpisodeAge(e.target.value)}
+                      value={episodeAudience}
+                      onChange={(e) => setEpisodeAudience(e.target.value)}
                       placeholder={t('storyCreate.audiencePlaceholder')}
                       className="input mt-2 text-xs"
                     />
@@ -1086,8 +1086,8 @@ interface NewBookSubFlowProps {
   fetchCompanions: (protagonistId: string) => void
   newBookName: string
   setNewBookName: (v: string) => void
-  newBookAge: string
-  setNewBookAge: (v: string) => void
+  newBookAudience: string
+  setNewBookAudience: (v: string) => void
   savingBook: boolean
   handleCreateNewBook: () => void
   onCancel?: () => void
@@ -1103,7 +1103,7 @@ function NewBookSubFlow({
   customCompanion, setCustomCompanion,
   companionSuggestions, loadingCompanions, fetchCompanions,
   newBookName, setNewBookName,
-  newBookAge, setNewBookAge,
+  newBookAudience, setNewBookAudience,
   savingBook, handleCreateNewBook,
   onCancel,
 }: NewBookSubFlowProps) {
@@ -1407,9 +1407,9 @@ function NewBookSubFlow({
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setNewBookAge(value)}
+                    onClick={() => setNewBookAudience(value)}
                     className={`py-2.5 px-3 rounded-xl border-2 text-xs font-bold transition-all ${
-                      newBookAge === value
+                      newBookAudience === value
                         ? 'border-forest-500 bg-forest-100 text-forest-700'
                         : 'border-gray-200 text-gray-500'
                     }`}
@@ -1420,8 +1420,8 @@ function NewBookSubFlow({
               </div>
               <input
                 type="text"
-                value={newBookAge}
-                onChange={(e) => setNewBookAge(e.target.value)}
+                value={newBookAudience}
+                onChange={(e) => setNewBookAudience(e.target.value)}
                 placeholder={t('storyCreate.audiencePlaceholder')}
                 className="input mt-2 text-xs"
               />
