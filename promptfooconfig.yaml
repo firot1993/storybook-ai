@@ -1,0 +1,159 @@
+# promptfoo configuration for Storybook AI prompt evaluation
+#
+# Evaluates key prompts used in the storybook generation pipeline.
+# Run with: npx promptfoo eval
+# View results: npx promptfoo view
+#
+# Requires GEMINI_API_KEY (and optionally DEEPSEEK_API_KEY) in environment.
+
+description: 'Storybook AI prompt evaluations'
+
+prompts:
+  # Synopsis generation prompt (generates A/B/C story outlines)
+  - id: synopsis
+    label: 'Synopsis Versions'
+    raw: |
+      You are a children's storybook author.
+
+      Story title: {{storyName}}
+      Protagonist: {{protagonistName}}
+      Supporting character: {{supportingName}}
+      Background: {{backgroundKeywords}}
+      Target audience: {{ageRange}}
+
+      Generate THREE different synopsis versions (A, B, C) for this children's story.
+      Each version should have a different narrative angle.
+
+      Return valid JSON with this structure:
+      {
+        "A": { "title": "short title", "content": "synopsis paragraph" },
+        "B": { "title": "short title", "content": "synopsis paragraph" },
+        "C": { "title": "short title", "content": "synopsis paragraph" }
+      }
+
+  # Companion suggestions prompt
+  - id: companions
+    label: 'Companion Suggestions'
+    raw: |
+      You are a children's storybook character designer.
+
+      Protagonist: {{protagonistName}}
+      Background: {{backgroundKeywords}}
+      Target audience: {{ageRange}}
+
+      Suggest 3 adventure companions for the protagonist.
+      Each companion should be unique, child-friendly, and fit the story world.
+
+      Return valid JSON array:
+      [
+        { "emoji": "🦊", "name": "name", "description": "brief description" },
+        { "emoji": "🐻", "name": "name", "description": "brief description" },
+        { "emoji": "🦉", "name": "name", "description": "brief description" }
+      ]
+
+  # Voice assignment prompt
+  - id: voice-assignment
+    label: 'Voice Assignment'
+    raw: |
+      Assign the most fitting TTS voice for this character.
+
+      Character: {{characterName}}, age {{characterAge}}, style: {{characterStyle}}
+      Available voices: Puck (upbeat, male), Leda (bright, female), Zephyr (energetic, female), Fenrir (lively, male), Aoede (warm, female)
+
+      Return JSON: { "voiceName": "VoiceName", "reason": "brief reason" }
+
+providers:
+  - id: openai:chat:gemini
+    label: 'Gemini (via OpenAI compat)'
+    config:
+      apiBaseUrl: https://generativelanguage.googleapis.com/v1beta/openai
+      apiKey: '{{GEMINI_API_KEY}}'
+      model: gemini-2.0-flash
+
+  # Uncomment to also evaluate with DeepSeek:
+  # - id: openai:chat:deepseek
+  #   label: 'DeepSeek'
+  #   config:
+  #     apiBaseUrl: https://api.deepseek.com/v1
+  #     apiKey: '{{DEEPSEEK_API_KEY}}'
+  #     model: deepseek-chat
+
+tests:
+  # ── Synopsis Generation ──────────────────────────────────────
+  - description: 'Synopsis: generates valid A/B/C JSON for a fantasy story'
+    vars:
+      storyName: 'Moonlight Trip'
+      protagonistName: 'Luna'
+      supportingName: 'Milo'
+      backgroundKeywords: 'starlight, secret garden, magic lantern'
+      ageRange: '4-6'
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const obj = JSON.parse(output);
+          return obj.A && obj.B && obj.C &&
+                 obj.A.title && obj.A.content &&
+                 obj.B.title && obj.B.content &&
+                 obj.C.title && obj.C.content;
+      - type: llm-rubric
+        value: 'Each synopsis should be age-appropriate for 4-6 year olds and relate to starlight, gardens, or lanterns'
+
+  - description: 'Synopsis: generates valid A/B/C JSON for an ocean story'
+    vars:
+      storyName: 'Ocean Explorer'
+      protagonistName: 'Kai'
+      supportingName: 'Coral'
+      backgroundKeywords: 'underwater kingdom, seahorse, treasure'
+      ageRange: '5-7'
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const obj = JSON.parse(output);
+          return obj.A && obj.B && obj.C;
+      - type: llm-rubric
+        value: 'Each synopsis should involve ocean or underwater themes'
+
+  # ── Companion Suggestions ────────────────────────────────────
+  - description: 'Companions: suggests 3 unique adventure companions'
+    vars:
+      protagonistName: 'Luna'
+      backgroundKeywords: 'enchanted forest, moonlight, woodland creatures'
+      ageRange: '4-6'
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const arr = JSON.parse(output);
+          return Array.isArray(arr) && arr.length === 3 &&
+                 arr.every(c => c.emoji && c.name && c.description);
+      - type: llm-rubric
+        value: 'All companions should be child-friendly and fit a forest/woodland theme'
+
+  # ── Voice Assignment ─────────────────────────────────────────
+  - description: 'Voice: assigns a valid voice name'
+    vars:
+      characterName: 'Luna'
+      characterAge: 6
+      characterStyle: 'curious explorer'
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const obj = JSON.parse(output);
+          const validVoices = ['Puck', 'Leda', 'Zephyr', 'Fenrir', 'Aoede'];
+          return validVoices.includes(obj.voiceName) && obj.reason;
+
+  - description: 'Voice: assigns a different voice for a different character style'
+    vars:
+      characterName: 'Bramble'
+      characterAge: 8
+      characterStyle: 'brave and bold hedgehog knight'
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const obj = JSON.parse(output);
+          const validVoices = ['Puck', 'Leda', 'Zephyr', 'Fenrir', 'Aoede'];
+          return validVoices.includes(obj.voiceName) && obj.reason;
