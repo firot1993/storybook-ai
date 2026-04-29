@@ -20,7 +20,8 @@ export interface StorybookCharacter {
 export interface Storybook {
   id: string
   name: string
-  ageRange: '2-4' | '4-6' | '6-8'
+  /** Free-form audience descriptor (e.g. "4-6", "all ages", "teens"). Empty means unspecified. */
+  ageRange: string
   styleId: string
   characters: StorybookCharacter[]
   createdAt: Date

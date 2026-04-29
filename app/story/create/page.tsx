@@ -12,8 +12,8 @@ import { normalizeStoryChoices } from '@/lib/story-scenes'
 import { mergeMonotonicScriptProgress } from '@/lib/script-progress'
 import { readSSEStream } from '@/lib/sse-client'
 
-const AGE_OPTION_VALUES = ['2-4', '4-6', '6-8'] as const
-const AGE_OPTION_EMOJIS: Record<string, string> = { '2-4': '🍼', '4-6': '⭐', '6-8': '🚀' }
+const AUDIENCE_PRESETS = ['2-4', '4-6', '6-8', 'all ages'] as const
+const AUDIENCE_PRESET_EMOJIS: Record<string, string> = { '2-4': '🍼', '4-6': '⭐', '6-8': '🚀', 'all ages': '🌍' }
 
 const SYNOPSIS_STYLE = {
   A: { gradient: 'from-rose-400 to-orange-400', bg: 'bg-rose-50', border: 'border-rose-200', ring: 'ring-rose-300' },
@@ -67,7 +67,7 @@ function CreateStoryWizard() {
   const [selectedCompanionNames, setSelectedCompanionNames] = useState<string[]>([])
   const [customCompanion, setCustomCompanion] = useState('')
   const [newBookName, setNewBookName] = useState('')
-  const [newBookAge, setNewBookAge] = useState<'2-4' | '4-6' | '6-8'>('4-6')
+  const [newBookAge, setNewBookAge] = useState('')
   const [companionSuggestions, setCompanionSuggestions] = useState<CompanionSuggestion[]>([])
   const [loadingCompanions, setLoadingCompanions] = useState(false)
 
@@ -77,7 +77,7 @@ function CreateStoryWizard() {
 
   // ── Step 1 — Episode creation ("灵感种子") ───────────────
   const [keywords, setKeywords] = useState('')
-  const [episodeAge, setEpisodeAge] = useState<'2-4' | '4-6' | '6-8'>('4-6')
+  const [episodeAge, setEpisodeAge] = useState('')
   const [previousEpisodeChoices, setPreviousEpisodeChoices] = useState<string[]>([])
   const [loadingPreviousChoices, setLoadingPreviousChoices] = useState(false)
   const [previousChoicesStatus, setPreviousChoicesStatus] = useState<PreviousChoicesStatus>('idle')
@@ -147,7 +147,7 @@ function CreateStoryWizard() {
   // Sync episodeAge when selecting existing book
   useEffect(() => {
     const book = storybooks.find((b) => b.id === selectedStorybookId)
-    if (book) setEpisodeAge(book.ageRange as '2-4' | '4-6' | '6-8')
+    if (book) setEpisodeAge(book.ageRange as string)
   }, [selectedStorybookId, storybooks])
 
   // Pre-fill keywords from query params:
@@ -664,7 +664,7 @@ function CreateStoryWizard() {
                 )}
                 <div className="min-w-0">
                   <p className="font-extrabold text-forest-800 text-sm truncate">{currentBook.name}</p>
-                  <p className="text-xs text-gray-500">{STYLES.find(s => s.id === currentBook.styleId)?.emoji} {t(`styles.${currentBook.styleId}.label`)} · {currentBook.ageRange}{t('storyCreate.ageYearsUnit')}</p>
+                  <p className="text-xs text-gray-500">{STYLES.find(s => s.id === currentBook.styleId)?.emoji} {t(`styles.${currentBook.styleId}.label`)}{currentBook.ageRange ? ` · ${currentBook.ageRange}` : ''}</p>
                 </div>
                 <button
                   onClick={() => {
@@ -789,25 +789,32 @@ function CreateStoryWizard() {
                     )}
                   </div>
 
-                  {/* Age range */}
+                  {/* Audience */}
                   <div className="mb-4">
                     <label className="block text-xs font-bold text-forest-600 mb-1.5">{t('storyCreate.ageLabel')}</label>
-                    <div className="flex gap-2">
-                      {AGE_OPTION_VALUES.map((value) => (
+                    <div className="flex gap-2 flex-wrap">
+                      {AUDIENCE_PRESETS.map((value) => (
                         <button
                           key={value}
                           type="button"
                           onClick={() => setEpisodeAge(value)}
-                          className={`flex-1 py-2 rounded-xl border-2 text-xs font-bold transition-all ${
+                          className={`py-2 px-3 rounded-xl border-2 text-xs font-bold transition-all ${
                             episodeAge === value
                               ? 'border-forest-500 bg-forest-100 text-forest-700 animate-soft-pop'
                               : 'border-gray-200 text-gray-500 hover:border-forest-200'
                           }`}
                         >
-                          {AGE_OPTION_EMOJIS[value]} {t(`ageOptions.${value}.label`)}
+                          {AUDIENCE_PRESET_EMOJIS[value]} {t(`ageOptions.${value}.label`)}
                         </button>
                       ))}
                     </div>
+                    <input
+                      type="text"
+                      value={episodeAge}
+                      onChange={(e) => setEpisodeAge(e.target.value)}
+                      placeholder={t('storyCreate.audiencePlaceholder')}
+                      className="input mt-2 text-xs"
+                    />
                   </div>
 
                   <button
@@ -936,9 +943,9 @@ function CreateStoryWizard() {
                           {selectedSynopsisOpt.label}
                         </span>
                       )}
-                      {currentBook && (
+                      {currentBook && currentBook.ageRange && (
                         <span className="px-2.5 py-1 bg-forest-50 border border-forest-200 rounded-full text-xs font-bold text-forest-600">
-                          {currentBook.ageRange} {t('storyCreate.ageTagReaderUnit')}
+                          {currentBook.ageRange}
                         </span>
                       )}
                       {bookProtagonist && (
@@ -1079,8 +1086,8 @@ interface NewBookSubFlowProps {
   fetchCompanions: (protagonistId: string) => void
   newBookName: string
   setNewBookName: (v: string) => void
-  newBookAge: '2-4' | '4-6' | '6-8'
-  setNewBookAge: (v: '2-4' | '4-6' | '6-8') => void
+  newBookAge: string
+  setNewBookAge: (v: string) => void
   savingBook: boolean
   handleCreateNewBook: () => void
   onCancel?: () => void
@@ -1395,22 +1402,29 @@ function NewBookSubFlow({
             </div>
             <div>
               <label className="block text-xs font-bold text-forest-600 mb-1.5">{t('storyCreateBook.ageLabel')}</label>
-              <div className="flex gap-2">
-                {AGE_OPTION_VALUES.map((value) => (
+              <div className="flex gap-2 flex-wrap">
+                {AUDIENCE_PRESETS.map((value) => (
                   <button
                     key={value}
                     type="button"
                     onClick={() => setNewBookAge(value)}
-                    className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${
+                    className={`py-2.5 px-3 rounded-xl border-2 text-xs font-bold transition-all ${
                       newBookAge === value
                         ? 'border-forest-500 bg-forest-100 text-forest-700'
                         : 'border-gray-200 text-gray-500'
                     }`}
                   >
-                    {AGE_OPTION_EMOJIS[value]} {t(`ageOptions.${value}.label`)}
+                    {AUDIENCE_PRESET_EMOJIS[value]} {t(`ageOptions.${value}.label`)}
                   </button>
                 ))}
               </div>
+              <input
+                type="text"
+                value={newBookAge}
+                onChange={(e) => setNewBookAge(e.target.value)}
+                placeholder={t('storyCreate.audiencePlaceholder')}
+                className="input mt-2 text-xs"
+              />
             </div>
           </div>
 
@@ -1504,7 +1518,7 @@ function ExistingBookSelection({
               <div className="flex-1 min-w-0">
                 <p className="font-extrabold text-forest-800 truncate">{book.name}</p>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <span className="text-xs bg-forest-100 text-forest-600 px-1.5 py-0.5 rounded-full font-bold">{book.ageRange}{t('storyCreateExisting.ageUnit')}</span>
+                  {book.ageRange && <span className="text-xs bg-forest-100 text-forest-600 px-1.5 py-0.5 rounded-full font-bold">{book.ageRange}</span>}
                   {styleConfig && <span className="text-xs text-gray-500">{styleConfig.emoji} {t(`styles.${styleConfig.id}.label`)}</span>}
                   <span className="text-xs text-gray-400">· {chapterCount === 0 ? t('storyCreateExisting.noStories') : t('storyCreateExisting.episodeCount', { count: chapterCount })}</span>
                 </div>

@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const companions = await generateCompanionSuggestions({
       protagonistName,
       backgroundKeywords: backgroundKeywords?.trim() || (locale === 'zh' ? '奇幻冒险' : 'fantasy adventure'),
-      ageRange: ageRange || '4-6',
+      ageRange: ageRange || '',
       locale,
       protagonistPronoun,
       protagonistRole,

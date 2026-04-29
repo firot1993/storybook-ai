@@ -125,7 +125,7 @@ function getElevenV3VoiceOverRequirement(locale: Locale): string {
     'Every voiceOver must begin with one or two short eleven_v3 control tags in English square brackets ' +
     '(for example [softly], [warmly], [whispers], or [gentle laugh]). ' +
     `Keep the spoken narration itself in ${getLocaleLanguageName(locale)}; only the control tags may stay in English. ` +
-    'Use control tags only inside the voiceOver string, keep them child-friendly, and never place them in dialogue or frame prompts.'
+    'Use control tags only inside the voiceOver string, keep them appropriate for the target audience, and never place them in dialogue or frame prompts.'
   )
 }
 
@@ -167,16 +167,16 @@ function buildAgeInstruction(ageDesc = ''): string {
     return (
       `IMPORTANT - The character is ${ageNum} years old. ` +
       `Faithfully extract the facial features (eye shape, eye size, face shape, face fat/thin ratio, nose shape) from the USER PHOTO and preserve them. ` +
-      `Only adjust the overall proportion to match a young child: slightly larger head relative to body, soft skin texture. ` +
-      `Do NOT impose generic child features - keep the actual person's facial structure.`
+      `Only adjust the overall proportion to match a young person of this age: slightly larger head relative to body, soft skin texture. ` +
+      `Do NOT impose generic features - keep the actual person's facial structure.`
     )
   }
 
   return (
     `IMPORTANT - The character is ${ageNum} years old. ` +
     `Faithfully extract the facial features (eye shape, eye size, face shape, face fat/thin ratio, nose shape) from the USER PHOTO and preserve them. ` +
-    `Adjust the overall proportion to match a child of this age. ` +
-    `Do NOT impose generic child features - keep the actual person's facial structure.`
+    `Adjust the overall proportion to match a person of this age. ` +
+    `Do NOT impose generic features - keep the actual person's facial structure.`
   )
 }
 
@@ -194,7 +194,7 @@ export function buildCharacterWithStyleRefPrompt(stylePrompt: string, ageDesc = 
     3. Hand-drawn style emphasis: ${stylePrompt}
     4. Apply gentle anime or picture-book stylization. Line art should stay 2D and avoid realistic texture.
     5. Use flat-style shadow lighting: avoid realistic gradients and create depth through clearly defined cartoon shadow shapes.
-    6. Convey an overall warm, breathable children's picture-book quality.
+    6. Convey an overall warm, breathable picture-book quality.
 
     Output: upper-body front-facing portrait, centered composition, clean simple background, friendly smile.
   `)
@@ -235,15 +235,15 @@ export function buildSynopsisVersionsPrompt(params: SynopsisVersionsPromptParams
 
   return dedentPrompt(`
     [System Role]
-    You are a world-renowned children's picture-book author. Your stories blend gentle wonder, rich sensory detail, and a warm emotional core suitable for young readers.
+    You are a world-renowned picture-book author. Your stories blend gentle wonder, rich sensory detail, and a warm emotional core.
 
     [Creative Task]
-    Based on the story parameters below, generate three distinct story outline versions for a children's storybook.
+    Based on the story parameters below, generate three distinct story outline versions for a storybook.
 
     Requirements:
     1. Each version should be brief and vivid, roughly one short paragraph.
     2. Structure each version as: calm beginning + magical exploration + warm healing ending.
-    3. Use sensory language children can imagine easily.
+    3. Use sensory language readers can imagine easily.
     4. Make the three versions meaningfully different:
        - A: sensory wonder and environment
        - B: emotional interaction and companionship
@@ -255,7 +255,7 @@ export function buildSynopsisVersionsPrompt(params: SynopsisVersionsPromptParams
     Protagonist: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}
     Supporting character: ${supportingName}
     Core elements: ${backgroundKeywords}
-    Target reader age: ${ageRange}
+    Target audience: ${ageRange}
     ${continuationContextBlock}
 
     [Output Format]
@@ -272,16 +272,16 @@ export function buildCompanionSuggestionsPrompt(params: CompanionSuggestionsProm
   const { protagonistName, backgroundKeywords, ageRange, locale, protagonistPronoun, protagonistRole } = params
 
   return dedentPrompt(`
-    You are a children's story development expert.
-    Recommend 3 lovable adventure companions for the protagonist below. They may be animals, magical creatures, or other child-friendly fantasy companions.
+    You are a story development expert.
+    Recommend 3 lovable adventure companions for the protagonist below. They may be animals, magical creatures, or other fantasy companions.
 
     Protagonist: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}
     Story elements: ${backgroundKeywords}
-    Target reader age: ${ageRange}
+    Target audience: ${ageRange}
 
     Requirements:
     1. Each companion should feel distinct and memorable.
-    2. Keep them age-appropriate, whimsical, and easy to visualize.
+    2. Keep them whimsical and easy to visualize.
     3. ${getOutputLanguageRequirement(locale, 'Each name and description')}
     4. Each description should be very short, ${getCompanionDescriptionInstruction(locale)}.
 
@@ -340,14 +340,14 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
 
   return dedentPrompt(`
     [System Role]
-    You are a world-renowned children's storybook creator who can generate both text and illustrations in one coordinated response.
+    You are a world-renowned storybook creator who can generate both text and illustrations in one coordinated response.
 
     [Story Parameters]
     Story title: ${storyName}
     Protagonist: ${formatProtagonistLabel(protagonistName, protagonistPronoun, protagonistRole)}
     Supporting character: ${supportingName}
     Synopsis seed: ${synopsis}
-    Target reader age: ${ageRange}
+    Target audience: ${ageRange}
     Visual style: ${styleLabel}
     Core theme: ${themeLabel}
     ${continuationContextBlock}
@@ -372,7 +372,7 @@ export function buildStoryWithAssetsPrompt(params: StoryWithAssetsPromptParams):
        Prefer 0 NPCs when possible. If background figures are absolutely necessary, keep them unnamed, generic, and visually incidental.
     ${needsSupportingCharacter ? `
     [Supporting Character Invention]
-    The supporting character slot is currently unnamed. You MUST invent a memorable, named supporting character for the story (an animal, magical creature, or child-friendly fantasy companion).
+    The supporting character slot is currently unnamed. You MUST invent a memorable, named supporting character for the story (an animal, magical creature, or fantasy companion).
     - Give them a proper name (not "Companion" or generic labels).
     - Weave them naturally into the story as the protagonist's companion.
     - Immediately after the story body, output this marker on its own line:
@@ -458,7 +458,7 @@ export function buildDirectorScriptPrompt(params: DirectorScriptPromptParams): s
 
   return dedentPrompt(`
     [System Role]
-    You are an elite children's animation director and storyboard designer. You transform warm fairy tales into visually rich, emotionally clear animated storyboards with strong pacing.
+    You are an elite animation director and storyboard designer. You transform warm fairy tales into visually rich, emotionally clear animated storyboards with strong pacing.
 
     [Creative Task]
     Design a storyboard with ${minSceneCount}-${maxSceneCount} scenes based on the parameters below.
@@ -467,7 +467,7 @@ export function buildDirectorScriptPrompt(params: DirectorScriptPromptParams): s
     1. Each scene should support roughly 8-12 seconds of animation and avoid static staging.
     2. Use concrete, visual language instead of abstract wording.
     3. Clearly specify shot type, camera movement, and action focus.
-    4. Keep the emotional interaction child-friendly and age-appropriate for ${ageRange}-year-old viewers.
+    4. Keep the emotional interaction appropriate for the target audience${ageRange ? ` (${ageRange})` : ''}.
     5. Maintain a consistent visual style: ${styleLabel}.
     6. Ensure opening frames connect visually from one scene to the next.
     7. If charactersUsed is non-empty, every frame prompt must explicitly include all charactersUsed names.
@@ -484,7 +484,7 @@ export function buildDirectorScriptPrompt(params: DirectorScriptPromptParams): s
     ${characterProfileText || 'None'}
     Story text:
     ${storyContent}
-    Target audience age: ${ageRange}
+    Target audience: ${ageRange}
 
     [Output Format]
     Return strict JSON only. No markdown and no extra commentary.
@@ -498,9 +498,9 @@ export function buildDirectorScriptPrompt(params: DirectorScriptPromptParams): s
         "dialogue": [{"speaker": "Character name", "text": "Short warm line"}],
         "charactersUsed": ["Character names visible in this scene"],
         "estimatedDuration": 10,
-        "openingFramePrompt": "16:9 children's anime illustration, ${englishStyleLabel}: [opening frame - establishing shot with visual continuity from previous scene, character positions, lighting, atmosphere, NO text]",
-        "midActionFramePrompt": "16:9 children's anime illustration, ${englishStyleLabel}: [peak action or emotional climax moment of the scene, highest energy, NO text]",
-        "endingFramePrompt": "16:9 children's anime illustration, ${englishStyleLabel}: [scene completion state, calm after action, leaving a visual hook for the next scene, NO text]"
+        "openingFramePrompt": "16:9 illustration, ${englishStyleLabel}: [opening frame - establishing shot with visual continuity from previous scene, character positions, lighting, atmosphere, NO text]",
+        "midActionFramePrompt": "16:9 illustration, ${englishStyleLabel}: [peak action or emotional climax moment of the scene, highest energy, NO text]",
+        "endingFramePrompt": "16:9 illustration, ${englishStyleLabel}: [scene completion state, calm after action, leaving a visual hook for the next scene, NO text]"
       }
     ]
   `)
@@ -604,7 +604,7 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     Stop immediately after the ENDING frame image for the last required scene in this chunk.
 
     [System Role]
-    You are an elite children's animation director and storyboard designer. You transform warm fairy tales into visually rich, emotionally clear animated storyboards with strong pacing. You also illustrate each scene directly.
+    You are an elite animation director and storyboard designer. You transform warm fairy tales into visually rich, emotionally clear animated storyboards with strong pacing. You also illustrate each scene directly.
 
     [Creative Task]
     Generate scenes ${startSceneIndex + 1} to ${endSceneIndex} of ${totalScenes} total scenes based on the parameters below.
@@ -615,7 +615,7 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     1. Each scene should support roughly 8-12 seconds of animation and avoid static staging.
     2. Use concrete, visual language instead of abstract wording.
     3. Clearly specify shot type, camera movement, and action focus.
-    4. Keep the emotional interaction child-friendly and age-appropriate for ${ageRange}-year-old viewers.
+    4. Keep the emotional interaction appropriate for the target audience${ageRange ? ` (${ageRange})` : ''}.
     5. Maintain a consistent visual style: ${styleLabel}.
     6. Ensure opening frames connect visually from one scene to the next.
     7. If charactersUsed is non-empty, every frame prompt must explicitly include all charactersUsed names.
@@ -630,7 +630,7 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     Available character pool: ${characterPoolText || roleList}
     Story text:
     ${normalizedSceneInputs.length > 0 ? '(See [Chunk Scene Inputs] below for scene-by-scene source material.)' : storyContent}
-    Target audience age: ${ageRange}
+    Target audience: ${ageRange}
     ${contextBlock}
 
     [Reference Constraint]
@@ -642,7 +642,7 @@ export function buildChunkedInterleavedDirectorScriptPrompt(params: ChunkedInter
     Use the matching global scene number from [Chunk Scene Inputs] for each SCENE_META index, in the same order as the inputs.
 
     1. The scene metadata as a comment marker:
-    <!--SCENE_META:{"index":${startSceneIndex + 1},"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"[softly] Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
+    <!--SCENE_META:{"index":${startSceneIndex + 1},"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"[softly] Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
 
     2. Then IMMEDIATELY generate a 16:9 illustration for the OPENING frame based on the openingFramePrompt. Style: ${styleLabel}, bright and warm.
     3. Then generate a 16:9 illustration for the MID-ACTION frame based on the midActionFramePrompt. Same style and characters.
@@ -683,7 +683,7 @@ export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirector
     Stop immediately after the ENDING frame image for scene ${sceneCount}.
 
     [System Role]
-    You are an elite children's animation director and storyboard designer. You transform warm fairy tales into visually rich, emotionally clear animated storyboards with strong pacing. You also illustrate each scene directly.
+    You are an elite animation director and storyboard designer. You transform warm fairy tales into visually rich, emotionally clear animated storyboards with strong pacing. You also illustrate each scene directly.
 
     [Creative Task]
     Design a storyboard with exactly ${sceneCount} scenes based on the parameters below.
@@ -693,7 +693,7 @@ export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirector
     1. Each scene should support roughly 8-12 seconds of animation and avoid static staging.
     2. Use concrete, visual language instead of abstract wording.
     3. Clearly specify shot type, camera movement, and action focus.
-    4. Keep the emotional interaction child-friendly and age-appropriate for ${ageRange}-year-old viewers.
+    4. Keep the emotional interaction appropriate for the target audience${ageRange ? ` (${ageRange})` : ''}.
     5. Maintain a consistent visual style: ${styleLabel}.
     6. Ensure opening frames connect visually from one scene to the next.
     7. If charactersUsed is non-empty, every frame prompt must explicitly include all charactersUsed names.
@@ -708,7 +708,7 @@ export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirector
     Available character pool: ${characterPoolText || roleList}
     Story text:
     ${storyContent}
-    Target audience age: ${ageRange}
+    Target audience: ${ageRange}
 
     [Reference Constraint]
     If labeled character reference images are provided, treat those images as the only source of truth for character appearance consistency.
@@ -718,7 +718,7 @@ export function buildInterleavedDirectorScriptPrompt(params: InterleavedDirector
     For each scene, output in this exact order:
 
     1. The scene metadata as a comment marker:
-    <!--SCENE_META:{"index":1,"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"[softly] Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 children's anime illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
+    <!--SCENE_META:{"index":1,"sceneDescription":"Short scene description","cameraDesign":"Shot type, camera movement, and focus","animationAction":"Detailed character and environment action for the scene","voiceOver":"[softly] Rhythmic, read-aloud-friendly narration","dialogue":[{"speaker":"Character name","text":"Short warm line"}],"charactersUsed":["Character names visible in this scene"],"estimatedDuration":10,"openingFramePrompt":"16:9 illustration, ${englishStyleLabel}: [opening frame description, NO text]","midActionFramePrompt":"16:9 illustration, ${englishStyleLabel}: [peak action moment, NO text]","endingFramePrompt":"16:9 illustration, ${englishStyleLabel}: [scene completion state, NO text]"}-->
 
     2. Then IMMEDIATELY generate a 16:9 illustration for the OPENING frame based on the openingFramePrompt. Style: ${styleLabel}, bright and warm.
     3. Then generate a 16:9 illustration for the MID-ACTION frame based on the midActionFramePrompt. Same style and characters.
@@ -735,7 +735,7 @@ export function buildStoryImagePrompt(params: StoryImagePromptParams): string {
   const { sceneDescription, hasMultipleReferences, multiRefLabel = '', textHint } = params
 
   return dedentPrompt(`
-    Simple children's picture-book illustration for ages 4-8: ${sceneDescription}.
+    Simple picture-book illustration: ${sceneDescription}.
     Style: bright happy colors, round friendly shapes, very simple background, cozy and warm like a bedtime story book. No text in the image.
     IMPORTANT: ${
       hasMultipleReferences
@@ -754,7 +754,7 @@ export function buildVoiceAssignmentPrompt(params: VoiceAssignmentPromptParams):
   const pronounDesc = pronoun ? `- Pronoun: ${pronoun}` : ''
 
   return dedentPrompt(`
-    You are casting a voice actor for a children's storybook character aged 5-8.
+    You are casting a voice actor for a storybook character.
 
     Character info:
     - Name: ${name || 'Unnamed character'}
@@ -792,7 +792,7 @@ export function buildCharacterCartoonPrompt(
   if (hasPhotoReference) {
     return (
       `Character reconstruction: extract the core facial features and hairstyle from this photo, ` +
-      `then rebuild the character in a hand-drawn children's picture-book style. ` +
+      `then rebuild the character in a hand-drawn picture-book style. ` +
       `Style: ${style}. ${description ? `Character details: ${description}.` : ''} ` +
       `Emphasize hand-drawn texture with flat-style shadow lighting. ` +
       `Maintain the person's distinguishing facial features with gentle anime or picture-book stylization. ` +
@@ -801,7 +801,7 @@ export function buildCharacterCartoonPrompt(
   }
 
   return (
-    `Children's picture-book illustration: ${description}. ` +
+    `Picture-book illustration: ${description}. ` +
     `Style: ${style}. Hand-drawn texture, flat-style shadows, warm and breathable artistic feel, ` +
     `upper-body portrait, centered, clean simple background, friendly expression.`
   )
@@ -816,10 +816,10 @@ export function buildCompanionCharacterCartoonPrompt(
   const safeDescription = (description || '').trim().slice(0, 200) || 'friendly magical companion'
 
   return (
-    `Children's picture-book companion character design. ` +
+    `Picture-book companion character design. ` +
     `Character name: ${safeName}. Character traits: ${safeDescription}. ` +
     `Style: ${style}. ` +
-    `Character type should match the name semantics: if the name or description suggests a child or person, draw a human child; ` +
+    `Character type should match the name semantics: if the name or description suggests a person, draw a human; ` +
     `if it suggests an animal, spirit, object, or fantasy creature, draw a non-human companion. ` +
     `Do not force a fixed species when the name already implies one. ` +
     `Cute, warm, friendly, storybook look. ` +
@@ -828,5 +828,5 @@ export function buildCompanionCharacterCartoonPrompt(
 }
 
 export function buildSceneIllustrationPrompt(imagePrompt: string): string {
-  return `Children's picture-book illustration, ages 4-8: ${imagePrompt}. Style: bright happy colors, round friendly shapes, simple background, cozy and warm. No text in the image.`
+  return `Picture-book illustration: ${imagePrompt}. Style: bright happy colors, round friendly shapes, simple background, cozy and warm. No text in the image.`
 }

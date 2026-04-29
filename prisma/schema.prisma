@@ -24,7 +24,7 @@ model Character {
 model Storybook {
   id         String   @id @default(cuid())
   name       String
-  ageRange   String   @default("4-6")
+  ageRange   String   @default("")
   styleId    String   @default("")
   characters Json     @default("[]")
   createdAt  DateTime @default(now())
@@ -38,7 +38,7 @@ model Synopsis {
   characterIds Json     @default("[]")
   theme        String   @default("")
   keywords     String   @default("")
-  ageGroup     String   @default("4-6")
+  ageGroup     String   @default("")
   content      String
   createdAt    DateTime @default(now())
 

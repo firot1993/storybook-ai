@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
         // Auto-resolve from storybook; allow per-request overrides
         let protagonistName = (protagonistOverride as string | undefined) ?? (locale === 'zh' ? '主角' : 'Protagonist')
         let supportingName = (supportingOverride as string | undefined) ?? (locale === 'zh' ? '配角' : 'Companion')
-        let ageRange = (ageRangeOverride as string | undefined) ?? '4-6'
+        let ageRange = (ageRangeOverride as string | undefined) ?? ''
         let styleDesc = (styleDescOverride as string | undefined) ?? 'warm 2D anime style, macaron palette'
         let protagonistPronoun = ''
         let protagonistRole = ''

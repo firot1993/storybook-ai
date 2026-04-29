@@ -53,7 +53,7 @@ export const STYLES: StyleConfig[] = [
     characterPrompt:
       'Studio Ghibli anime style character portrait, Little Prince illustration style, hand-drawn anime, ' +
       'warm vibrant saturated colors, simple large expressive eyes, round friendly face, ' +
-      'clean neutral light background, children\'s book character, gentle sunlit warm atmosphere, ' +
+      'clean neutral light background, storybook character, gentle sunlit warm atmosphere, ' +
       'full upper body portrait, centered composition',
     negativePrompt:
       'realistic, photographic, 3D render, CGI, scary, dark, watermark, text, adult, mature',
@@ -66,7 +66,7 @@ export const STYLES: StyleConfig[] = [
     emoji: '🌙',
     description: '蜡笔水彩混合，柔和马卡龙色调，梦幻感',
     characterPrompt:
-      'Soft crayon and watercolor illustration, children\'s picture book style, ' +
+      'Soft crayon and watercolor illustration, picture book style, ' +
       'muted pastel palette, gentle sketchy outlines, round chubby adorable face, ' +
       'dreamy soft atmospheric lighting, pale backgrounds, hand-drawn texture, ' +
       'warm and cozy storybook feel, upper body portrait, centered',
@@ -112,7 +112,7 @@ export const STYLES: StyleConfig[] = [
     emoji: '✏️',
     description: '欧式彩铅插画，经典童书手绘风格',
     characterPrompt:
-      'Colored pencil illustration, European children\'s storybook style, ' +
+      'Colored pencil illustration, European storybook style, ' +
       'traditional pencil sketch with soft watercolor wash, visible pencil texture and hatching, ' +
       'warm nostalgic tones, classic book illustration feel, detailed fine lines, ' +
       'gentle warm lighting, light paper-texture background, upper body portrait, centered',
